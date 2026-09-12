@@ -242,6 +242,12 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
+# Уникальная ссылка восстановления пароля должна вести на наш route handler
+# (token_hash + type), а не на implicit-флоу Supabase — см. app/auth/confirm/route.ts.
+[auth.email.template.recovery]
+subject = "Восстановление пароля"
+content_path = "./supabase/templates/recovery.html"
+
 # Uncomment to customize email template
 # [auth.email.template.invite]
 # subject = "You have been invited"

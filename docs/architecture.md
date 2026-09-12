@@ -16,6 +16,8 @@
 
 Drag-and-drop в MVP не реализуется, библиотека не добавляется (см. §7).
 
+В Next.js 16 файл `middleware.ts` переименован в `proxy.ts` (функциональность та же, изменилось только имя файла и экспортируемой функции). Проект использует новое имя.
+
 ## 2. Границы ответственности
 
 ```
@@ -47,7 +49,7 @@ PostgreSQL (Supabase)
 |---|---|
 | `lib/supabase/client.ts` | браузерный клиент (только `anon` ключ) |
 | `lib/supabase/server.ts` | серверный клиент для Server Components и Server Actions |
-| `lib/supabase/middleware.ts` | обновление сессии в `middleware.ts`, защита маршрутов |
+| `lib/supabase/proxy.ts` | обновление сессии, защита маршрутов; вызывается из `proxy.ts` |
 
 ## 4. Маршрутизация и выбор проекта
 
@@ -118,6 +120,7 @@ app/
   (auth)/
     login/ register/ forgot-password/ reset-password/
   (app)/
+    profile/                        профиль пользователя (full_name), выход
     projects/                       выбор и создание проекта
     [projectId]/
       layout.tsx                    проверка доступа, контекст проекта
@@ -127,12 +130,13 @@ app/
       executors/
       categories/
       settings/                     название проекта, timezone
+  auth/confirm/route.ts             обработка ссылок из писем Supabase Auth (token_hash + type)
   api/                              только при реальной необходимости
 components/
   ui/                               shadcn/ui
   board/ tasks/ materials/ common/
 lib/
-  supabase/                         client.ts, server.ts, middleware.ts
+  supabase/                         client.ts, server.ts, proxy.ts
   business/                         working-days.ts, task-planning.ts, materials.ts, dates.ts
   validation/                       Zod-схемы, общие для клиента и сервера
   errors.ts
@@ -141,7 +145,7 @@ supabase/
   migrations/
   config.toml
 docs/
-middleware.ts
+proxy.ts
 ```
 
 ## 11. Тестирование и проверки
