@@ -120,8 +120,10 @@ app/
   (auth)/
     login/ register/ forgot-password/ reset-password/
   (app)/
-    profile/                        профиль пользователя (full_name), выход
-    projects/                       выбор и создание проекта
+    layout.tsx                      проверка сессии, общая навигация, выход
+    actions.ts                      signOutAction (общий для всех страниц (app))
+    profile/                        профиль пользователя (full_name)
+    projects/                       список, создание и переключение проектов
     [projectId]/
       layout.tsx                    проверка доступа, контекст проекта
       board/                        главная доска

@@ -37,5 +37,5 @@ export async function registerAction(input: RegisterInput): Promise<ActionResult
     };
   }
 
-  redirect("/profile");
+  redirect("/projects");
 }

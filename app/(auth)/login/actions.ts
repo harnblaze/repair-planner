@@ -25,5 +25,5 @@ export async function loginAction(input: LoginInput, next?: string): Promise<Act
     return { ok: false, error: mapAuthError(error.message) };
   }
 
-  redirect(next && next.startsWith("/") ? next : "/profile");
+  redirect(next && next.startsWith("/") ? next : "/projects");
 }

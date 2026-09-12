@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
 
 import { ProfileForm } from "./profile-form";
-import { SignOutButton } from "./sign-out-button";
 
 export const metadata: Metadata = {
   title: "Профиль — Repair Planner",
@@ -38,7 +37,6 @@ export default async function ProfilePage() {
           <ProfileForm fullName={profile?.full_name ?? ""} />
         </CardContent>
       </Card>
-      <SignOutButton />
     </main>
   );
 }

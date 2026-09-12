@@ -1,11 +1,10 @@
+import { signOutAction } from "@/app/(app)/actions";
 import { Button } from "@/components/ui/button";
-
-import { signOutAction } from "./actions";
 
 export function SignOutButton() {
   return (
     <form action={signOutAction}>
-      <Button type="submit" variant="outline">
+      <Button type="submit" variant="ghost" size="sm">
         Выйти
       </Button>
     </form>
