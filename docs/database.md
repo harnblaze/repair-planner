@@ -1,6 +1,6 @@
 # Database
 
-> Статус: согласовано 2026-09-11. Миграции ещё не созданы. Документ — спецификация для первой миграции.
+> Статус: согласовано 2026-09-11, миграции 0001–0006 реализованы 2026-09-12. Документ соответствует фактической схеме.
 
 ## 1. ER-модель
 
@@ -373,4 +373,4 @@ update materials set current_balance = current_balance + delta where id = p_mate
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
-Supabase CLI в окружении **не установлен** — это первый шаг этапа реализации.
+Все шесть миграций применены на локальном стеке (`supabase start` / `supabase db reset`) и покрыты pgTAP-тестами RLS в `supabase/tests/database/rls.test.sql` (`supabase test db --local`, 21/21 успешно). TypeScript-типы сгенерированы в `lib/types/database.ts`.
