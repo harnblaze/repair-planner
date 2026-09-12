@@ -17,3 +17,8 @@ export function mapAuthError(message: string | undefined | null): string {
   if (!message) return DEFAULT_MESSAGE;
   return AUTH_ERROR_MESSAGES[message] ?? DEFAULT_MESSAGE;
 }
+
+/** Код ошибки PostgreSQL при нарушении unique-ограничения. */
+export function isUniqueViolation(error: { code?: string } | null | undefined): boolean {
+  return error?.code === "23505";
+}

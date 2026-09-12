@@ -31,12 +31,20 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
     <div className="flex flex-col">
       <header className="flex items-center justify-between border-b border-border px-4 py-2">
         <span className="text-sm font-medium">{project.name}</span>
-        <Link
-          href={`/${project.id}/settings`}
-          className="text-sm text-muted-foreground hover:underline"
-        >
-          Настройки
-        </Link>
+        <nav className="flex items-center gap-4 text-sm text-muted-foreground">
+          <Link href={`/${project.id}/categories`} className="hover:underline">
+            Категории
+          </Link>
+          <Link href={`/${project.id}/executors`} className="hover:underline">
+            Исполнители
+          </Link>
+          <Link href={`/${project.id}/materials`} className="hover:underline">
+            Материалы
+          </Link>
+          <Link href={`/${project.id}/settings`} className="hover:underline">
+            Настройки
+          </Link>
+        </nav>
       </header>
       {children}
     </div>

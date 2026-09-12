@@ -43,7 +43,26 @@ export async function updateSession(request: NextRequest) {
   // читает cookie, поэтому именно он, а не getSession(), защищает маршрут.
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser();
+
+  // Протухший/невалидный refresh token (например, после supabase db reset в
+  // разработке, либо истёкшая сессия) — SDK в этом случае осознанно не чистит
+  // cookie сам (это не AuthSessionMissingError), иначе она будет безуспешно
+  // присылаться и логировать ошибку на каждый запрос. signOut() здесь не
+  // помогает: он сам сначала читает ту же протухшую сессию и прерывается на
+  // той же ошибке, не дойдя до удаления. Чистим явно на любом ответе, который
+  // в итоге вернём — редирект создаёт новый объект NextResponse.
+  const staleCookieNames = error
+    ? request.cookies.getAll().filter((c) => c.name.startsWith("sb-")).map((c) => c.name)
+    : [];
+
+  function withClearedStaleCookies(res: NextResponse) {
+    for (const name of staleCookieNames) {
+      res.cookies.delete(name);
+    }
+    return res;
+  }
 
   const { pathname } = request.nextUrl;
   const isPublic = isPublicPath(pathname);
@@ -52,15 +71,15 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
+    return withClearedStaleCookies(NextResponse.redirect(url));
   }
 
   if (user && (pathname === "/login" || pathname === "/register" || pathname === "/forgot-password")) {
     const url = request.nextUrl.clone();
     url.pathname = "/projects";
     url.search = "";
-    return NextResponse.redirect(url);
+    return withClearedStaleCookies(NextResponse.redirect(url));
   }
 
-  return response;
+  return withClearedStaleCookies(response);
 }
