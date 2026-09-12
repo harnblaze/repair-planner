@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { toast } from "sonner";
 
 import { Label } from "@/components/ui/label";
 import {
@@ -29,7 +30,6 @@ export function ExecutorsPicker({
   assignedExecutorIds: string[];
 }) {
   const [selected, setSelected] = useState<string[]>(assignedExecutorIds);
-  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const active = executors.filter((e) => e.is_active);
@@ -37,14 +37,13 @@ export function ExecutorsPicker({
   const nameById = new Map(executors.map((e) => [e.id, e.name]));
 
   const onValueChange = (next: string[]) => {
-    setError(null);
     const previous = selected;
     setSelected(next);
     startTransition(async () => {
       const result = await setTaskExecutorsAction(projectId, taskId, next);
       if (!result.ok) {
         setSelected(previous);
-        setError(result.error);
+        toast.error(result.error);
       }
     });
   };
@@ -87,7 +86,6 @@ export function ExecutorsPicker({
           ) : null}
         </SelectContent>
       </Select>
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
     </div>
   );
 }

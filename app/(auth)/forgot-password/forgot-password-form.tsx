@@ -43,14 +43,14 @@ export function ForgotPasswordForm() {
       <div className="flex flex-col gap-2">
         <Label htmlFor="email">Email</Label>
         <Input id="email" type="email" autoComplete="email" {...register("email")} />
-        {errors.email ? <p className="text-sm text-destructive">{errors.email.message}</p> : null}
+        {errors.email ? <p className="text-[11.5px] text-status-alert-fg">{errors.email.message}</p> : null}
       </div>
 
       <Button type="submit" disabled={pending} className="mt-2">
         {pending ? "Отправка…" : "Отправить ссылку"}
       </Button>
 
-      <p className="text-center text-sm text-muted-foreground">
+      <p className="text-center text-[12px] text-meta">
         <Link href="/login" className="text-foreground hover:underline">
           Вернуться ко входу
         </Link>

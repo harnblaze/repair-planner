@@ -1,8 +1,9 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,6 @@ import {
 import { createMaterialAction } from "./actions";
 
 export function CreateMaterialForm({ projectId }: { projectId: string }) {
-  const [serverError, setServerError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const {
@@ -30,12 +30,12 @@ export function CreateMaterialForm({ projectId }: { projectId: string }) {
   });
 
   const onSubmit = handleSubmit((data) => {
-    setServerError(null);
     startTransition(async () => {
       const result = await createMaterialAction(projectId, data);
       if (!result.ok) {
-        setServerError(result.error);
+        toast.error(result.error);
       } else {
+        toast.success("Материал добавлен.");
         reset();
       }
     });
@@ -47,12 +47,12 @@ export function CreateMaterialForm({ projectId }: { projectId: string }) {
         <div className="flex flex-1 flex-col gap-1">
           <Label htmlFor="material-name">Название</Label>
           <Input id="material-name" placeholder="Например, электрод" {...register("name")} />
-          {errors.name ? <p className="text-sm text-destructive">{errors.name.message}</p> : null}
+          {errors.name ? <p className="text-[11.5px] text-status-alert-fg">{errors.name.message}</p> : null}
         </div>
         <div className="flex w-20 flex-col gap-1">
           <Label htmlFor="material-unit">Ед.</Label>
           <Input id="material-unit" placeholder="кг, шт, л" {...register("unit")} />
-          {errors.unit ? <p className="text-sm text-destructive">{errors.unit.message}</p> : null}
+          {errors.unit ? <p className="text-[11.5px] text-status-alert-fg">{errors.unit.message}</p> : null}
         </div>
       </div>
       <div className="flex items-start gap-2">
@@ -65,7 +65,7 @@ export function CreateMaterialForm({ projectId }: { projectId: string }) {
             {...register("initialQuantity")}
           />
           {errors.initialQuantity ? (
-            <p className="text-sm text-destructive">{errors.initialQuantity.message}</p>
+            <p className="text-[11.5px] text-status-alert-fg">{errors.initialQuantity.message}</p>
           ) : null}
         </div>
         <div className="flex w-32 flex-col gap-1">
@@ -77,14 +77,13 @@ export function CreateMaterialForm({ projectId }: { projectId: string }) {
             {...register("minimumBalance")}
           />
           {errors.minimumBalance ? (
-            <p className="text-sm text-destructive">{errors.minimumBalance.message}</p>
+            <p className="text-[11.5px] text-status-alert-fg">{errors.minimumBalance.message}</p>
           ) : null}
         </div>
         <Button type="submit" disabled={pending} className="mt-auto">
           {pending ? "Добавление…" : "Добавить"}
         </Button>
       </div>
-      {serverError ? <p className="text-sm text-destructive">{serverError}</p> : null}
     </form>
   );
 }

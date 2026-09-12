@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { ProjectNav } from "@/components/common/project-nav";
 import { createClient } from "@/lib/supabase/server";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -28,30 +28,11 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
   }
 
   return (
-    <div className="flex flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border px-4 py-2">
-        <span className="text-sm font-medium">{project.name}</span>
-        <nav className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-          <Link href={`/${project.id}/board`} className="hover:underline">
-            Доска
-          </Link>
-          <Link href={`/${project.id}/tasks`} className="hover:underline">
-            Заявки
-          </Link>
-          <Link href={`/${project.id}/categories`} className="hover:underline">
-            Категории
-          </Link>
-          <Link href={`/${project.id}/executors`} className="hover:underline">
-            Исполнители
-          </Link>
-          <Link href={`/${project.id}/materials`} className="hover:underline">
-            Материалы
-          </Link>
-          <Link href={`/${project.id}/settings`} className="hover:underline">
-            Настройки
-          </Link>
-        </nav>
-      </header>
+    <div className="flex flex-1 flex-col">
+      <div className="flex h-11 shrink-0 items-center justify-between gap-6 border-b border-line-strong bg-surface px-5">
+        <span className="truncate text-[13px] font-semibold text-ink">{project.name}</span>
+        <ProjectNav projectId={project.id} />
+      </div>
       {children}
     </div>
   );

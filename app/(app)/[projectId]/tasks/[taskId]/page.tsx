@@ -64,7 +64,7 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
   const assignedExecutorIds = assigned?.map((a) => a.executor_id) ?? [];
 
   return (
-    <main className="mx-auto flex max-w-lg flex-col gap-4 p-4 pt-16">
+    <main className="mx-auto flex max-w-lg w-full flex-col gap-4 px-5 pt-6 pb-7">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Заявка</CardTitle>

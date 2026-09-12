@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { Button } from "@/components/ui/button";
+import { BookmarkIcon, CalendarIcon } from "@/components/common/icons";
 import { formatDateLong, formatDateShort, todayInTimezone } from "@/lib/business/dates";
 import { isCarriedOverOccurrence } from "@/lib/business/task-planning";
 import {
@@ -12,11 +12,13 @@ import {
   weekWorkingDays,
 } from "@/lib/business/working-days";
 import { createClient } from "@/lib/supabase/server";
+import { cn } from "@/lib/utils";
 
 import type { BoardItem } from "./board-item-row";
 import { BoardList } from "./board-list";
 import { CreateTaskForm } from "./create-task-form";
-import { TaskChip, type BoardTask } from "./task-chip";
+import { Panel, PanelEmpty, PanelHeader } from "./panel";
+import { TaskChip, TaskRow, type BoardTask } from "./task-chip";
 
 export const metadata: Metadata = {
   title: "Доска — Repair Planner",
@@ -27,6 +29,11 @@ type ExecutorJoin = { executors: { name: string } | null };
 function toExecutorNames(rows: ExecutorJoin[] | null | undefined): string[] {
   return (rows ?? []).map((r) => r.executors?.name).filter((name): name is string => Boolean(name));
 }
+
+// Сегментированная группа кнопок недели (docs/redesign.md §3): общая рамка у
+// контейнера, разделители — между сегментами.
+const WEEK_SEGMENT_CLASS =
+  "flex h-[30px] items-center px-[11px] text-[12.5px] font-medium text-ink-soft transition-colors duration-120 not-last:border-r not-last:border-control-line hover:bg-[#F4F6FA] hover:text-ink active:bg-[#EBEFF5]";
 
 export default async function BoardPage({
   params,
@@ -131,75 +138,109 @@ export default async function BoardPage({
   const isCurrentWeek = monday === currentMonday;
 
   return (
-    <main className="flex flex-col gap-4 p-4 pt-8">
-      <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          nativeButton={false}
-          render={<Link href={`/${projectId}/board?week=${addWeeks(monday, -1)}`} />}
-        >
-          ← Пред. неделя
-        </Button>
-        {!isCurrentWeek ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            nativeButton={false}
-            render={<Link href={`/${projectId}/board`} />}
-          >
-            Сегодня
-          </Button>
-        ) : null}
-        <Button
-          variant="outline"
-          size="sm"
-          nativeButton={false}
-          render={<Link href={`/${projectId}/board?week=${addWeeks(monday, 1)}`} />}
-        >
-          След. неделя →
-        </Button>
-        <span className="text-sm text-muted-foreground">
-          {formatDateShort(weekDates[0])} – {formatDateShort(weekDates[4])}
-        </span>
+    <main className="flex flex-1 flex-col gap-4 px-5 pt-[18px] pb-7">
+      <div className="flex items-center gap-2.5">
+        <div className="flex items-center overflow-hidden rounded-[7px] border border-control bg-surface">
+          <Link href={`/${projectId}/board?week=${addWeeks(monday, -1)}`} className={WEEK_SEGMENT_CLASS}>
+            ← Пред. неделя
+          </Link>
+          {!isCurrentWeek ? (
+            <Link href={`/${projectId}/board`} className={WEEK_SEGMENT_CLASS}>
+              Сегодня
+            </Link>
+          ) : null}
+          <Link href={`/${projectId}/board?week=${addWeeks(monday, 1)}`} className={WEEK_SEGMENT_CLASS}>
+            След. неделя →
+          </Link>
+        </div>
+        <div className="flex h-[30px] items-center gap-[7px] rounded-[7px] border border-control-line bg-surface px-[11px]">
+          <CalendarIcon size={13} className="text-icon" />
+          <span className="font-mono text-[12.5px] font-medium tracking-[-0.01em] text-ink">
+            {formatDateShort(weekDates[0])} — {formatDateShort(weekDates[4])}
+          </span>
+        </div>
       </div>
 
-      {/* Неделя — ряд колонок на всю ширину, а не горизонтальная прокрутка. */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        {weekDates.map((date, i) => (
-          <div key={date} className="flex flex-col gap-1">
-            <h2 className="flex items-baseline gap-1.5 border-b border-border pb-1.5">
-              <span className="text-sm font-medium">{WEEKDAY_LABELS_RU[i]}</span>
-              <span className="text-xs text-muted-foreground">{formatDateShort(date)}</span>
-            </h2>
-            <div className="flex flex-col">
-              {(byDate.get(date) ?? []).length === 0 ? (
-                <p className="py-1 text-sm text-muted-foreground">Пусто.</p>
-              ) : (
-                byDate.get(date)!.map((task) => (
-                  <TaskChip key={task.id} projectId={projectId} task={task} />
-                ))
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+      {/* Неделя — ряд из пяти колонок на всю ширину, без прокрутки и без переноса
+          (docs/redesign.md §4). minmax(0,1fr) обязателен: иначе длинный заголовок
+          задачи распирает колонку. */}
+      <section className="overflow-hidden rounded-[10px] border border-line-strong bg-surface">
+        <div className="grid grid-cols-[repeat(5,minmax(0,1fr))]">
+          {weekDates.map((date, i) => {
+            const tasks = byDate.get(date) ?? [];
+            const isToday = date === today;
+
+            return (
+              <div
+                key={date}
+                className={cn(
+                  "flex min-h-[216px] min-w-0 flex-col border-r border-line-subtle transition-colors duration-120",
+                  isToday ? "bg-surface-today" : "bg-surface hover:bg-surface-column-hover",
+                )}
+              >
+                <h2
+                  className={cn(
+                    "flex items-baseline gap-[7px] border-b border-line-subtle px-3.5 pt-[11px] pb-2.5",
+                    isToday && "shadow-[inset_0_2px_0_0_var(--color-brand)]",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "text-[13px] font-semibold",
+                      isToday ? "text-brand" : "text-ink",
+                    )}
+                  >
+                    {WEEKDAY_LABELS_RU[i]}
+                  </span>
+                  <span
+                    className={cn("font-mono text-[12px]", isToday ? "text-brand" : "text-meta-dim")}
+                  >
+                    {formatDateShort(date)}
+                  </span>
+                  {tasks.length > 0 ? (
+                    <span className="ml-auto font-mono text-[11px] font-medium text-counter">
+                      {tasks.length}
+                    </span>
+                  ) : null}
+                </h2>
+                <div className="flex flex-col gap-[7px] p-2 xl:p-2.5">
+                  {tasks.length === 0 ? (
+                    <p className="px-0.5 py-1.5 text-[11.5px] text-faint">
+                      Нет запланированных работ
+                    </p>
+                  ) : (
+                    tasks.map((task) => (
+                      <TaskChip key={task.id} projectId={projectId} task={task} />
+                    ))
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
       {/* Дополнительные списки: «Текущие заявки» (задачи) и board_lists
-          («Материалы к заказу», «Напоминания», «Мероприятия») — рядом друг
-          с другом под неделей. */}
-      <div className="mt-4 grid grid-cols-1 gap-6 border-t border-border pt-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-muted-foreground">Текущие заявки</h2>
+          («Материалы к заказу», «Напоминания», «Мероприятия») — четыре панели
+          в одном ряду под неделей. */}
+      <section className="grid grid-cols-[repeat(4,minmax(0,1fr))] gap-2.5 xl:gap-3.5">
+        <Panel>
+          <PanelHeader
+            icon={<BookmarkIcon />}
+            title="Текущие заявки"
+            count={backlog.length}
+          />
           <CreateTaskForm projectId={projectId} categories={categories ?? []} />
-          <div className="flex flex-col">
-            {backlog.length === 0 ? (
-              <p className="py-1 text-sm text-muted-foreground">Пусто.</p>
-            ) : (
-              backlog.map((task) => <TaskChip key={task.id} projectId={projectId} task={task} />)
-            )}
-          </div>
-        </div>
+          {backlog.length === 0 ? (
+            <PanelEmpty>Нет текущих заявок</PanelEmpty>
+          ) : (
+            <div className="flex flex-col p-1.5">
+              {backlog.map((task) => (
+                <TaskRow key={task.id} projectId={projectId} task={task} />
+              ))}
+            </div>
+          )}
+        </Panel>
         {(boardLists ?? []).map((list) => (
           <BoardList
             key={list.id}
@@ -210,7 +251,7 @@ export default async function BoardPage({
             today={today}
           />
         ))}
-      </div>
+      </section>
     </main>
   );
 }

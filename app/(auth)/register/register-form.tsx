@@ -56,14 +56,14 @@ export function RegisterForm() {
         <Label htmlFor="fullName">Имя</Label>
         <Input id="fullName" autoComplete="name" {...register("fullName")} />
         {errors.fullName ? (
-          <p className="text-sm text-destructive">{errors.fullName.message}</p>
+          <p className="text-[11.5px] text-status-alert-fg">{errors.fullName.message}</p>
         ) : null}
       </div>
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="email">Email</Label>
         <Input id="email" type="email" autoComplete="email" {...register("email")} />
-        {errors.email ? <p className="text-sm text-destructive">{errors.email.message}</p> : null}
+        {errors.email ? <p className="text-[11.5px] text-status-alert-fg">{errors.email.message}</p> : null}
       </div>
 
       <div className="flex flex-col gap-2">
@@ -75,7 +75,7 @@ export function RegisterForm() {
           {...register("password")}
         />
         {errors.password ? (
-          <p className="text-sm text-destructive">{errors.password.message}</p>
+          <p className="text-[11.5px] text-status-alert-fg">{errors.password.message}</p>
         ) : null}
       </div>
 
@@ -88,7 +88,7 @@ export function RegisterForm() {
           {...register("confirmPassword")}
         />
         {errors.confirmPassword ? (
-          <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
+          <p className="text-[11.5px] text-status-alert-fg">{errors.confirmPassword.message}</p>
         ) : null}
       </div>
 
@@ -96,7 +96,7 @@ export function RegisterForm() {
         {pending ? "Регистрация…" : "Зарегистрироваться"}
       </Button>
 
-      <p className="text-center text-sm text-muted-foreground">
+      <p className="text-center text-[12px] text-meta">
         Уже есть аккаунт?{" "}
         <Link href="/login" className="text-foreground hover:underline">
           Войти

@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { toast } from "sonner";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
 
 import { updateTaskCategoryAction, updateTaskDescriptionAction, updateTaskTitleAction } from "./actions";
 
@@ -45,16 +47,14 @@ function TitleField({
 }) {
   const [value, setValue] = useState(initialValue);
   const [savedValue, setSavedValue] = useState(initialValue);
-  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const save = () => {
     if (value === savedValue) return;
-    setError(null);
     startTransition(async () => {
       const result = await updateTaskTitleAction(projectId, taskId, value);
       if (!result.ok) {
-        setError(result.error);
+        toast.error(result.error);
       } else {
         setSavedValue(value);
       }
@@ -74,7 +74,6 @@ function TitleField({
           if (e.key === "Enter") e.currentTarget.blur();
         }}
       />
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
     </div>
   );
 }
@@ -90,16 +89,14 @@ function DescriptionField({
 }) {
   const [value, setValue] = useState(initialValue);
   const [savedValue, setSavedValue] = useState(initialValue);
-  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const save = () => {
     if (value === savedValue) return;
-    setError(null);
     startTransition(async () => {
       const result = await updateTaskDescriptionAction(projectId, taskId, value);
       if (!result.ok) {
-        setError(result.error);
+        toast.error(result.error);
       } else {
         setSavedValue(value);
       }
@@ -113,12 +110,11 @@ function DescriptionField({
         id="description"
         rows={4}
         disabled={pending}
-        className="w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30"
+        className="w-full min-w-0 rounded-[7px] border border-control bg-surface px-2.5 py-1.5 text-[12.5px] text-ink transition-[border-color,box-shadow] duration-120 outline-none placeholder:text-placeholder hover:border-control-hover focus-visible:border-brand focus-visible:ring-[3px] focus-visible:ring-brand/12 disabled:bg-page disabled:text-faint"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onBlur={save}
       />
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
     </div>
   );
 }
@@ -135,18 +131,16 @@ function CategoryField({
   categories: Category[];
 }) {
   const [value, setValue] = useState(initialValue);
-  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const onChange = (next: string) => {
-    setError(null);
     const previous = value;
     setValue(next);
     startTransition(async () => {
       const result = await updateTaskCategoryAction(projectId, taskId, next || null);
       if (!result.ok) {
         setValue(previous);
-        setError(result.error);
+        toast.error(result.error);
       }
     });
   };
@@ -154,12 +148,11 @@ function CategoryField({
   return (
     <div className="flex flex-col gap-2">
       <Label htmlFor="categoryId">Категория</Label>
-      <select
+      <NativeSelect
         id="categoryId"
         value={value}
         disabled={pending}
         onChange={(e) => onChange(e.target.value)}
-        className="h-8 rounded-lg border border-border bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
       >
         <option value="">Без категории</option>
         {categories.map((category) => (
@@ -167,8 +160,7 @@ function CategoryField({
             {category.name}
           </option>
         ))}
-      </select>
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      </NativeSelect>
     </div>
   );
 }

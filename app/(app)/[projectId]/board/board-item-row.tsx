@@ -3,7 +3,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 
+import { BADGE_BASE } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatDateShort } from "@/lib/business/dates";
@@ -30,7 +32,6 @@ export function BoardItemRow({
   today: string;
 }) {
   const [editing, setEditing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const {
@@ -47,42 +48,52 @@ export function BoardItemRow({
   });
 
   const onSubmit = handleSubmit((data) => {
-    setError(null);
     startTransition(async () => {
       const result = await updateBoardItemAction(projectId, item.id, data);
       if (!result.ok) {
-        setError(result.error);
+        toast.error(result.error);
       } else {
+        toast.success("Изменения сохранены.");
         setEditing(false);
       }
     });
   });
 
   const toggleDone = () => {
-    setError(null);
     startTransition(async () => {
       const result = await setBoardItemDoneAction(projectId, item.id, !item.is_done);
-      if (!result.ok) setError(result.error);
+      if (!result.ok) toast.error(result.error);
     });
   };
 
   const onDelete = () => {
-    setError(null);
+    if (!window.confirm(`Удалить «${item.title}»?`)) return;
     startTransition(async () => {
       const result = await deleteBoardItemAction(projectId, item.id);
-      if (!result.ok) setError(result.error);
+      if (!result.ok) {
+        toast.error(result.error);
+      } else {
+        toast.success("Удалено.");
+      }
     });
   };
 
   const isOverdue = !item.is_done && !!item.due_date && item.due_date < today;
+  const meta = [item.note, item.due_date ? `до ${formatDateShort(item.due_date)}` : null]
+    .filter(Boolean)
+    .join(" · ");
 
   if (editing) {
     return (
-      <form onSubmit={onSubmit} className="flex flex-col gap-1 py-1.5" noValidate>
+      <form onSubmit={onSubmit} className="flex flex-col gap-2 px-[9px] py-2" noValidate>
         <Input {...register("title")} autoFocus />
-        {errors.title ? <p className="text-sm text-destructive">{errors.title.message}</p> : null}
+        {errors.title ? (
+          <p className="text-[11.5px] text-status-alert-fg">{errors.title.message}</p>
+        ) : null}
         <Input placeholder="Примечание" {...register("note")} />
-        {errors.note ? <p className="text-sm text-destructive">{errors.note.message}</p> : null}
+        {errors.note ? (
+          <p className="text-[11.5px] text-status-alert-fg">{errors.note.message}</p>
+        ) : null}
         <Input type="date" {...register("dueDate")} />
         <div className="flex items-center gap-2">
           <Button type="submit" size="sm" disabled={pending}>
@@ -92,42 +103,45 @@ export function BoardItemRow({
             Отмена
           </Button>
         </div>
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
       </form>
     );
   }
 
   return (
-    <div className="flex items-start gap-2 border-b border-border/60 py-1.5">
+    <div className="group relative flex items-center gap-2.5 rounded-[7px] px-[9px] py-2 transition-colors duration-120 hover:bg-row-hover">
       <input
         type="checkbox"
-        className="mt-1 h-4 w-4 shrink-0 rounded border-border"
+        className="size-3.5 shrink-0 cursor-pointer accent-[var(--color-brand)]"
         checked={item.is_done}
         disabled={pending}
+        aria-label={
+          item.is_done ? `Вернуть «${item.title}» в работу` : `Отметить «${item.title}» выполненным`
+        }
         onChange={toggleDone}
       />
-      <div className="min-w-0 flex-1">
-        <p
-          className={cn("text-sm leading-snug", item.is_done && "text-muted-foreground line-through")}
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span
+          className={cn(
+            "truncate text-[12.5px] font-semibold text-ink",
+            item.is_done && "text-meta-alt line-through",
+          )}
         >
           {item.title}
-        </p>
-        {item.note ? (
-          <p className="text-xs leading-snug text-muted-foreground">{item.note}</p>
-        ) : null}
-        {item.due_date ? (
-          <p className={cn("text-xs leading-snug", isOverdue ? "text-destructive" : "text-muted-foreground")}>
-            до {formatDateShort(item.due_date)}
-            {isOverdue ? " — просрочено" : ""}
-          </p>
-        ) : null}
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        </span>
+        {meta ? <span className="truncate text-[11px] text-meta-alt">{meta}</span> : null}
       </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
+      {isOverdue ? (
+        <span className={cn(BADGE_BASE, "bg-status-alert-bg text-status-alert-fg")}>
+          просрочено
+        </span>
+      ) : null}
+      {/* Действия перекрывают строку, а не занимают её ширину: в панели шириной
+          ~150px иначе не остаётся места под название (docs/redesign.md §6). */}
+      <div className="absolute inset-y-0 right-1 flex items-center gap-0.5 rounded-[7px] bg-row-hover pl-3 opacity-0 transition-opacity duration-120 group-focus-within:opacity-100 group-hover:opacity-100">
+        <Button type="button" variant="ghost" size="xs" onClick={() => setEditing(true)}>
           Изменить
         </Button>
-        <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={onDelete}>
+        <Button type="button" variant="ghost" size="xs" disabled={pending} onClick={onDelete}>
           Удалить
         </Button>
       </div>

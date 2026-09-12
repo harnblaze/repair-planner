@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { EmptyState } from "@/components/common/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
 
@@ -24,7 +25,7 @@ export default async function MaterialsPage({ params }: PageProps<"/[projectId]/
   const inactive = materials?.filter((m) => !m.is_active) ?? [];
 
   return (
-    <main className="mx-auto flex max-w-lg flex-col gap-4 p-4 pt-16">
+    <main className="mx-auto flex max-w-lg w-full flex-col gap-4 px-5 pt-6 pb-7">
       <Card>
         <CardHeader>
           <CardTitle>Материалы</CardTitle>
@@ -32,9 +33,9 @@ export default async function MaterialsPage({ params }: PageProps<"/[projectId]/
         <CardContent className="flex flex-col gap-4">
           <CreateMaterialForm projectId={projectId} />
 
-          <div className="flex flex-col divide-y divide-border">
+          <div className="flex flex-col divide-y divide-line-subtle">
             {active.length === 0 ? (
-              <p className="py-2 text-sm text-muted-foreground">Пока нет ни одного материала.</p>
+              <EmptyState>Пока нет ни одного материала.</EmptyState>
             ) : (
               active.map((material) => (
                 <MaterialRow key={material.id} projectId={projectId} material={material} />
@@ -44,10 +45,10 @@ export default async function MaterialsPage({ params }: PageProps<"/[projectId]/
 
           {inactive.length > 0 ? (
             <details>
-              <summary className="cursor-pointer text-sm text-muted-foreground">
+              <summary className="cursor-pointer text-[12px] text-meta">
                 Неактивные ({inactive.length})
               </summary>
-              <div className="flex flex-col divide-y divide-border pt-2">
+              <div className="flex flex-col divide-y divide-line-subtle pt-2">
                 {inactive.map((material) => (
                   <MaterialRow key={material.id} projectId={projectId} material={material} />
                 ))}

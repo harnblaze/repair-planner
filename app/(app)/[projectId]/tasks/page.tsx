@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { EmptyState } from "@/components/common/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { taskStatusLabel } from "@/lib/business/task-status";
 import { createClient } from "@/lib/supabase/server";
@@ -32,7 +33,7 @@ export default async function TasksPage({ params }: PageProps<"/[projectId]/task
   const closed = tasks?.filter((t) => t.status === "completed" || t.status === "cancelled") ?? [];
 
   return (
-    <main className="mx-auto flex max-w-lg flex-col gap-4 p-4 pt-16">
+    <main className="mx-auto flex max-w-lg w-full flex-col gap-4 px-5 pt-6 pb-7">
       <Card>
         <CardHeader>
           <CardTitle>Заявки</CardTitle>
@@ -40,18 +41,18 @@ export default async function TasksPage({ params }: PageProps<"/[projectId]/task
         <CardContent className="flex flex-col gap-4">
           <CreateTaskForm projectId={projectId} categories={categories ?? []} />
 
-          <div className="flex flex-col divide-y divide-border">
+          <div className="flex flex-col divide-y divide-line-subtle">
             {open.length === 0 ? (
-              <p className="py-2 text-sm text-muted-foreground">Пока нет ни одной заявки.</p>
+              <EmptyState>Пока нет ни одной заявки.</EmptyState>
             ) : (
               open.map((task) => (
                 <Link
                   key={task.id}
                   href={`/${projectId}/tasks/${task.id}`}
-                  className="flex items-center justify-between gap-2 py-2 hover:bg-muted"
+                  className="flex items-center justify-between gap-2 py-2 hover:bg-row-hover"
                 >
                   <span>{task.title}</span>
-                  <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-2 text-[12px] text-meta">
                     {task.categories ? <span>{task.categories.name}</span> : null}
                     <span>{taskStatusLabel(task.status)}</span>
                   </span>
@@ -62,18 +63,18 @@ export default async function TasksPage({ params }: PageProps<"/[projectId]/task
 
           {closed.length > 0 ? (
             <details>
-              <summary className="cursor-pointer text-sm text-muted-foreground">
+              <summary className="cursor-pointer text-[12px] text-meta">
                 Завершённые и отменённые ({closed.length})
               </summary>
-              <div className="flex flex-col divide-y divide-border pt-2">
+              <div className="flex flex-col divide-y divide-line-subtle pt-2">
                 {closed.map((task) => (
                   <Link
                     key={task.id}
                     href={`/${projectId}/tasks/${task.id}`}
-                    className="flex items-center justify-between gap-2 py-2 hover:bg-muted"
+                    className="flex items-center justify-between gap-2 py-2 hover:bg-row-hover"
                   >
-                    <span className="text-muted-foreground line-through">{task.title}</span>
-                    <span className="text-sm text-muted-foreground">
+                    <span className="text-meta line-through">{task.title}</span>
+                    <span className="text-[12px] text-meta">
                       {taskStatusLabel(task.status)}
                     </span>
                   </Link>

@@ -27,13 +27,13 @@ export default async function ProfilePage() {
     .single();
 
   return (
-    <main className="mx-auto flex max-w-sm flex-col gap-4 p-4 pt-16">
+    <main className="mx-auto flex max-w-sm w-full flex-col gap-4 px-5 pt-6 pb-7">
       <Card>
         <CardHeader>
           <CardTitle>Профиль</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <p className="text-sm text-muted-foreground">{user.email}</p>
+          <p className="text-[12px] text-meta">{user.email}</p>
           <ProfileForm fullName={profile?.full_name ?? ""} />
         </CardContent>
       </Card>

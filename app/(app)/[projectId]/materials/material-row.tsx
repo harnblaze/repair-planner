@@ -3,7 +3,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 
+import { BalanceBadge } from "@/components/common/balance-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -25,7 +27,6 @@ type Material = {
 
 export function MaterialRow({ projectId, material }: { projectId: string; material: Material }) {
   const [editing, setEditing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const {
@@ -42,42 +43,43 @@ export function MaterialRow({ projectId, material }: { projectId: string; materi
   });
 
   const onSubmit = handleSubmit((data) => {
-    setError(null);
     startTransition(async () => {
       const result = await updateMaterialAction(projectId, material.id, data);
       if (!result.ok) {
-        setError(result.error);
+        toast.error(result.error);
       } else {
+        toast.success("Изменения сохранены.");
         setEditing(false);
       }
     });
   });
 
   const toggleActive = () => {
-    setError(null);
     startTransition(async () => {
       const result = await setMaterialActiveAction(projectId, material.id, !material.is_active);
-      if (!result.ok) setError(result.error);
+      if (!result.ok) {
+        toast.error(result.error);
+      } else {
+        toast.success(material.is_active ? "Материал деактивирован." : "Материал активирован.");
+      }
     });
   };
-
-  const isLow = material.current_balance <= material.minimum_balance;
 
   if (editing) {
     return (
       <form onSubmit={onSubmit} className="flex items-start gap-2 py-1" noValidate>
         <div className="flex flex-1 flex-col gap-1">
           <Input {...register("name")} autoFocus />
-          {errors.name ? <p className="text-sm text-destructive">{errors.name.message}</p> : null}
+          {errors.name ? <p className="text-[11.5px] text-status-alert-fg">{errors.name.message}</p> : null}
         </div>
         <div className="flex w-20 flex-col gap-1">
           <Input {...register("unit")} />
-          {errors.unit ? <p className="text-sm text-destructive">{errors.unit.message}</p> : null}
+          {errors.unit ? <p className="text-[11.5px] text-status-alert-fg">{errors.unit.message}</p> : null}
         </div>
         <div className="flex w-28 flex-col gap-1">
           <Input type="number" step="0.001" {...register("minimumBalance")} />
           {errors.minimumBalance ? (
-            <p className="text-sm text-destructive">{errors.minimumBalance.message}</p>
+            <p className="text-[11.5px] text-status-alert-fg">{errors.minimumBalance.message}</p>
           ) : null}
         </div>
         <Button type="submit" size="sm" disabled={pending}>
@@ -86,26 +88,24 @@ export function MaterialRow({ projectId, material }: { projectId: string; materi
         <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}>
           Отмена
         </Button>
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
       </form>
     );
   }
 
   return (
     <div className="flex items-center justify-between gap-2 py-1">
-      <div className={material.is_active ? "" : "text-muted-foreground line-through"}>
-        <span>{material.name}</span>{" "}
-        <span className="text-muted-foreground">
+      <div className={material.is_active ? "" : "text-meta line-through"}>
+        <span className="text-[12.5px] font-semibold text-ink">{material.name}</span>{" "}
+        <span className="font-mono text-[11.5px] text-meta">
           — {material.current_balance} / мин. {material.minimum_balance} {material.unit}
         </span>
-        {isLow ? (
-          <span className="ml-2 rounded bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive">
-            низкий остаток
-          </span>
-        ) : null}
+        <BalanceBadge
+          className="ml-2 align-middle"
+          balance={material.current_balance}
+          minimumBalance={material.minimum_balance}
+        />
       </div>
       <div className="flex items-center gap-2">
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
         {material.is_active ? (
           <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
             Изменить

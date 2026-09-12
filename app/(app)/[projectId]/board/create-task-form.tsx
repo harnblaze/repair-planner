@@ -1,14 +1,18 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 
+import { PlusIcon } from "@/components/common/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { createTaskSchema, type CreateTaskInput } from "@/lib/validation/task";
 
 import { createTaskFromBoardAction } from "./actions";
+import { PANEL_FORM_CLASS } from "./panel";
 
 type Category = { id: string; name: string };
 
@@ -19,7 +23,6 @@ export function CreateTaskForm({
   projectId: string;
   categories: Category[];
 }) {
-  const [serverError, setServerError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const {
@@ -30,39 +33,37 @@ export function CreateTaskForm({
   } = useForm<CreateTaskInput>({ resolver: zodResolver(createTaskSchema) });
 
   const onSubmit = handleSubmit((data) => {
-    setServerError(null);
     startTransition(async () => {
       const result = await createTaskFromBoardAction(projectId, data);
       if (!result.ok) {
-        setServerError(result.error);
+        toast.error(result.error);
       } else {
+        toast.success("Заявка добавлена.");
         reset();
       }
     });
   });
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-1" noValidate>
-      <div className="flex items-start gap-2">
+    <form onSubmit={onSubmit} className={PANEL_FORM_CLASS} noValidate>
+      <div className="flex gap-2">
         <Input placeholder="Новая заявка" {...register("title")} />
-        <Button type="submit" disabled={pending} size="sm">
-          {pending ? "…" : "Добавить"}
+        <Button type="submit" disabled={pending}>
+          <PlusIcon />
+          Добавить
         </Button>
       </div>
-      <select
-        className="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-        {...register("categoryId")}
-        defaultValue=""
-      >
+      <NativeSelect aria-label="Категория" {...register("categoryId")} defaultValue="">
         <option value="">Без категории</option>
         {categories.map((category) => (
           <option key={category.id} value={category.id}>
             {category.name}
           </option>
         ))}
-      </select>
-      {errors.title ? <p className="text-sm text-destructive">{errors.title.message}</p> : null}
-      {serverError ? <p className="text-sm text-destructive">{serverError}</p> : null}
+      </NativeSelect>
+      {errors.title ? (
+        <p className="text-[11.5px] text-status-alert-fg">{errors.title.message}</p>
+      ) : null}
     </form>
   );
 }

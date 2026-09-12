@@ -24,7 +24,7 @@ export default async function ProjectSettingsPage({ params }: PageProps<"/[proje
   }
 
   return (
-    <main className="mx-auto flex max-w-sm flex-col gap-4 p-4 pt-16">
+    <main className="mx-auto flex max-w-sm w-full flex-col gap-4 px-5 pt-6 pb-7">
       <Card>
         <CardHeader>
           <CardTitle>Настройки проекта</CardTitle>

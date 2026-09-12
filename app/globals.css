@@ -4,12 +4,56 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Токены визуального слоя (docs/redesign.md → Design Tokens).
+   Значения нормативные — менять только вместе с дизайн-референсом. */
+@theme {
+  --color-page: #f1f3f6;
+  --color-surface: #ffffff;
+  --color-surface-today: #f8faff;
+  --color-surface-column-hover: #fcfdfe;
+  --color-row-hover: #f5f7fa;
+
+  --color-line-strong: #e1e6ed;
+  --color-line-subtle: #edf0f4;
+  --color-line-card: #e4e8ee;
+  --color-line-card-hover: #cbd4e1;
+  --color-control: #d9dfe8;
+  --color-control-hover: #c4cdda;
+  --color-control-line: #e4e9f0;
+
+  --color-ink: #1b2430;
+  --color-ink-soft: #3a4554;
+  --color-ink-muted: #55606e;
+  --color-ink-nav: #626d7c;
+  --color-ink-header: #6b7685;
+  --color-meta: #77818f;
+  --color-meta-alt: #7c8695;
+  --color-meta-dim: #8b94a2;
+  --color-icon: #7a8492;
+  --color-faint: #a6aebb;
+  --color-counter: #98a2b0;
+  --color-placeholder: #9aa4b2;
+
+  --color-brand: #2f55c8;
+  --color-brand-surface: #eef2fb;
+  --color-brand-line: #dce4f7;
+
+  --color-status-progress-bg: #e7f0fe;
+  --color-status-progress-fg: #1d4ed8;
+  --color-status-done-bg: #e8f5ec;
+  --color-status-done-fg: #1d7a43;
+  --color-status-warn-bg: #fdf2e0;
+  --color-status-warn-fg: #9a6206;
+  --color-status-alert-bg: #fbeaea;
+  --color-status-alert-fg: #b02a2a;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-sans: var(--font-plex-sans);
+  --font-mono: var(--font-plex-mono);
+  --font-heading: var(--font-plex-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -48,83 +92,57 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* shadcn-переменные указывают на те же токены — чтобы Card / Button / Input
+   и остальные примитивы получили новую палитру без точечных переопределений. */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --background: #ffffff;
+  --foreground: #1b2430;
+  --card: #ffffff;
+  --card-foreground: #1b2430;
+  --popover: #ffffff;
+  --popover-foreground: #1b2430;
+  --primary: #2f55c8;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f3f6;
+  --secondary-foreground: #3a4554;
+  --muted: #f5f7fa;
+  --muted-foreground: #77818f;
+  --accent: #eef2fb;
+  --accent-foreground: #2f55c8;
+  --destructive: #b02a2a;
+  --border: #e1e6ed;
+  --input: #d9dfe8;
+  --ring: #2f55c8;
+  --chart-1: #2f55c8;
+  --chart-2: #1d4ed8;
+  --chart-3: #1d7a43;
+  --chart-4: #9a6206;
+  --chart-5: #b02a2a;
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1b2430;
+  --sidebar-primary: #2f55c8;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eef2fb;
+  --sidebar-accent-foreground: #2f55c8;
+  --sidebar-border: #e1e6ed;
+  --sidebar-ring: #2f55c8;
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-page text-ink;
+    font-size: 13px;
+    line-height: 1.45;
   }
   html {
     @apply font-sans;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-placeholder);
   }
 }

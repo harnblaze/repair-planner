@@ -45,13 +45,13 @@ export function LoginForm() {
       <div className="flex flex-col gap-2">
         <Label htmlFor="email">Email</Label>
         <Input id="email" type="email" autoComplete="email" {...register("email")} />
-        {errors.email ? <p className="text-sm text-destructive">{errors.email.message}</p> : null}
+        {errors.email ? <p className="text-[11.5px] text-status-alert-fg">{errors.email.message}</p> : null}
       </div>
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <Label htmlFor="password">Пароль</Label>
-          <Link href="/forgot-password" className="text-sm text-muted-foreground hover:underline">
+          <Link href="/forgot-password" className="text-[12px] text-meta hover:underline">
             Забыли пароль?
           </Link>
         </div>
@@ -62,7 +62,7 @@ export function LoginForm() {
           {...register("password")}
         />
         {errors.password ? (
-          <p className="text-sm text-destructive">{errors.password.message}</p>
+          <p className="text-[11.5px] text-status-alert-fg">{errors.password.message}</p>
         ) : null}
       </div>
 
@@ -70,7 +70,7 @@ export function LoginForm() {
         {pending ? "Вход…" : "Войти"}
       </Button>
 
-      <p className="text-center text-sm text-muted-foreground">
+      <p className="text-center text-[12px] text-meta">
         Нет аккаунта?{" "}
         <Link href="/register" className="text-foreground hover:underline">
           Зарегистрироваться

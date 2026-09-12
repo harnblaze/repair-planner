@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { toast } from "sonner";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,14 +20,11 @@ export function PlanTaskForm({
 }) {
   const [value, setValue] = useState(plannedDate ?? "");
   const [savedValue, setSavedValue] = useState(plannedDate ?? "");
-  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const onChange = (next: string) => {
-    setError(null);
-
     if (next && !isWorkingDay(next)) {
-      setError("Планировать можно только на рабочий день (Пн–Пт).");
+      toast.error("Планировать можно только на рабочий день (Пн–Пт).");
       return;
     }
 
@@ -35,7 +33,7 @@ export function PlanTaskForm({
       const result = await setTaskPlannedDateAction(projectId, taskId, next || null);
       if (!result.ok) {
         setValue(savedValue);
-        setError(result.error);
+        toast.error(result.error);
       } else {
         setSavedValue(next);
       }
@@ -52,10 +50,9 @@ export function PlanTaskForm({
         disabled={pending}
         onChange={(e) => onChange(e.target.value)}
       />
-      <p className="text-xs text-muted-foreground">
+      <p className="text-[11px] text-meta-alt">
         Очистите дату, чтобы вернуть заявку в «Текущие заявки».
       </p>
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
     </div>
   );
 }

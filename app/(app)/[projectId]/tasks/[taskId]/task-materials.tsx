@@ -1,10 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { toast } from "sonner";
 
+import { BalanceBadge } from "@/components/common/balance-badge";
+import { EmptyState } from "@/components/common/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
 import { taskMaterialSchema } from "@/lib/validation/task";
 
 import { addTaskMaterialAction, removeTaskMaterialAction, updateTaskMaterialAction } from "./actions";
@@ -47,9 +51,9 @@ export function TaskMaterials({
       <Label>Материалы</Label>
 
       {taskMaterials.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Расход материалов ещё не указан.</p>
+        <EmptyState>Расход материалов ещё не указан.</EmptyState>
       ) : (
-        <div className="flex flex-col divide-y divide-border">
+        <div className="flex flex-col divide-y divide-line-subtle">
           {taskMaterials.map((row) => (
             <TaskMaterialRowItem
               key={row.id}
@@ -81,7 +85,6 @@ function TaskMaterialRowItem({
   const [editing, setEditing] = useState(false);
   const [quantity, setQuantity] = useState(String(row.quantity));
   const [note, setNote] = useState(row.note ?? "");
-  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   if (!material) return null;
@@ -91,30 +94,33 @@ function TaskMaterialRowItem({
   const balanceBeforeThisRow = material.current_balance + row.quantity;
   const parsedQuantity = Number(quantity.replace(",", "."));
   const exceedsBalance = Number.isFinite(parsedQuantity) && parsedQuantity > balanceBeforeThisRow;
-  const isLow = material.current_balance <= material.minimum_balance;
 
   const save = () => {
-    setError(null);
     const parsed = taskMaterialSchema.shape.quantity.safeParse(quantity);
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "Некорректное количество.");
+      toast.error(parsed.error.issues[0]?.message ?? "Некорректное количество.");
       return;
     }
     startTransition(async () => {
       const result = await updateTaskMaterialAction(projectId, taskId, row.id, parsed.data, note);
       if (!result.ok) {
-        setError(result.error);
+        toast.error(result.error);
       } else {
+        toast.success("Расход обновлён.");
         setEditing(false);
       }
     });
   };
 
   const remove = () => {
-    setError(null);
+    if (!window.confirm(`Удалить расход «${material.name}»?`)) return;
     startTransition(async () => {
       const result = await removeTaskMaterialAction(projectId, taskId, row.id);
-      if (!result.ok) setError(result.error);
+      if (!result.ok) {
+        toast.error(result.error);
+      } else {
+        toast.success("Расход удалён.");
+      }
     });
   };
 
@@ -133,7 +139,7 @@ function TaskMaterialRowItem({
             onChange={(e) => setQuantity(e.target.value)}
             autoFocus
           />
-          <span className="pt-1.5 text-sm text-muted-foreground">{material.unit}</span>
+          <span className="pt-1.5 text-[12px] text-meta">{material.unit}</span>
         </div>
         <Input
           placeholder="Примечание (необязательно)"
@@ -146,7 +152,6 @@ function TaskMaterialRowItem({
             Списание больше остатка (доступно {balanceBeforeThisRow} {material.unit}).
           </p>
         ) : null}
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
         <div className="flex gap-2">
           <Button type="button" size="sm" disabled={pending} onClick={save}>
             Сохранить
@@ -159,7 +164,6 @@ function TaskMaterialRowItem({
             onClick={() => {
               setQuantity(String(row.quantity));
               setNote(row.note ?? "");
-              setError(null);
               setEditing(false);
             }}
           >
@@ -173,19 +177,18 @@ function TaskMaterialRowItem({
   return (
     <div className="flex items-center justify-between gap-2 py-1.5">
       <div>
-        <span className="text-sm">{material.name}</span>{" "}
-        <span className="text-sm text-muted-foreground">
+        <span className="text-[12.5px] font-semibold text-ink">{material.name}</span>{" "}
+        <span className="text-[12px] text-meta">
           — {row.quantity} {material.unit}
         </span>
-        {row.note ? <p className="text-xs text-muted-foreground">{row.note}</p> : null}
-        {isLow ? (
-          <span className="ml-2 rounded bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive">
-            низкий остаток
-          </span>
-        ) : null}
+        {row.note ? <p className="text-[11px] text-meta-alt">{row.note}</p> : null}
+        <BalanceBadge
+          className="ml-2 align-middle"
+          balance={material.current_balance}
+          minimumBalance={material.minimum_balance}
+        />
       </div>
       <div className="flex items-center gap-2">
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
         <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
           Изменить
         </Button>
@@ -209,7 +212,6 @@ function AddTaskMaterialForm({
   const [materialId, setMaterialId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [note, setNote] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const selected = materials.find((m) => m.id === materialId) ?? null;
@@ -219,19 +221,19 @@ function AddTaskMaterialForm({
 
   const onSubmit = (e: { preventDefault: () => void }) => {
     e.preventDefault();
-    setError(null);
 
     const parsed = taskMaterialSchema.safeParse({ materialId, quantity, note: note || undefined });
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "Проверьте правильность заполнения формы.");
+      toast.error(parsed.error.issues[0]?.message ?? "Проверьте правильность заполнения формы.");
       return;
     }
 
     startTransition(async () => {
       const result = await addTaskMaterialAction(projectId, taskId, parsed.data);
       if (!result.ok) {
-        setError(result.error);
+        toast.error(result.error);
       } else {
+        toast.success("Материал добавлен в заявку.");
         setMaterialId("");
         setQuantity("");
         setNote("");
@@ -241,7 +243,7 @@ function AddTaskMaterialForm({
 
   if (materials.length === 0) {
     return (
-      <p className="text-xs text-muted-foreground">
+      <p className="text-[11px] text-meta-alt">
         Нет доступных материалов для добавления. Добавьте материал в справочнике или измените
         количество уже указанных выше.
       </p>
@@ -251,11 +253,12 @@ function AddTaskMaterialForm({
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-2 pt-1" noValidate>
       <div className="flex items-start gap-2">
-        <select
+        <NativeSelect
+          wrapperClassName="flex-1"
+          aria-label="Материал"
           value={materialId}
           disabled={pending}
           onChange={(e) => setMaterialId(e.target.value)}
-          className="h-8 flex-1 rounded-lg border border-border bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         >
           <option value="">Выберите материал…</option>
           {materials.map((m) => (
@@ -263,7 +266,7 @@ function AddTaskMaterialForm({
               {m.name} (остаток {m.current_balance} {m.unit})
             </option>
           ))}
-        </select>
+        </NativeSelect>
         <Input
           type="number"
           step="0.001"
@@ -286,7 +289,6 @@ function AddTaskMaterialForm({
           Списание больше остатка (доступно {selected!.current_balance} {selected!.unit}).
         </p>
       ) : null}
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <Button type="submit" size="sm" disabled={pending || !materialId} className="self-start">
         {pending ? "Добавление…" : "Добавить материал"}
       </Button>

@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { formatDateLong } from "@/lib/business/dates";
@@ -23,8 +24,6 @@ export function CarryOverButton({
   status: TaskStatus;
 }) {
   const router = useRouter();
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   if (!plannedDate || !canCarryOverTask(status)) {
@@ -34,26 +33,20 @@ export function CarryOverButton({
   const nextDate = nextWorkingDay(plannedDate);
 
   const onClick = () => {
-    setError(null);
-    setMessage(null);
     startTransition(async () => {
       const result = await carryOverTaskAction(projectId, taskId);
       if (!result.ok) {
-        setError(result.error);
+        toast.error(result.error);
       } else {
-        setMessage(result.message ?? null);
+        toast.success(result.message ?? "Перенесено.");
         router.refresh();
       }
     });
   };
 
   return (
-    <div className="flex flex-col gap-1">
-      <Button variant="outline" size="sm" disabled={pending} onClick={onClick}>
-        Перенести на следующий рабочий день ({formatDateLong(nextDate)})
-      </Button>
-      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-    </div>
+    <Button variant="outline" size="sm" disabled={pending} onClick={onClick}>
+      Перенести на следующий рабочий день ({formatDateLong(nextDate)})
+    </Button>
   );
 }

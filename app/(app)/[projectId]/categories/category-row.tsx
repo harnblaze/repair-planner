@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +15,6 @@ type Category = { id: string; name: string; is_archived: boolean };
 
 export function CategoryRow({ projectId, category }: { projectId: string; category: Category }) {
   const [editing, setEditing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const {
@@ -27,22 +27,25 @@ export function CategoryRow({ projectId, category }: { projectId: string; catego
   });
 
   const onSubmit = handleSubmit((data) => {
-    setError(null);
     startTransition(async () => {
       const result = await updateCategoryAction(projectId, category.id, data);
       if (!result.ok) {
-        setError(result.error);
+        toast.error(result.error);
       } else {
+        toast.success("Изменения сохранены.");
         setEditing(false);
       }
     });
   });
 
   const toggleArchived = () => {
-    setError(null);
     startTransition(async () => {
       const result = await setCategoryArchivedAction(projectId, category.id, !category.is_archived);
-      if (!result.ok) setError(result.error);
+      if (!result.ok) {
+        toast.error(result.error);
+      } else {
+        toast.success(category.is_archived ? "Категория восстановлена." : "Категория архивирована.");
+      }
     });
   };
 
@@ -51,8 +54,7 @@ export function CategoryRow({ projectId, category }: { projectId: string; catego
       <form onSubmit={onSubmit} className="flex items-start gap-2 py-1" noValidate>
         <div className="flex flex-1 flex-col gap-1">
           <Input {...register("name")} autoFocus />
-          {errors.name ? <p className="text-sm text-destructive">{errors.name.message}</p> : null}
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {errors.name ? <p className="text-[11.5px] text-status-alert-fg">{errors.name.message}</p> : null}
         </div>
         <Button type="submit" size="sm" disabled={pending}>
           Сохранить
@@ -66,11 +68,10 @@ export function CategoryRow({ projectId, category }: { projectId: string; catego
 
   return (
     <div className="flex items-center justify-between gap-2 py-1">
-      <span className={category.is_archived ? "text-muted-foreground line-through" : ""}>
+      <span className={category.is_archived ? "text-meta line-through" : ""}>
         {category.name}
       </span>
       <div className="flex items-center gap-2">
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
         {!category.is_archived ? (
           <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
             Изменить

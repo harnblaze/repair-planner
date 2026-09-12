@@ -1,15 +1,27 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 
+import { BellIcon, BoxIcon, ClockIcon, ListIcon, PlusIcon } from "@/components/common/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { boardItemSchema, type BoardItemInput } from "@/lib/validation/board-item";
 
 import { createBoardItemAction } from "./actions";
 import { BoardItemRow, type BoardItem } from "./board-item-row";
+import { PANEL_FORM_CLASS, Panel, PanelEmpty, PanelHeader } from "./panel";
+
+// Иконка и текст пустого состояния подбираются по названию списка: сами списки
+// создаются в БД, поэтому жёсткой привязки к id здесь нет (docs/redesign.md §6).
+function presentation(name: string): { icon: React.ReactNode; empty: string } {
+  if (/материал/i.test(name)) return { icon: <BoxIcon />, empty: "Нет материалов к заказу" };
+  if (/напомин/i.test(name)) return { icon: <BellIcon />, empty: "Нет напоминаний" };
+  if (/мероприят/i.test(name)) return { icon: <ClockIcon />, empty: "Нет мероприятий" };
+  return { icon: <ListIcon />, empty: "Список пуст" };
+}
 
 export function BoardList({
   projectId,
@@ -24,8 +36,8 @@ export function BoardList({
   items: BoardItem[];
   today: string;
 }) {
-  const [serverError, setServerError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const { icon, empty } = presentation(name);
 
   const {
     register,
@@ -35,37 +47,41 @@ export function BoardList({
   } = useForm<BoardItemInput>({ resolver: zodResolver(boardItemSchema) });
 
   const onSubmit = handleSubmit((data) => {
-    setServerError(null);
     startTransition(async () => {
       const result = await createBoardItemAction(projectId, listId, data);
       if (!result.ok) {
-        setServerError(result.error);
+        toast.error(result.error);
       } else {
+        toast.success("Добавлено.");
         reset();
       }
     });
   });
 
   return (
-    <div className="flex flex-col gap-2">
-      <h2 className="text-sm font-medium text-muted-foreground">{name}</h2>
-      <form onSubmit={onSubmit} className="flex items-start gap-2" noValidate>
-        <Input placeholder="Добавить" {...register("title")} />
-        <Button type="submit" disabled={pending} size="sm">
-          {pending ? "…" : "Добавить"}
-        </Button>
+    <Panel>
+      <PanelHeader icon={icon} title={name} />
+      <form onSubmit={onSubmit} className={PANEL_FORM_CLASS} noValidate>
+        <div className="flex gap-2">
+          <Input placeholder="Добавить" {...register("title")} />
+          <Button type="submit" disabled={pending}>
+            <PlusIcon />
+            Добавить
+          </Button>
+        </div>
+        {errors.title ? (
+          <p className="text-[11.5px] text-status-alert-fg">{errors.title.message}</p>
+        ) : null}
       </form>
-      {errors.title ? <p className="text-sm text-destructive">{errors.title.message}</p> : null}
-      {serverError ? <p className="text-sm text-destructive">{serverError}</p> : null}
-      <div className="flex flex-col">
-        {items.length === 0 ? (
-          <p className="py-1 text-sm text-muted-foreground">Пусто.</p>
-        ) : (
-          items.map((item) => (
+      {items.length === 0 ? (
+        <PanelEmpty>{empty}</PanelEmpty>
+      ) : (
+        <div className="flex flex-col p-1.5">
+          {items.map((item) => (
             <BoardItemRow key={item.id} projectId={projectId} item={item} today={today} />
-          ))
-        )}
-      </div>
-    </div>
+          ))}
+        </div>
+      )}
+    </Panel>
   );
 }

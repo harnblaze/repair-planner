@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; background: #F1F3F6; }
+  body { font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; color: #1B2430; }
+  * { box-sizing: border-box; }
+  a { color: #2F55C8; text-decoration: none; }
+  a:hover { color: #23419b; }
+  input, select, button, textarea { font-family: inherit; }
+  input::placeholder { color: #9AA4B2; }
+  select { -webkit-appearance: none; appearance: none; }
+</style>
+</helmet>
+<div style="--accent: {{ accent }}; min-height: 100vh; background: #F1F3F6; color: #1B2430; font-size: 13px; line-height: 1.45;">
+
+  <header style="display: flex; align-items: center; justify-content: space-between; gap: 24px; height: 52px; padding: 0 20px; background: #FFFFFF; border-bottom: 1px solid #E1E6ED;">
+    <div style="display: flex; align-items: center; gap: 20px;">
+      <div style="display: flex; align-items: center; gap: 9px;">
+        <div style="width: 22px; height: 22px; border-radius: 5px; background: var(--accent, #2F55C8); display: flex; align-items: center; justify-content: center;">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round"><rect x="2" y="3.2" width="12" height="10.5" rx="1.6"></rect><path d="M2 6.4h12M5.4 1.8v2.6M10.6 1.8v2.6"></path></svg>
+        </div>
+        <span style="font-size: 14.5px; font-weight: 600; letter-spacing: -0.01em;">Repair Planner</span>
+      </div>
+      <span style="width: 1px; height: 18px; background: #E1E6ED;"></span>
+      <a href="#" style="font-size: 13px; color: #55606E; padding: 5px 9px; border-radius: 6px;" style-hover="background: #F1F3F6; color: #1B2430;">Профиль</a>
+    </div>
+    <a href="#" style="font-size: 13px; color: #6B7685; padding: 5px 10px; border-radius: 6px; border: 1px solid transparent;" style-hover="color: #1B2430; border-color: #E1E6ED; background: #F7F9FB;">Выйти</a>
+  </header>
+
+  <nav style="display: flex; align-items: center; justify-content: space-between; gap: 24px; height: 44px; padding: 0 20px; background: #FFFFFF; border-bottom: 1px solid #E1E6ED;">
+    <span style="font-size: 13px; font-weight: 600; color: #1B2430;">Работа</span>
+    <div style="display: flex; align-items: center; gap: 2px;">
+      <a href="#" style="font-size: 13px; font-weight: 600; color: #1B2430; padding: 6px 11px; border-radius: 6px; background: #EEF2FB; box-shadow: inset 0 0 0 1px #DCE4F7;">Доска</a>
+      <a href="#" style="font-size: 13px; color: #626D7C; padding: 6px 11px; border-radius: 6px;" style-hover="background: #F3F5F8; color: #1B2430;">Заявки</a>
+      <a href="#" style="font-size: 13px; color: #626D7C; padding: 6px 11px; border-radius: 6px;" style-hover="background: #F3F5F8; color: #1B2430;">Категории</a>
+      <a href="#" style="font-size: 13px; color: #626D7C; padding: 6px 11px; border-radius: 6px;" style-hover="background: #F3F5F8; color: #1B2430;">Исполнители</a>
+      <a href="#" style="font-size: 13px; color: #626D7C; padding: 6px 11px; border-radius: 6px;" style-hover="background: #F3F5F8; color: #1B2430;">Материалы</a>
+      <a href="#" style="font-size: 13px; color: #626D7C; padding: 6px 11px; border-radius: 6px;" style-hover="background: #F3F5F8; color: #1B2430;">Настройки</a>
+    </div>
+  </nav>
+
+  <main style="padding: 18px 20px 28px; display: flex; flex-direction: column; gap: 16px;">
+
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="display: flex; align-items: center; border: 1px solid #D9DFE8; border-radius: 7px; overflow: hidden; background: #FFFFFF;">
+        <button style="display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border: 0; border-right: 1px solid #E4E9F0; background: #FFFFFF; color: #3A4554; font-size: 12.5px; font-weight: 500; cursor: pointer;" style-hover="background: #F4F6FA; color: #1B2430;" style-active="background: #EBEFF5;">← Пред. неделя</button>
+        <button style="display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border: 0; background: #FFFFFF; color: #3A4554; font-size: 12.5px; font-weight: 500; cursor: pointer;" style-hover="background: #F4F6FA; color: #1B2430;" style-active="background: #EBEFF5;">След. неделя →</button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px; border-radius: 7px; background: #FFFFFF; border: 1px solid #E4E9F0;">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#7A8492" stroke-width="1.4" stroke-linecap="round"><rect x="2" y="3.2" width="12" height="10.5" rx="1.6"></rect><path d="M2 6.4h12M5.4 1.8v2.6M10.6 1.8v2.6"></path></svg>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; font-weight: 500; letter-spacing: -0.01em; color: #1B2430;">07.09 — 11.09</span>
+      </div>
+    </div>
+
+    <section style="background: #FFFFFF; border: 1px solid #E1E6ED; border-radius: 10px; overflow: hidden;">
+      <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));">
+        <sc-for list="{{ days }}" as="day" hint-placeholder-count="5">
+          <div style="border-right: 1px solid #EDF0F4; min-height: 216px; display: flex; flex-direction: column; background: {{ day.colBg }};" style-hover="background: #FCFDFE;">
+            <div style="display: flex; align-items: baseline; gap: 7px; padding: 11px 14px 10px; border-bottom: 1px solid #EDF0F4; box-shadow: inset 0 2px 0 0 {{ day.topBar }};">
+              <span style="font-size: 13px; font-weight: 600; color: {{ day.nameColor }};">{{ day.name }}</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: {{ day.dateColor }};">{{ day.date }}</span>
+              <span style="margin-left: auto; font-size: 11px; font-weight: 500; color: #98A2B0; font-family: 'IBM Plex Mono', monospace;">{{ day.count }}</span>
+            </div>
+            <div style="padding: 10px; display: flex; flex-direction: column; gap: 7px;">
+              <sc-for list="{{ day.tasks }}" as="task" hint-placeholder-count="2">
+                <div style="border: 1px solid #E4E8EE; border-radius: 7px; padding: 8px 10px 9px; background: #FFFFFF; display: flex; flex-direction: column; gap: 5px; cursor: default; opacity: {{ task.op }};" style-hover="border-color: #CBD4E1; box-shadow: 0 1px 2px rgba(20,30,50,0.06);">
+                  <div style="font-size: 13px; font-weight: 600; letter-spacing: -0.005em; color: #1B2430; overflow-wrap: break-word;">{{ task.title }}</div>
+                  <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
+                    <span style="flex: none; max-width: 100%; font-size: 10.5px; font-weight: 600; line-height: 1; padding: 4px 6px; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: {{ task.badgeBg }}; color: {{ task.badgeFg }};">{{ task.status }}</span>
+                    <sc-if value="{{ task.meta }}" hint-placeholder-val="{{ true }}">
+                      <span style="font-size: 11.5px; color: #77818F; overflow-wrap: break-word;">{{ task.meta }}</span>
+                    </sc-if>
+                  </div>
+                  <sc-if value="{{ task.moved }}" hint-placeholder-val="{{ false }}">
+                    <div style="display: flex; align-items: center; gap: 5px; margin-top: 1px; padding-top: 6px; border-top: 1px dashed #E4E8EE; font-size: 11px; color: #8B94A2;">
+                      <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h9M9 5l3 3-3 3"></path></svg>
+                      <span>{{ task.moved }}</span>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+              <sc-if value="{{ day.empty }}" hint-placeholder-val="{{ false }}">
+                <div style="padding: 6px 2px; font-size: 11.5px; color: #A6AEBB;">Нет запланированных работ</div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px;">
+
+      <div style="background: #FFFFFF; border: 1px solid #E1E6ED; border-radius: 10px; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; gap: 7px; padding: 11px 14px; border-bottom: 1px solid #EDF0F4;">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#7A8492" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2.5h8v11l-4-2.4-4 2.4z"></path></svg>
+          <span style="font-size: 13px; font-weight: 600;">Текущие заявки</span>
+          <span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #98A2B0;">3</span>
+        </div>
+        <div style="padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid #EDF0F4;">
+          <div style="display: flex; gap: 8px;">
+            <input placeholder="Новая заявка" style="flex: 1; min-width: 0; height: 30px; padding: 0 10px; font-size: 12.5px; color: #1B2430; border: 1px solid #D9DFE8; border-radius: 7px; background: #FFFFFF; outline: none;" style-hover="border-color: #C4CDDA;" style-focus="border-color: var(--accent, #2F55C8); box-shadow: 0 0 0 3px rgba(47,85,200,0.12);" />
+            <button style="flex: none; display: flex; align-items: center; gap: 5px; height: 30px; padding: 0 12px; font-size: 12.5px; font-weight: 600; color: #FFFFFF; background: var(--accent, #2F55C8); border: 0; border-radius: 7px; cursor: pointer;" style-hover="filter: brightness(1.08);" style-active="filter: brightness(0.94);">
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>
+              Добавить
+            </button>
+          </div>
+          <div style="position: relative;">
+            <select style="width: 100%; height: 30px; padding: 0 28px 0 10px; font-size: 12.5px; color: #3A4554; border: 1px solid #D9DFE8; border-radius: 7px; background: #FFFFFF; outline: none; cursor: pointer;" style-hover="border-color: #C4CDDA;" style-focus="border-color: var(--accent, #2F55C8); box-shadow: 0 0 0 3px rgba(47,85,200,0.12);">
+              <option>Без категории</option>
+            </select>
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#8B94A2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 10px; top: 10px; pointer-events: none;"><path d="M4 6.5l4 4 4-4"></path></svg>
+          </div>
+        </div>
+        <div style="padding: 6px;">
+          <sc-for list="{{ requests }}" as="req" hint-placeholder-count="3">
+            <div style="display: flex; align-items: center; gap: 10px; padding: 8px 9px; border-radius: 7px; cursor: default;" style-hover="background: #F5F7FA;">
+              <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 12.5px; font-weight: 600; color: #1B2430;">{{ req.title }}</span>
+                <span style="font-size: 11px; color: #7C8695;">{{ req.meta }}</span>
+              </div>
+              <span style="flex: none; font-size: 10.5px; font-weight: 600; line-height: 1; padding: 4px 6px; border-radius: 4px; background: #EEF2FB; color: #2F55C8;">Новая</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="background: #FFFFFF; border: 1px solid #E1E6ED; border-radius: 10px; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; gap: 7px; padding: 11px 14px; border-bottom: 1px solid #EDF0F4;">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#7A8492" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5.5L8 2.5l5.5 3v5L8 13.5l-5.5-3z"></path><path d="M2.5 5.5L8 8.5l5.5-3M8 8.5v5"></path></svg>
+          <span style="font-size: 13px; font-weight: 600;">Материалы к заказу</span>
+        </div>
+        <div style="padding: 12px 14px; display: flex; gap: 8px; border-bottom: 1px solid #EDF0F4;">
+          <input placeholder="Добавить" style="flex: 1; min-width: 0; height: 30px; padding: 0 10px; font-size: 12.5px; color: #1B2430; border: 1px solid #D9DFE8; border-radius: 7px; background: #FFFFFF; outline: none;" style-hover="border-color: #C4CDDA;" style-focus="border-color: var(--accent, #2F55C8); box-shadow: 0 0 0 3px rgba(47,85,200,0.12);" />
+          <button style="flex: none; display: flex; align-items: center; gap: 5px; height: 30px; padding: 0 12px; font-size: 12.5px; font-weight: 600; color: #FFFFFF; background: var(--accent, #2F55C8); border: 0; border-radius: 7px; cursor: pointer;" style-hover="filter: brightness(1.08);" style-active="filter: brightness(0.94);">
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>
+            Добавить
+          </button>
+        </div>
+        <div style="padding: 14px; font-size: 11.5px; color: #A6AEBB;">Нет материалов к заказу</div>
+      </div>
+
+      <div style="background: #FFFFFF; border: 1px solid #E1E6ED; border-radius: 10px; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; gap: 7px; padding: 11px 14px; border-bottom: 1px solid #EDF0F4;">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#7A8492" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.2a4 4 0 0 1 4 4v3l1.2 2H2.8L4 9.2v-3a4 4 0 0 1 4-4z"></path><path d="M6.6 13.4a1.6 1.6 0 0 0 2.8 0"></path></svg>
+          <span style="font-size: 13px; font-weight: 600;">Напоминания</span>
+        </div>
+        <div style="padding: 12px 14px; display: flex; gap: 8px; border-bottom: 1px solid #EDF0F4;">
+          <input placeholder="Добавить" style="flex: 1; min-width: 0; height: 30px; padding: 0 10px; font-size: 12.5px; color: #1B2430; border: 1px solid #D9DFE8; border-radius: 7px; background: #FFFFFF; outline: none;" style-hover="border-color: #C4CDDA;" style-focus="border-color: var(--accent, #2F55C8); box-shadow: 0 0 0 3px rgba(47,85,200,0.12);" />
+          <button style="flex: none; display: flex; align-items: center; gap: 5px; height: 30px; padding: 0 12px; font-size: 12.5px; font-weight: 600; color: #FFFFFF; background: var(--accent, #2F55C8); border: 0; border-radius: 7px; cursor: pointer;" style-hover="filter: brightness(1.08);" style-active="filter: brightness(0.94);">
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>
+            Добавить
+          </button>
+        </div>
+        <div style="padding: 14px; font-size: 11.5px; color: #A6AEBB;">Нет напоминаний</div>
+      </div>
+
+      <div style="background: #FFFFFF; border: 1px solid #E1E6ED; border-radius: 10px; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; gap: 7px; padding: 11px 14px; border-bottom: 1px solid #EDF0F4;">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#7A8492" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.8"></circle><path d="M8 4.6V8l2.3 1.4"></path></svg>
+          <span style="font-size: 13px; font-weight: 600;">Мероприятия</span>
+        </div>
+        <div style="padding: 12px 14px; display: flex; gap: 8px; border-bottom: 1px solid #EDF0F4;">
+          <input placeholder="Добавить" style="flex: 1; min-width: 0; height: 30px; padding: 0 10px; font-size: 12.5px; color: #1B2430; border: 1px solid #D9DFE8; border-radius: 7px; background: #FFFFFF; outline: none;" style-hover="border-color: #C4CDDA;" style-focus="border-color: var(--accent, #2F55C8); box-shadow: 0 0 0 3px rgba(47,85,200,0.12);" />
+          <button style="flex: none; display: flex; align-items: center; gap: 5px; height: 30px; padding: 0 12px; font-size: 12.5px; font-weight: 600; color: #FFFFFF; background: var(--accent, #2F55C8); border: 0; border-radius: 7px; cursor: pointer;" style-hover="filter: brightness(1.08);" style-active="filter: brightness(0.94);">
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>
+            Добавить
+          </button>
+        </div>
+        <div style="padding: 14px; font-size: 11.5px; color: #A6AEBB;">Нет мероприятий</div>
+      </div>
+
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#2F55C8&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#2F55C8&quot;,&quot;#1F6F5C&quot;,&quot;#B4531A&quot;,&quot;#3B3F5C&quot;],&quot;section&quot;:&quot;Тема&quot;},&quot;today&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Ср&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;Пн&quot;,&quot;Вт&quot;,&quot;Ср&quot;,&quot;Чт&quot;,&quot;Пт&quot;,&quot;—&quot;],&quot;section&quot;:&quot;Доска&quot;},&quot;showMoved&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Доска&quot;}}">
+const BADGE = {
+  "Запланирована": { bg: "#EEF2FB", fg: "#2F55C8" },
+  "В работе": { bg: "#E7F0FE", fg: "#1D4ED8" },
+  "Завершена": { bg: "#E8F5EC", fg: "#1D7A43" },
+  "Приостановлена": { bg: "#FDF2E0", fg: "#9A6206" },
+  "Отменена": { bg: "#FBEAEA", fg: "#B02A2A" }
+};
+
+const RAW = [
+  { name: "Пн", date: "07.09", tasks: [] },
+  { name: "Вт", date: "08.09", tasks: [
+    { title: "выезти доску", status: "Запланирована", meta: "", moved: "Перенесена на 9 сентября" },
+    { title: "вывезти доску", status: "Завершена", meta: "ТЭЦ" }
+  ] },
+  { name: "Ср", date: "09.09", tasks: [
+    { title: "выезти доску", status: "Запланирована", meta: "", moved: "Перенесена на 10 сентября" },
+    { title: "Забетонировать что то", status: "Запланирована", meta: "Лобанов", moved: "Перенесена на 10 сентября" }
+  ] },
+  { name: "Чт", date: "10.09", tasks: [
+    { title: "выезти доску", status: "Запланирована", meta: "" },
+    { title: "Забетонировать что то", status: "Запланирована", meta: "Лобанов" }
+  ] },
+  { name: "Пт", date: "11.09", tasks: [] }
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    const accent = this.props.accent ?? "#2F55C8";
+    const today = this.props.today ?? "Ср";
+    const showMoved = this.props.showMoved ?? true;
+
+    const days = RAW.map(d => {
+      const isToday = d.name === today;
+      const tasks = d.tasks.map(t => {
+        const b = BADGE[t.status] || BADGE["Запланирована"];
+        const moved = showMoved ? (t.moved || "") : "";
+        return {
+          title: t.title,
+          status: t.status,
+          meta: t.meta || "",
+          moved,
+          badgeBg: moved ? "#F1F3F6" : b.bg,
+          badgeFg: moved ? "#7C8695" : b.fg,
+          op: moved ? 0.66 : 1
+        };
+      });
+      return {
+        name: d.name,
+        date: d.date,
+        tasks,
+        empty: tasks.length === 0,
+        count: tasks.length ? String(tasks.length) : "",
+        colBg: isToday ? "#F8FAFF" : "#FFFFFF",
+        topBar: isToday ? accent : "transparent",
+        nameColor: isToday ? accent : "#1B2430",
+        dateColor: isToday ? accent : "#8B94A2"
+      };
+    });
+
+    return {
+      accent,
+      days,
+      requests: [
+        { title: "Выезти доски", meta: "Без категории" },
+        { title: "Посторить лесса", meta: "Шолох" },
+        { title: "Бетонирование фундамента", meta: "Хим цех · Шолох · Лобанов" }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

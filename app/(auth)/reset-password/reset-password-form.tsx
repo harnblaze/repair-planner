@@ -66,7 +66,7 @@ export function ResetPasswordForm() {
           {...register("password")}
         />
         {errors.password ? (
-          <p className="text-sm text-destructive">{errors.password.message}</p>
+          <p className="text-[11.5px] text-status-alert-fg">{errors.password.message}</p>
         ) : null}
       </div>
 
@@ -79,7 +79,7 @@ export function ResetPasswordForm() {
           {...register("confirmPassword")}
         />
         {errors.confirmPassword ? (
-          <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
+          <p className="text-[11.5px] text-status-alert-fg">{errors.confirmPassword.message}</p>
         ) : null}
       </div>
 

@@ -1,8 +1,9 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,6 @@ import { categorySchema, type CategoryInput } from "@/lib/validation/reference-d
 import { createCategoryAction } from "./actions";
 
 export function CreateCategoryForm({ projectId }: { projectId: string }) {
-  const [serverError, setServerError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const {
@@ -22,12 +22,12 @@ export function CreateCategoryForm({ projectId }: { projectId: string }) {
   } = useForm<CategoryInput>({ resolver: zodResolver(categorySchema) });
 
   const onSubmit = handleSubmit((data) => {
-    setServerError(null);
     startTransition(async () => {
       const result = await createCategoryAction(projectId, data);
       if (!result.ok) {
-        setServerError(result.error);
+        toast.error(result.error);
       } else {
+        toast.success("Категория добавлена.");
         reset();
       }
     });
@@ -37,8 +37,7 @@ export function CreateCategoryForm({ projectId }: { projectId: string }) {
     <form onSubmit={onSubmit} className="flex items-start gap-2" noValidate>
       <div className="flex flex-1 flex-col gap-1">
         <Input placeholder="Название категории" {...register("name")} />
-        {errors.name ? <p className="text-sm text-destructive">{errors.name.message}</p> : null}
-        {serverError ? <p className="text-sm text-destructive">{serverError}</p> : null}
+        {errors.name ? <p className="text-[11.5px] text-status-alert-fg">{errors.name.message}</p> : null}
       </div>
       <Button type="submit" disabled={pending}>
         {pending ? "Добавление…" : "Добавить"}
