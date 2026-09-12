@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import { formatDateShort, todayInTimezone } from "@/lib/business/dates";
+import { formatDateLong, formatDateShort, todayInTimezone } from "@/lib/business/dates";
+import { isCarriedOverOccurrence } from "@/lib/business/task-planning";
 import {
   WEEKDAY_LABELS_RU,
   addWeeks,
   mondayOf,
+  nextWorkingDay,
   weekWorkingDays,
 } from "@/lib/business/working-days";
 import { createClient } from "@/lib/supabase/server";
@@ -59,7 +61,7 @@ export default async function BoardPage({
     supabase
       .from("task_schedule")
       .select(
-        "work_date, position, tasks(id, title, status, categories(name), task_executors(executors(name)))",
+        "work_date, position, tasks(id, title, status, planned_date, categories(name), task_executors(executors(name)))",
       )
       .eq("project_id", projectId)
       .in("work_date", weekDates)
@@ -86,12 +88,17 @@ export default async function BoardPage({
     if (!row.tasks) continue;
     const list = byDate.get(row.work_date);
     if (!list) continue;
+    const carriedOver = isCarriedOverOccurrence(row.work_date, row.tasks.planned_date);
     list.push({
       id: row.tasks.id,
       title: row.tasks.title,
       status: row.tasks.status,
       categoryName: row.tasks.categories?.name ?? null,
       executorNames: toExecutorNames(row.tasks.task_executors),
+      // Дни расписания идут подряд по рабочим дням (перенос всегда добавляет
+      // именно ближайший следующий рабочий день), поэтому следующий день этой
+      // задачи вычисляется без дополнительного запроса.
+      transferNote: carriedOver ? `Перенесена на ${formatDateLong(nextWorkingDay(row.work_date))}` : null,
     });
   }
 

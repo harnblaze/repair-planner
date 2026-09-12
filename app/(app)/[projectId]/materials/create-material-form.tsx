@@ -6,10 +6,11 @@ import { useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
-  materialSchema,
-  type MaterialInput,
-  type MaterialFormValues,
+  createMaterialSchema,
+  type CreateMaterialFormValues,
+  type CreateMaterialInput,
 } from "@/lib/validation/reference-data";
 
 import { createMaterialAction } from "./actions";
@@ -23,9 +24,9 @@ export function CreateMaterialForm({ projectId }: { projectId: string }) {
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<MaterialFormValues, unknown, MaterialInput>({
-    resolver: zodResolver(materialSchema),
-    defaultValues: { name: "", unit: "", minimumBalance: 0 },
+  } = useForm<CreateMaterialFormValues, unknown, CreateMaterialInput>({
+    resolver: zodResolver(createMaterialSchema),
+    defaultValues: { name: "", unit: "", minimumBalance: 0, initialQuantity: 0 },
   });
 
   const onSubmit = handleSubmit((data) => {
@@ -44,25 +45,42 @@ export function CreateMaterialForm({ projectId }: { projectId: string }) {
     <form onSubmit={onSubmit} className="flex flex-col gap-2" noValidate>
       <div className="flex items-start gap-2">
         <div className="flex flex-1 flex-col gap-1">
-          <Input placeholder="Название" {...register("name")} />
+          <Label htmlFor="material-name">Название</Label>
+          <Input id="material-name" placeholder="Например, электрод" {...register("name")} />
           {errors.name ? <p className="text-sm text-destructive">{errors.name.message}</p> : null}
         </div>
         <div className="flex w-20 flex-col gap-1">
-          <Input placeholder="Ед." {...register("unit")} />
+          <Label htmlFor="material-unit">Ед.</Label>
+          <Input id="material-unit" placeholder="кг, шт, л" {...register("unit")} />
           {errors.unit ? <p className="text-sm text-destructive">{errors.unit.message}</p> : null}
         </div>
-        <div className="flex w-28 flex-col gap-1">
+      </div>
+      <div className="flex items-start gap-2">
+        <div className="flex w-32 flex-col gap-1">
+          <Label htmlFor="material-initial-quantity">Начальный остаток</Label>
           <Input
+            id="material-initial-quantity"
             type="number"
             step="0.001"
-            placeholder="Мин. остаток"
+            {...register("initialQuantity")}
+          />
+          {errors.initialQuantity ? (
+            <p className="text-sm text-destructive">{errors.initialQuantity.message}</p>
+          ) : null}
+        </div>
+        <div className="flex w-32 flex-col gap-1">
+          <Label htmlFor="material-minimum-balance">Мин. остаток</Label>
+          <Input
+            id="material-minimum-balance"
+            type="number"
+            step="0.001"
             {...register("minimumBalance")}
           />
           {errors.minimumBalance ? (
             <p className="text-sm text-destructive">{errors.minimumBalance.message}</p>
           ) : null}
         </div>
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending} className="mt-auto">
           {pending ? "Добавление…" : "Добавить"}
         </Button>
       </div>

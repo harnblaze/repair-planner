@@ -2,16 +2,31 @@
 
 import { revalidatePath } from "next/cache";
 
+import { formatDateLong } from "@/lib/business/dates";
+import { canCarryOverTask } from "@/lib/business/task-planning";
 import type { TaskStatus } from "@/lib/business/task-status";
-import { isWorkingDay } from "@/lib/business/working-days";
+import { isWorkingDay, nextWorkingDay } from "@/lib/business/working-days";
+import { isUniqueViolation } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
-import { taskDescriptionSchema, taskTitleSchema } from "@/lib/validation/task";
+import {
+  taskDescriptionSchema,
+  taskMaterialSchema,
+  taskTitleSchema,
+  type TaskMaterialInput,
+} from "@/lib/validation/task";
 
 function revalidateTask(projectId: string, taskId: string) {
   revalidatePath(`/${projectId}/tasks/${taskId}`);
   revalidatePath(`/${projectId}/tasks`);
   revalidatePath(`/${projectId}/board`);
+}
+
+// Расход материала меняет materials.current_balance — экраны материалов
+// (список, предупреждения о низком остатке) тоже должны увидеть новое значение.
+function revalidateTaskMaterials(projectId: string, taskId: string) {
+  revalidateTask(projectId, taskId);
+  revalidatePath(`/${projectId}/materials`);
 }
 
 export async function updateTaskTitleAction(
@@ -162,8 +177,9 @@ export async function setTaskPlannedDateAction(
     return { ok: false, error: "Заявка не найдена." };
   }
 
-  // У задачи в любой момент только один текущий плановый день (не история) —
-  // «Перенос» с сохранением истории появится отдельным действием на этапе 8.
+  // Это ручной выбор конкретной даты (поле в карточке), а не перенос — он
+  // заменяет весь план задачи, а не добавляет день. Перенос с сохранением
+  // истории — отдельное действие, carryOverTaskAction ниже.
   // Поэтому сначала полностью снимаем текущее планирование, а не добавляем к нему.
   const { error: deleteError } = await supabase
     .from("task_schedule")
@@ -258,5 +274,177 @@ export async function setTaskExecutorsAction(
   }
 
   revalidateTask(projectId, taskId);
+  return { ok: true };
+}
+
+export async function carryOverTaskAction(
+  projectId: string,
+  taskId: string,
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "Сессия истекла. Войдите снова." };
+  }
+
+  const { data: task } = await supabase
+    .from("tasks")
+    .select("id, status, planned_date")
+    .eq("id", taskId)
+    .eq("project_id", projectId)
+    .maybeSingle();
+
+  if (!task) {
+    return { ok: false, error: "Заявка не найдена." };
+  }
+  if (!task.planned_date) {
+    return { ok: false, error: "Заявка ещё не запланирована." };
+  }
+  if (!canCarryOverTask(task.status)) {
+    return { ok: false, error: "Завершённую или отменённую заявку нельзя переносить." };
+  }
+
+  // Перенос добавляет новый день расписания и сохраняет предыдущие — задача
+  // остаётся видимой во всех днях, в которых над ней работали (CLAUDE.md §27).
+  const nextDate = nextWorkingDay(task.planned_date);
+
+  const { count } = await supabase
+    .from("task_schedule")
+    .select("id", { count: "exact", head: true })
+    .eq("project_id", projectId)
+    .eq("work_date", nextDate);
+
+  const { error: insertError } = await supabase.from("task_schedule").insert({
+    project_id: projectId,
+    task_id: taskId,
+    work_date: nextDate,
+    position: count ?? 0,
+    carried_over: true,
+    created_by: user.id,
+  });
+
+  if (insertError) {
+    console.error("carryOverTaskAction:", insertError);
+    if (insertError.code === "23505") {
+      return { ok: false, error: "Заявка уже запланирована на этот день." };
+    }
+    return { ok: false, error: "Не удалось перенести заявку. Попробуйте ещё раз." };
+  }
+
+  revalidateTask(projectId, taskId);
+  return { ok: true, message: `Перенесено на ${formatDateLong(nextDate)}.` };
+}
+
+export async function addTaskMaterialAction(
+  projectId: string,
+  taskId: string,
+  input: TaskMaterialInput,
+): Promise<ActionResult> {
+  const parsed = taskMaterialSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Проверьте правильность заполнения формы.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "Сессия истекла. Войдите снова." };
+  }
+
+  // Расход и изменение остатка выполняются одним триггером на INSERT в
+  // task_materials (docs/database.md §7.1) — отдельного шага не требуется.
+  const { error } = await supabase.from("task_materials").insert({
+    project_id: projectId,
+    task_id: taskId,
+    material_id: parsed.data.materialId,
+    quantity: parsed.data.quantity,
+    note: parsed.data.note || null,
+    created_by: user.id,
+  });
+
+  if (error) {
+    if (isUniqueViolation(error)) {
+      return { ok: false, error: "Этот материал уже добавлен в заявку. Измените количество ниже." };
+    }
+    console.error("addTaskMaterialAction:", error);
+    return { ok: false, error: "Не удалось добавить материал. Попробуйте ещё раз." };
+  }
+
+  revalidateTaskMaterials(projectId, taskId);
+  return { ok: true };
+}
+
+export async function updateTaskMaterialAction(
+  projectId: string,
+  taskId: string,
+  taskMaterialId: string,
+  quantity: number,
+  note: string,
+): Promise<ActionResult> {
+  const parsed = taskMaterialSchema.shape.quantity.safeParse(quantity);
+
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Некорректное количество." };
+  }
+
+  const supabase = await createClient();
+  // Изменение количества пересчитывает остаток как корректировку delta =
+  // -(новое − старое) — той же триггерной функцией, что и вставка (§7.1).
+  const { data, error } = await supabase
+    .from("task_materials")
+    .update({ quantity: parsed.data, note: note.trim() || null })
+    .eq("id", taskMaterialId)
+    .eq("task_id", taskId)
+    .eq("project_id", projectId)
+    .select("id");
+
+  if (error) {
+    console.error("updateTaskMaterialAction:", error);
+    return { ok: false, error: "Не удалось сохранить расход. Попробуйте ещё раз." };
+  }
+  if (!data || data.length === 0) {
+    return { ok: false, error: "Запись расхода не найдена." };
+  }
+
+  revalidateTaskMaterials(projectId, taskId);
+  return { ok: true };
+}
+
+export async function removeTaskMaterialAction(
+  projectId: string,
+  taskId: string,
+  taskMaterialId: string,
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  // Удаление строки расхода возвращает списанное количество на остаток
+  // (корректировка +quantity) — той же триггерной функцией (§7.1).
+  const { data, error } = await supabase
+    .from("task_materials")
+    .delete()
+    .eq("id", taskMaterialId)
+    .eq("task_id", taskId)
+    .eq("project_id", projectId)
+    .select("id");
+
+  if (error) {
+    console.error("removeTaskMaterialAction:", error);
+    return { ok: false, error: "Не удалось удалить расход. Попробуйте ещё раз." };
+  }
+  if (!data || data.length === 0) {
+    return { ok: false, error: "Запись расхода не найдена." };
+  }
+
+  revalidateTaskMaterials(projectId, taskId);
   return { ok: true };
 }

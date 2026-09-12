@@ -334,7 +334,7 @@ create policy "<t>_delete" on public.<t> for delete to authenticated
 
 Ситуация «расход записался, но остаток не изменился» невозможна: обе операции находятся в одной транзакции, и клиент не может выполнить их по отдельности.
 
-Приход и ручная корректировка (UI отложен) — RPC `record_material_movement(p_material_id, p_kind, p_quantity, p_note)`, `SECURITY DEFINER`, с проверкой `project_access` первой строкой.
+Приход и ручная корректировка (полноценный UI отложен) — RPC `record_material_movement(p_material_id, p_kind, p_quantity, p_note)`, `SECURITY DEFINER`, с проверкой `project_access` первой строкой. Единственное текущее место вызова — поле «Начальный остаток» в форме создания материала (kind = `receipt`), чтобы новый материал сразу можно было списывать в задаче.
 
 ### 7.2 Race conditions
 

@@ -4,10 +4,12 @@ import { notFound } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
 
+import { CarryOverButton } from "./carry-over-button";
 import { ExecutorsPicker } from "./executors-picker";
 import { PlanTaskForm } from "./plan-task-form";
 import { StatusSelect } from "./status-select";
 import { TaskDetailsForm } from "./task-details-form";
+import { TaskMaterials } from "./task-materials";
 
 export const metadata: Metadata = {
   title: "Заявка — Repair Planner",
@@ -17,27 +19,43 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
   const { projectId, taskId } = await params;
   const supabase = await createClient();
 
-  const [{ data: task }, { data: categories }, { data: executors }, { data: assigned }] =
-    await Promise.all([
-      supabase
-        .from("tasks")
-        .select("id, title, description, category_id, status, planned_date")
-        .eq("id", taskId)
-        .eq("project_id", projectId)
-        .maybeSingle(),
-      supabase
-        .from("categories")
-        .select("id, name")
-        .eq("project_id", projectId)
-        .eq("is_archived", false)
-        .order("sort_order", { ascending: true }),
-      supabase
-        .from("executors")
-        .select("id, name, position, is_active")
-        .eq("project_id", projectId)
-        .order("name", { ascending: true }),
-      supabase.from("task_executors").select("executor_id").eq("task_id", taskId),
-    ]);
+  const [
+    { data: task },
+    { data: categories },
+    { data: executors },
+    { data: assigned },
+    { data: materials },
+    { data: taskMaterials },
+  ] = await Promise.all([
+    supabase
+      .from("tasks")
+      .select("id, title, description, category_id, status, planned_date")
+      .eq("id", taskId)
+      .eq("project_id", projectId)
+      .maybeSingle(),
+    supabase
+      .from("categories")
+      .select("id, name")
+      .eq("project_id", projectId)
+      .eq("is_archived", false)
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("executors")
+      .select("id, name, position, is_active")
+      .eq("project_id", projectId)
+      .order("name", { ascending: true }),
+    supabase.from("task_executors").select("executor_id").eq("task_id", taskId),
+    supabase
+      .from("materials")
+      .select("id, name, unit, current_balance, minimum_balance, is_active")
+      .eq("project_id", projectId)
+      .order("name", { ascending: true }),
+    supabase
+      .from("task_materials")
+      .select("id, material_id, quantity, note")
+      .eq("task_id", taskId)
+      .order("created_at", { ascending: true }),
+  ]);
 
   if (!task) {
     notFound();
@@ -71,7 +89,29 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
             assignedExecutorIds={assignedExecutorIds}
           />
 
-          <PlanTaskForm projectId={projectId} taskId={taskId} plannedDate={task.planned_date} />
+          {/* key пересоздаёт форму при смене planned_date переносом (действие
+              вне этого поля) — иначе локальное состояние поля не подхватит
+              новую дату после router.refresh(). */}
+          <PlanTaskForm
+            key={task.planned_date ?? "unplanned"}
+            projectId={projectId}
+            taskId={taskId}
+            plannedDate={task.planned_date}
+          />
+
+          <CarryOverButton
+            projectId={projectId}
+            taskId={taskId}
+            plannedDate={task.planned_date}
+            status={task.status}
+          />
+
+          <TaskMaterials
+            projectId={projectId}
+            taskId={taskId}
+            materials={materials ?? []}
+            taskMaterials={taskMaterials ?? []}
+          />
         </CardContent>
       </Card>
     </main>
