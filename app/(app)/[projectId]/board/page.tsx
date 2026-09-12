@@ -13,6 +13,8 @@ import {
 } from "@/lib/business/working-days";
 import { createClient } from "@/lib/supabase/server";
 
+import type { BoardItem } from "./board-item-row";
+import { BoardList } from "./board-list";
 import { CreateTaskForm } from "./create-task-form";
 import { TaskChip, type BoardTask } from "./task-chip";
 
@@ -41,7 +43,8 @@ export default async function BoardPage({
     .single();
 
   const timezone = project?.timezone ?? "Europe/Moscow";
-  const currentMonday = mondayOf(todayInTimezone(timezone));
+  const today = todayInTimezone(timezone);
+  const currentMonday = mondayOf(today);
   const requestedWeek = typeof week === "string" ? week : undefined;
   const monday =
     requestedWeek && /^\d{4}-\d{2}-\d{2}$/.test(requestedWeek)
@@ -49,7 +52,13 @@ export default async function BoardPage({
       : currentMonday;
   const weekDates = weekWorkingDays(monday);
 
-  const [{ data: backlogTasks }, { data: scheduleRows }, { data: categories }] = await Promise.all([
+  const [
+    { data: backlogTasks },
+    { data: scheduleRows },
+    { data: categories },
+    { data: boardLists },
+    { data: boardItems },
+  ] = await Promise.all([
     supabase
       .from("tasks")
       .select("id, title, status, categories(name), task_executors(executors(name))")
@@ -73,6 +82,16 @@ export default async function BoardPage({
       .eq("project_id", projectId)
       .eq("is_archived", false)
       .order("sort_order", { ascending: true }),
+    supabase
+      .from("board_lists")
+      .select("id, name")
+      .eq("project_id", projectId)
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("board_items")
+      .select("id, list_id, title, note, is_done, due_date")
+      .eq("project_id", projectId)
+      .order("position", { ascending: true }),
   ]);
 
   const backlog: BoardTask[] = (backlogTasks ?? []).map((t) => ({
@@ -82,6 +101,13 @@ export default async function BoardPage({
     categoryName: t.categories?.name ?? null,
     executorNames: toExecutorNames(t.task_executors),
   }));
+
+  const itemsByList = new Map<string, BoardItem[]>();
+  for (const item of boardItems ?? []) {
+    const list = itemsByList.get(item.list_id) ?? [];
+    list.push(item);
+    itemsByList.set(item.list_id, list);
+  }
 
   const byDate = new Map<string, BoardTask[]>(weekDates.map((d) => [d, []]));
   for (const row of scheduleRows ?? []) {
@@ -159,9 +185,10 @@ export default async function BoardPage({
         ))}
       </div>
 
-      {/* Дополнительные списки: «Текущие заявки» и (позже) «Материалы к заказу»,
-          «Напоминания», «Мероприятия» — рядом друг с другом под неделей. */}
-      <div className="mt-4 grid grid-cols-1 gap-6 border-t border-border pt-4 md:grid-cols-2 lg:grid-cols-3">
+      {/* Дополнительные списки: «Текущие заявки» (задачи) и board_lists
+          («Материалы к заказу», «Напоминания», «Мероприятия») — рядом друг
+          с другом под неделей. */}
+      <div className="mt-4 grid grid-cols-1 gap-6 border-t border-border pt-4 md:grid-cols-2 lg:grid-cols-4">
         <div className="flex flex-col gap-2">
           <h2 className="text-sm font-medium text-muted-foreground">Текущие заявки</h2>
           <CreateTaskForm projectId={projectId} categories={categories ?? []} />
@@ -173,6 +200,16 @@ export default async function BoardPage({
             )}
           </div>
         </div>
+        {(boardLists ?? []).map((list) => (
+          <BoardList
+            key={list.id}
+            projectId={projectId}
+            listId={list.id}
+            name={list.name}
+            items={itemsByList.get(list.id) ?? []}
+            today={today}
+          />
+        ))}
       </div>
     </main>
   );
