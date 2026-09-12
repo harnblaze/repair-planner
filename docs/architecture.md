@@ -127,6 +127,7 @@ app/
     [projectId]/
       layout.tsx                    проверка доступа, контекст проекта
       board/                        главная доска
+      tasks/                         список заявок, быстрое создание
       tasks/[taskId]/               карточка задачи
       materials/                    справочник и остатки
       executors/
