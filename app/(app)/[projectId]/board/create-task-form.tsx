@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { createTaskSchema, type CreateTaskInput } from "@/lib/validation/task";
 
-import { createTaskAction } from "./actions";
+import { createTaskFromBoardAction } from "./actions";
 
 type Category = { id: string; name: string };
 
@@ -25,26 +25,32 @@ export function CreateTaskForm({
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm<CreateTaskInput>({ resolver: zodResolver(createTaskSchema) });
 
   const onSubmit = handleSubmit((data) => {
     setServerError(null);
     startTransition(async () => {
-      const result = await createTaskAction(projectId, data);
-      if (!result.ok) setServerError(result.error);
+      const result = await createTaskFromBoardAction(projectId, data);
+      if (!result.ok) {
+        setServerError(result.error);
+      } else {
+        reset();
+      }
     });
   });
 
   return (
-    <form onSubmit={onSubmit} className="flex items-start gap-2" noValidate>
-      <div className="flex flex-1 flex-col gap-1">
-        <Input placeholder="Название заявки" {...register("title")} />
-        {errors.title ? <p className="text-sm text-destructive">{errors.title.message}</p> : null}
-        {serverError ? <p className="text-sm text-destructive">{serverError}</p> : null}
+    <form onSubmit={onSubmit} className="flex flex-col gap-1" noValidate>
+      <div className="flex items-start gap-2">
+        <Input placeholder="Новая заявка" {...register("title")} />
+        <Button type="submit" disabled={pending} size="sm">
+          {pending ? "…" : "Добавить"}
+        </Button>
       </div>
       <select
-        className="h-8 rounded-lg border border-border bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         {...register("categoryId")}
         defaultValue=""
       >
@@ -55,9 +61,8 @@ export function CreateTaskForm({
           </option>
         ))}
       </select>
-      <Button type="submit" disabled={pending}>
-        {pending ? "Создание…" : "Создать"}
-      </Button>
+      {errors.title ? <p className="text-sm text-destructive">{errors.title.message}</p> : null}
+      {serverError ? <p className="text-sm text-destructive">{serverError}</p> : null}
     </form>
   );
 }

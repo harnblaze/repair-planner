@@ -42,7 +42,9 @@ export function ResetPasswordForm() {
         <Alert>
           <AlertDescription>{successMessage}</AlertDescription>
         </Alert>
-        <Button render={<Link href="/login" />}>Войти</Button>
+        <Button nativeButton={false} render={<Link href="/login" />}>
+          Войти
+        </Button>
       </div>
     );
   }

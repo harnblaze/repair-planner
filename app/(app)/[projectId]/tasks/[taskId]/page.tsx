@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
 
 import { ExecutorsPicker } from "./executors-picker";
+import { PlanTaskForm } from "./plan-task-form";
 import { StatusSelect } from "./status-select";
 import { TaskDetailsForm } from "./task-details-form";
 
@@ -20,7 +21,7 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
     await Promise.all([
       supabase
         .from("tasks")
-        .select("id, title, description, category_id, status")
+        .select("id, title, description, category_id, status, planned_date")
         .eq("id", taskId)
         .eq("project_id", projectId)
         .maybeSingle(),
@@ -69,6 +70,8 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
             executors={executors ?? []}
             assignedExecutorIds={assignedExecutorIds}
           />
+
+          <PlanTaskForm projectId={projectId} taskId={taskId} plannedDate={task.planned_date} />
         </CardContent>
       </Card>
     </main>

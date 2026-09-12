@@ -14,11 +14,19 @@ export const metadata: Metadata = {
 export default async function TasksPage({ params }: PageProps<"/[projectId]/tasks">) {
   const { projectId } = await params;
   const supabase = await createClient();
-  const { data: tasks } = await supabase
-    .from("tasks")
-    .select("id, title, status, categories(name)")
-    .eq("project_id", projectId)
-    .order("created_at", { ascending: false });
+  const [{ data: tasks }, { data: categories }] = await Promise.all([
+    supabase
+      .from("tasks")
+      .select("id, title, status, categories(name)")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("categories")
+      .select("id, name")
+      .eq("project_id", projectId)
+      .eq("is_archived", false)
+      .order("sort_order", { ascending: true }),
+  ]);
 
   const open = tasks?.filter((t) => t.status !== "completed" && t.status !== "cancelled") ?? [];
   const closed = tasks?.filter((t) => t.status === "completed" || t.status === "cancelled") ?? [];
@@ -30,7 +38,7 @@ export default async function TasksPage({ params }: PageProps<"/[projectId]/task
           <CardTitle>Заявки</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <CreateTaskForm projectId={projectId} />
+          <CreateTaskForm projectId={projectId} categories={categories ?? []} />
 
           <div className="flex flex-col divide-y divide-border">
             {open.length === 0 ? (

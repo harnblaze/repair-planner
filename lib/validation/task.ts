@@ -2,14 +2,17 @@ import { z } from "zod";
 
 export const createTaskSchema = z.object({
   title: z.string().trim().min(1, "Введите название заявки").max(300, "Слишком длинно"),
+  categoryId: z.string().trim().optional(),
 });
 
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 
-export const updateTaskSchema = z.object({
-  title: z.string().trim().min(1, "Введите название заявки").max(300, "Слишком длинно"),
-  description: z.string().trim().max(5000, "Слишком длинно").optional(),
-  categoryId: z.string().trim().optional(),
-});
+// Поля карточки задачи сохраняются независимо друг от друга (по blur/change,
+// без общей кнопки «Сохранить») — поэтому у каждого своя схема, а не одна общая.
+export const taskTitleSchema = z
+  .string()
+  .trim()
+  .min(1, "Введите название заявки")
+  .max(300, "Слишком длинно");
 
-export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
+export const taskDescriptionSchema = z.string().trim().max(5000, "Слишком длинно");

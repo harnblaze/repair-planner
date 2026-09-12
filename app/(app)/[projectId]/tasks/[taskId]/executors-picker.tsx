@@ -3,6 +3,15 @@
 import { useState, useTransition } from "react";
 
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 import { setTaskExecutorsAction } from "./actions";
 
@@ -19,25 +28,20 @@ export function ExecutorsPicker({
   executors: Executor[];
   assignedExecutorIds: string[];
 }) {
-  const [selected, setSelected] = useState(new Set(assignedExecutorIds));
+  const [selected, setSelected] = useState<string[]>(assignedExecutorIds);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const active = executors.filter((e) => e.is_active);
   const inactive = executors.filter((e) => !e.is_active);
+  const nameById = new Map(executors.map((e) => [e.id, e.name]));
 
-  const toggle = (executorId: string) => {
+  const onValueChange = (next: string[]) => {
     setError(null);
-    const next = new Set(selected);
-    if (next.has(executorId)) {
-      next.delete(executorId);
-    } else {
-      next.add(executorId);
-    }
     const previous = selected;
     setSelected(next);
     startTransition(async () => {
-      const result = await setTaskExecutorsAction(projectId, taskId, Array.from(next));
+      const result = await setTaskExecutorsAction(projectId, taskId, next);
       if (!result.ok) {
         setSelected(previous);
         setError(result.error);
@@ -45,42 +49,44 @@ export function ExecutorsPicker({
     });
   };
 
-  const renderCheckbox = (executor: Executor) => (
-    <label key={executor.id} className="flex items-center gap-2 py-1 text-sm">
-      <input
-        type="checkbox"
-        checked={selected.has(executor.id)}
-        disabled={pending}
-        onChange={() => toggle(executor.id)}
-      />
-      <span>
-        {executor.name}
-        {executor.position ? (
-          <span className="text-muted-foreground"> — {executor.position}</span>
-        ) : null}
-      </span>
-    </label>
-  );
-
   return (
     <div className="flex flex-col gap-2">
       <Label>Исполнители</Label>
-
-      {active.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Нет активных исполнителей.</p>
-      ) : (
-        <div className="flex flex-col">{active.map(renderCheckbox)}</div>
-      )}
-
-      {inactive.length > 0 ? (
-        <details>
-          <summary className="cursor-pointer text-sm text-muted-foreground">
-            Показать неактивных ({inactive.length})
-          </summary>
-          <div className="flex flex-col pt-1">{inactive.map(renderCheckbox)}</div>
-        </details>
-      ) : null}
-
+      <Select multiple value={selected} onValueChange={onValueChange} disabled={pending}>
+        <SelectTrigger className="w-full">
+          <SelectValue>
+            {(value: string[]) => {
+              if (!value || value.length === 0) return "Не назначены";
+              const first = nameById.get(value[0]) ?? "";
+              return value.length > 1 ? `${first} и ещё ${value.length - 1}` : first;
+            }}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {active.length === 0 ? (
+            <SelectLabel>Нет активных исполнителей</SelectLabel>
+          ) : (
+            active.map((executor) => (
+              <SelectItem key={executor.id} value={executor.id}>
+                {executor.name}
+                {executor.position ? ` — ${executor.position}` : ""}
+              </SelectItem>
+            ))
+          )}
+          {inactive.length > 0 ? (
+            <>
+              <SelectSeparator />
+              <SelectLabel>Неактивные</SelectLabel>
+              {inactive.map((executor) => (
+                <SelectItem key={executor.id} value={executor.id}>
+                  {executor.name}
+                  {executor.position ? ` — ${executor.position}` : ""}
+                </SelectItem>
+              ))}
+            </>
+          ) : null}
+        </SelectContent>
+      </Select>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
     </div>
   );

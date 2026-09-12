@@ -1,12 +1,15 @@
 "use server";
 
-import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
 import { createTaskSchema, type CreateTaskInput } from "@/lib/validation/task";
 
-export async function createTaskAction(
+// В отличие от app/(app)/[projectId]/tasks/actions.ts::createTaskAction, здесь
+// нет редиректа на карточку — задача создаётся прямо с доски и сразу видна
+// в «Текущих заявках», без переключения между страницами.
+export async function createTaskFromBoardAction(
   projectId: string,
   input: CreateTaskInput,
 ): Promise<ActionResult> {
@@ -29,21 +32,19 @@ export async function createTaskAction(
     return { ok: false, error: "Сессия истекла. Войдите снова." };
   }
 
-  const { data: task, error } = await supabase
-    .from("tasks")
-    .insert({
-      project_id: projectId,
-      title: parsed.data.title,
-      category_id: parsed.data.categoryId || null,
-      created_by: user.id,
-    })
-    .select("id")
-    .single();
+  const { error } = await supabase.from("tasks").insert({
+    project_id: projectId,
+    title: parsed.data.title,
+    category_id: parsed.data.categoryId || null,
+    created_by: user.id,
+  });
 
-  if (error || !task) {
-    console.error("createTaskAction:", error);
+  if (error) {
+    console.error("createTaskFromBoardAction:", error);
     return { ok: false, error: "Не удалось создать заявку. Попробуйте ещё раз." };
   }
 
-  redirect(`/${projectId}/tasks/${task.id}`);
+  revalidatePath(`/${projectId}/board`);
+  revalidatePath(`/${projectId}/tasks`);
+  return { ok: true };
 }
