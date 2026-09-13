@@ -72,7 +72,10 @@ export function LoginForm() {
 
       <p className="text-center text-[12px] text-meta">
         Нет аккаунта?{" "}
-        <Link href="/register" className="text-foreground hover:underline">
+        <Link
+          href={next ? `/register?next=${encodeURIComponent(next)}` : "/register"}
+          className="text-foreground hover:underline"
+        >
           Зарегистрироваться
         </Link>
       </p>

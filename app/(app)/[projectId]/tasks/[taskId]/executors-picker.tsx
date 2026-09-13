@@ -23,11 +23,13 @@ export function ExecutorsPicker({
   taskId,
   executors,
   assignedExecutorIds,
+  disabled = false,
 }: {
   projectId: string;
   taskId: string;
   executors: Executor[];
   assignedExecutorIds: string[];
+  disabled?: boolean;
 }) {
   const [selected, setSelected] = useState<string[]>(assignedExecutorIds);
   const [pending, startTransition] = useTransition();
@@ -51,7 +53,7 @@ export function ExecutorsPicker({
   return (
     <div className="flex flex-col gap-2">
       <Label>Исполнители</Label>
-      <Select multiple value={selected} onValueChange={onValueChange} disabled={pending}>
+      <Select multiple value={selected} onValueChange={onValueChange} disabled={pending || disabled}>
         <SelectTrigger className="w-full">
           <SelectValue>
             {(value: string[]) => {

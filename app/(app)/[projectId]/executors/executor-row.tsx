@@ -13,7 +13,15 @@ import { setExecutorActiveAction, updateExecutorAction } from "./actions";
 
 type Executor = { id: string; name: string; position: string | null; is_active: boolean };
 
-export function ExecutorRow({ projectId, executor }: { projectId: string; executor: Executor }) {
+export function ExecutorRow({
+  projectId,
+  executor,
+  canEdit,
+}: {
+  projectId: string;
+  executor: Executor;
+  canEdit: boolean;
+}) {
   const [editing, setEditing] = useState(false);
   const [pending, startTransition] = useTransition();
 
@@ -49,7 +57,7 @@ export function ExecutorRow({ projectId, executor }: { projectId: string; execut
     });
   };
 
-  if (editing) {
+  if (editing && canEdit) {
     return (
       <form onSubmit={onSubmit} className="flex items-start gap-2 py-1" noValidate>
         <div className="flex flex-1 flex-col gap-1">
@@ -77,16 +85,18 @@ export function ExecutorRow({ projectId, executor }: { projectId: string; execut
           <span className="text-meta"> — {executor.position}</span>
         ) : null}
       </span>
-      <div className="flex items-center gap-2">
-        {executor.is_active ? (
-          <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
-            Изменить
+      {canEdit ? (
+        <div className="flex items-center gap-2">
+          {executor.is_active ? (
+            <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
+              Изменить
+            </Button>
+          ) : null}
+          <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={toggleActive}>
+            {executor.is_active ? "Деактивировать" : "Активировать"}
           </Button>
-        ) : null}
-        <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={toggleActive}>
-          {executor.is_active ? "Деактивировать" : "Активировать"}
-        </Button>
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

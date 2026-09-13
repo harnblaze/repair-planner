@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { EmptyState } from "@/components/common/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { projectRoleLabel } from "@/lib/business/project-roles";
 import { createClient } from "@/lib/supabase/server";
 
 import { CreateProjectForm } from "./create-project-form";
@@ -13,9 +14,15 @@ export const metadata: Metadata = {
 
 export default async function ProjectsPage() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  // Встроенный фильтр ограничивает project_members строкой текущего пользователя —
+  // так видна его роль в каждом проекте.
   const { data: projects } = await supabase
     .from("projects")
-    .select("id, name, timezone")
+    .select("id, name, timezone, project_members(role)")
+    .eq("project_members.user_id", user?.id ?? "")
     .is("archived_at", null)
     .order("created_at", { ascending: false });
 
@@ -31,7 +38,12 @@ export default async function ProjectsPage() {
                   className="block rounded-lg border border-line-strong px-3 py-2 hover:bg-row-hover"
                 >
                   <p className="font-medium">{project.name}</p>
-                  <p className="text-[12px] text-meta">{project.timezone}</p>
+                  <p className="text-[12px] text-meta">
+                    {project.timezone}
+                    {project.project_members[0] && project.project_members[0].role !== "owner"
+                      ? ` · ${projectRoleLabel(project.project_members[0].role)}`
+                      : null}
+                  </p>
                 </Link>
               </li>
             ))}

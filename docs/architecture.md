@@ -59,7 +59,26 @@ PostgreSQL (Supabase)
 * работающие «назад»/«вперёд» и закладки на конкретный проект;
 * отсутствие скрытого глобального состояния «текущий проект».
 
-Layout `app/(app)/[projectId]/layout.tsx` один раз проверяет доступ к проекту и отдаёт контекст (название проекта, timezone, роль) вниз по дереву. Если доступа нет — `notFound()`, без различения «не существует» и «нет доступа».
+Layout `app/(app)/[projectId]/layout.tsx` проверяет доступ к проекту и показывает название и метку роли, если у пользователя нет права на запись. Если доступа нет — `notFound()`, без различения «не существует» и «нет доступа».
+
+Layout не может передать данные страницам, поэтому роль читает `getProjectRole(projectId)` (`lib/projects/access.ts`, RPC `project_access`), обёрнутый в React `cache()`: layout и страница делают один запрос на рендер.
+
+### 4.1 Роли и режим только просмотра
+
+* Права проверяет PostgreSQL (`docs/database.md` §3, §6.2). Приложение только скрывает недоступные действия.
+* `lib/business/project-roles.ts`: `canEditProject(role)` (owner, member), `canManageProject(role)` (owner) и русские подписи ролей. Бизнес-логика использует только стабильные значения enum.
+* Страницы вычисляют `canEdit` и передают его клиентским компонентам. Для viewer скрыты формы создания, кнопки действий, приход и пересчёт, отключён drag-and-drop (`disabled` в `useSortable`/`useDraggable`). Поля карточки заявки выключены через `<fieldset disabled>` и явный `disabled`.
+* Каждое изменяющее Server Action начинается с `requireProjectEdit(projectId)`. RLS молча отфильтровывает UPDATE/DELETE до 0 строк, поэтому без проверки действие показало бы «успех», если роль сменили, пока страница была открыта.
+
+### 4.2 Приглашения
+
+1. Владелец в «Настройках → Участники» выбирает роль и создаёт ссылку `/invite/<token>`. Ссылка показывается один раз.
+2. Маршрут `/invite/[token]` защищён proxy: без сессии — `/login?next=/invite/<token>`. Ссылка «Зарегистрироваться» сохраняет `next`, вход и регистрация возвращают на него.
+3. `safeNextPath` (`lib/utils.ts`) пропускает только внутренние пути: `//host`, `/\host` и управляющие символы отбрасываются.
+4. Страница показывает проект, роль и пригласившего (`get_project_invitation`). «Принять» вызывает `accept_project_invitation` и переводит на доску проекта.
+5. Страница задаёт `referrer: no-referrer`, чтобы токен не уходил в заголовке Referer.
+
+Email-рассылки нет: ссылку владелец отправляет сам. `service_role` не нужен. Если в Supabase включено подтверждение email, после письма `next` теряется, и ссылку нужно открыть заново.
 
 ## 5. Бизнес-логика
 
@@ -148,8 +167,9 @@ app/
     actions.ts                      signOutAction (общий для всех страниц (app))
     profile/                        профиль пользователя (full_name)
     projects/                       список, создание и переключение проектов
+    invite/[token]/                 экран принятия приглашения
     [projectId]/
-      layout.tsx                    проверка доступа, контекст проекта
+      layout.tsx                    проверка доступа, метка роли
       board/                        главная доска: week-board.tsx (DnD недели), dnd.ts, panel.tsx
       tasks/                         список заявок, быстрое создание
       tasks/[taskId]/               карточка задачи
@@ -158,7 +178,7 @@ app/
       reports/                      отчёт по расходу материалов (page, data.ts, export/route.ts — CSV)
       executors/
       categories/
-      settings/                     название проекта, timezone
+      settings/                     название проекта, timezone; участники, приглашения (members-*.tsx)
   auth/confirm/route.ts             обработка ссылок из писем Supabase Auth (token_hash + type)
   api/                              только при реальной необходимости
 components/
@@ -167,7 +187,9 @@ components/
                                     project-nav.tsx, empty-state.tsx, sign-out-button.tsx
 lib/
   supabase/                         client.ts, server.ts, proxy.ts
-  business/                         working-days.ts, task-planning.ts, material-report.ts, dates.ts
+  business/                         working-days.ts, task-planning.ts, material-report.ts, dates.ts,
+                                    project-roles.ts
+  projects/access.ts                getProjectRole (cache), requireProjectEdit
   validation/                       Zod-схемы, общие для клиента и сервера
   errors.ts
   types/database.ts                 типы, сгенерированные Supabase CLI
@@ -185,7 +207,7 @@ proxy.ts
 | Бизнес-функции (рабочие дни, перенос, расчёт остатков) | Vitest, unit-тесты |
 | Типы | `tsc --noEmit` |
 | Стиль | ESLint (конфигурация Next.js) |
-| RLS | отдельный скрипт/тест: пользователь A не видит и не меняет данные пользователя B |
+| RLS | pgTAP `supabase/tests/database/rls.test.sql`: изоляция пользователей, права viewer/member/owner, приглашения |
 
 Тесты RLS обязательны: это единственный слой, который нельзя проверить глазами.
 

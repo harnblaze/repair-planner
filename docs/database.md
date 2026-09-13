@@ -1,6 +1,6 @@
 # Database
 
-> Статус: согласовано 2026-09-11, миграции 0001–0007 реализованы 2026-09-12. Документ соответствует фактической схеме.
+> Статус: согласовано 2026-09-11, миграции 0001–0007 реализованы 2026-09-12, 0008–0012 — после MVP. Документ соответствует фактической схеме.
 
 ## 1. ER-модель
 
@@ -11,6 +11,7 @@ auth.users 1─1 profiles
                   ▼
               projects 1──* project_members *──1 profiles
                   │
+                  ├──* project_invitations (ссылки-приглашения)
                   ├──* categories
                   ├──* executors
                   ├──* materials ──* material_movements
@@ -37,11 +38,19 @@ auth.users 1─1 profiles
 
 | Тип | Значения |
 |---|---|
-| `project_role` | `owner`, `member` |
+| `project_role` | `owner`, `member`, `viewer` (0011) |
 | `task_status` | `new`, `planned`, `in_progress`, `paused`, `completed`, `cancelled` |
 | `movement_kind` | `receipt`, `consumption`, `adjustment` |
 
-Расширение ролей в будущем — `ALTER TYPE project_role ADD VALUE 'viewer'`, без миграции данных.
+Права ролей (0012):
+
+| Роль | Данные проекта | Настройки проекта, участники, приглашения |
+|---|---|---|
+| `owner` | чтение и запись | да |
+| `member` («Редактор») | чтение и запись | нет |
+| `viewer` («Только просмотр») | только чтение | нет |
+
+`viewer` добавлен отдельной миграцией 0011: новое значение enum нельзя использовать в той же транзакции, в которой оно добавлено.
 
 ## 4. Приём против IDOR: составные внешние ключи
 
@@ -112,7 +121,43 @@ alter table task_materials
 
 PK: `(project_id, user_id)`. Индекс: `(user_id)` — для списка проектов пользователя.
 
-**RLS:** SELECT — членам того же проекта. INSERT/UPDATE/DELETE — только владельцу проекта. В MVP UI приглашений нет.
+**RLS (0012):**
+
+* SELECT — участникам того же проекта.
+* INSERT — политики нет. Участник появляется только через триггер создания проекта (`owner`) и RPC `accept_project_invitation`; иначе владелец мог бы добавить в проект произвольный `user_id`.
+* UPDATE — только колонка `role` (column privilege), только владелец, только между `member` и `viewer`. Роль `owner` не выдаётся и не отнимается.
+* DELETE — владелец удаляет участника, участник выходит сам. Строку `owner` удалить нельзя.
+
+Список участников с именами отдаёт RPC `project_member_list(p_project_id)` (`SECURITY DEFINER`): `profiles` и `auth.users` другим пользователям недоступны. Email возвращается только владельцу и самому пользователю.
+
+### 5.3a `project_invitations` — ссылки-приглашения (0012)
+
+| Поле | Тип | Примечание |
+|---|---|---|
+| `id` | uuid PK | |
+| `project_id` | uuid | FK → `projects(id)` on delete cascade |
+| `role` | project_role | `check (role in ('member', 'viewer'))` |
+| `token_hash` | bytea unique | sha256 токена; сам токен не хранится |
+| `created_by` | uuid | FK → `profiles(id)` |
+| `created_at` | timestamptz | |
+| `expires_at` | timestamptz | `now() + 7 days` |
+| `accepted_at`, `accepted_by` | timestamptz, uuid | заполняются при принятии |
+
+Индекс: `(project_id, created_at)`.
+
+Приглашение одноразовое и не привязано к email. Токен — 32 случайных байта в base64url (43 символа), показывается владельцу один раз: утечка таблицы не раскрывает действующие ссылки.
+
+**RLS:** SELECT — владельцу проекта. DELETE (отзыв) — владельцу и только непринятого приглашения; принятые остаются историей. INSERT/UPDATE политик нет.
+
+RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenticated`):
+
+| RPC | Назначение | Коды исключений |
+|---|---|---|
+| `create_project_invitation(p_project_id, p_role)` → `(id, token, expires_at)` | Создание ссылки владельцем | `access_denied`, `invalid_role` |
+| `get_project_invitation(p_token)` → `(project_name, role, inviter_name, expires_at, status)` | Экран принятия; `status`: `valid`, `expired`, `used`, `already_member`. Неизвестный токен — пустой результат | — |
+| `accept_project_invitation(p_token)` → `project_id` | Принятие: строка приглашения блокируется `FOR UPDATE`, участник и отметка о принятии пишутся в одной транзакции. Уже участник — возвращается проект без смены роли и без расходования ссылки | `invitation_not_found`, `invitation_used`, `invitation_expired` |
+
+Архивный проект для приглашений неотличим от несуществующего.
 
 ### 5.4 `categories` — цеха-заказчики
 
@@ -298,7 +343,7 @@ grant execute on function public.project_access(uuid) to authenticated;
 
 ### 6.2 Шаблон политики для таблиц проекта
 
-Для `categories`, `executors`, `materials`, `tasks`, `task_schedule`, `task_executors`, `task_materials`, `board_lists`, `board_items`:
+Для `categories`, `executors`, `materials`, `tasks`, `task_schedule`, `task_executors`, `task_materials`, `board_lists`, `board_items` (запись — с 0012):
 
 ```sql
 alter table public.<t> enable row level security;
@@ -307,28 +352,35 @@ create policy "<t>_select" on public.<t> for select to authenticated
   using (public.project_access(project_id) is not null);
 
 create policy "<t>_insert" on public.<t> for insert to authenticated
-  with check (public.project_access(project_id) is not null);
+  with check (public.project_can_edit(project_id));
 
 create policy "<t>_update" on public.<t> for update to authenticated
-  using (public.project_access(project_id) is not null)
-  with check (public.project_access(project_id) is not null);
+  using (public.project_can_edit(project_id))
+  with check (public.project_can_edit(project_id));
 
 create policy "<t>_delete" on public.<t> for delete to authenticated
-  using (public.project_access(project_id) is not null);
+  using (public.project_can_edit(project_id));
 ```
+
+`project_can_edit(p_project_id) returns boolean` — `SECURITY DEFINER`, как и `project_access`: истина для ролей `owner` и `member`.
+
+RPC доски (0008) и отчёт (0009) выполняются с правами вызывающего, поэтому отдельной проверки роли в них нет: `SELECT … FOR UPDATE` требует UPDATE-политики, и viewer получает `task_not_found`, а перестановка в списке у viewer ничего не меняет. RPC прихода и пересчёта (`SECURITY DEFINER`) проверяют `project_can_edit` сами и отвечают `access_denied`.
 
 Исключения:
 
 | Таблица | Отличие |
 |---|---|
 | `projects` | UPDATE/DELETE только при `project_access(id) = 'owner'`; INSERT с `owner_id = auth.uid()` |
-| `project_members` | изменения только владельцем |
+| `project_members` | INSERT нет; UPDATE только `role` владельцем; DELETE владельцем или самим участником, кроме строки `owner` (§5.3) |
+| `project_invitations` | SELECT и DELETE непринятых — владельцу; создание и принятие — только через RPC (§5.3a) |
 | `material_movements` | только SELECT; INSERT/UPDATE/DELETE не имеют policy вовсе |
 | `profiles` | доступ только к собственной строке |
 
 `auth.uid()` всегда оборачивается в `(select auth.uid())`, иначе функция вычисляется для каждой строки.
 
 ### 6.3 Что гарантируется
+
+Участник с ролью `viewer` читает данные проекта, но не может их изменить ни прямым запросом, ни через RPC.
 
 Пользователь B не может прочитать, изменить или удалить проект, задачу, материал, остаток, расписание или список пользователя A, даже подставляя чужие идентификаторы напрямую в запрос: проверка выполняется в PostgreSQL, а разнопроектные связи невозможны из-за составных FK.
 
@@ -348,14 +400,14 @@ create policy "<t>_delete" on public.<t> for delete to authenticated
 
 Ситуация «расход записался, но остаток не изменился» невозможна: обе операции находятся в одной транзакции, и клиент не может выполнить их по отдельности.
 
-Приход и ручная корректировка — две RPC, обе `SECURITY DEFINER` с `search_path = ''` и проверкой `project_access`; `EXECUTE` только у `authenticated`:
+Приход и ручная корректировка — две RPC, обе `SECURITY DEFINER` с `search_path = ''` и проверкой доступа (с 0012 — `project_can_edit`); `EXECUTE` только у `authenticated`:
 
 | RPC | Назначение | Движение |
 |---|---|---|
 | `record_material_movement(p_material_id, p_kind, p_quantity, p_note)` | Приход (страница материала, строка списка, «Начальный остаток» при создании). `consumption` запрещён — только через `task_materials`. | `receipt`: `p_quantity > 0`; `adjustment`: `p_quantity ≠ 0` (дельта) |
 | `set_material_balance(p_material_id, p_actual_balance, p_note)` (0010) | Корректировка по пересчёту: вводится фактический остаток | `adjustment`, `quantity = p_actual_balance − current_balance` |
 
-Коды исключений (переводятся в `lib/errors.ts`): `invalid_quantity`, `balance_unchanged` (разница 0 — движение не пишется), `material_not_found` — и для несуществующего материала, и для материала чужого проекта, чтобы нельзя было проверить существование чужого id. Комментарий обрезается, пустой сохраняется как `null`.
+Коды исключений (переводятся в `lib/errors.ts`): `invalid_quantity`, `balance_unchanged` (разница 0 — движение не пишется), `material_not_found` — и для несуществующего материала, и для материала чужого проекта, чтобы нельзя было проверить существование чужого id; `access_denied` — участнику без права записи (0012). Комментарий обрезается, пустой сохраняется как `null`.
 
 ### 7.2 Race conditions
 
@@ -408,7 +460,9 @@ update materials set current_balance = current_balance + delta where id = p_mate
 8. `0008_board_drag_and_drop` — `task_schedule.postponed`, пересчёт `planned_date` с учётом отложенных задач, RPC перемещения, схема `private`.
 9. `0009_material_consumption_report` — функция месячного отчёта по расходу в разрезе цехов.
 10. `0010_material_receipt_and_count` — усиление `record_material_movement` (положительный приход, единый код `material_not_found`), RPC `set_material_balance`.
+11. `0011_project_role_viewer` — значение `viewer` в `project_role`.
+12. `0012_project_invitations` — `project_can_edit`, политики записи через неё, `access_denied` в RPC материалов, ужесточение `project_members`, таблица и RPC приглашений, `project_member_list`.
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
-Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (`supabase test db`, 49/49 успешно). TypeScript-типы сгенерированы в `lib/types/database.ts`.
+Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (`supabase test db`, 89/89 успешно). TypeScript-типы сгенерированы в `lib/types/database.ts`.

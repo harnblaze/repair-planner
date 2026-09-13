@@ -3,7 +3,9 @@ import Link from "next/link";
 
 import { EmptyState } from "@/components/common/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { canEditProject } from "@/lib/business/project-roles";
 import { taskStatusLabel } from "@/lib/business/task-status";
+import { getProjectRole } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 
 import { CreateTaskForm } from "./create-task-form";
@@ -15,7 +17,8 @@ export const metadata: Metadata = {
 export default async function TasksPage({ params }: PageProps<"/[projectId]/tasks">) {
   const { projectId } = await params;
   const supabase = await createClient();
-  const [{ data: tasks }, { data: categories }] = await Promise.all([
+  const [role, { data: tasks }, { data: categories }] = await Promise.all([
+    getProjectRole(projectId),
     supabase
       .from("tasks")
       .select("id, title, status, categories(name)")
@@ -39,7 +42,9 @@ export default async function TasksPage({ params }: PageProps<"/[projectId]/task
           <CardTitle>Заявки</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <CreateTaskForm projectId={projectId} categories={categories ?? []} />
+          {canEditProject(role) ? (
+            <CreateTaskForm projectId={projectId} categories={categories ?? []} />
+          ) : null}
 
           <div className="flex flex-col divide-y divide-line-subtle">
             {open.length === 0 ? (

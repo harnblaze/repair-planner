@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { requireProjectEdit } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
 import { executorSchema, type ExecutorInput } from "@/lib/validation/reference-data";
@@ -14,6 +15,9 @@ export async function createExecutorAction(
   projectId: string,
   input: ExecutorInput,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = executorSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -45,6 +49,9 @@ export async function updateExecutorAction(
   executorId: string,
   input: ExecutorInput,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = executorSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -80,6 +87,9 @@ export async function setExecutorActiveAction(
   executorId: string,
   isActive: boolean,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("executors")

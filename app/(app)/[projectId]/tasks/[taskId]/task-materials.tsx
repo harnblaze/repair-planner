@@ -34,11 +34,14 @@ export function TaskMaterials({
   taskId,
   materials,
   taskMaterials,
+  canEdit,
 }: {
   projectId: string;
   taskId: string;
   materials: Material[];
   taskMaterials: TaskMaterialRow[];
+  /** false — только просмотр: список расхода без правки и добавления. */
+  canEdit: boolean;
 }) {
   const materialById = new Map(materials.map((m) => [m.id, m]));
   const usedMaterialIds = new Set(taskMaterials.map((tm) => tm.material_id));
@@ -61,12 +64,15 @@ export function TaskMaterials({
               taskId={taskId}
               row={row}
               material={materialById.get(row.material_id) ?? null}
+              canEdit={canEdit}
             />
           ))}
         </div>
       )}
 
-      <AddTaskMaterialForm projectId={projectId} taskId={taskId} materials={availableMaterials} />
+      {canEdit ? (
+        <AddTaskMaterialForm projectId={projectId} taskId={taskId} materials={availableMaterials} />
+      ) : null}
     </div>
   );
 }
@@ -76,11 +82,13 @@ function TaskMaterialRowItem({
   taskId,
   row,
   material,
+  canEdit,
 }: {
   projectId: string;
   taskId: string;
   row: TaskMaterialRow;
   material: Material | null;
+  canEdit: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [quantity, setQuantity] = useState(String(row.quantity));
@@ -124,7 +132,7 @@ function TaskMaterialRowItem({
     });
   };
 
-  if (editing) {
+  if (editing && canEdit) {
     return (
       <div className="flex flex-col gap-1 py-1.5">
         <div className="flex items-start gap-2">
@@ -188,14 +196,16 @@ function TaskMaterialRowItem({
           minimumBalance={material.minimum_balance}
         />
       </div>
-      <div className="flex items-center gap-2">
-        <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
-          Изменить
-        </Button>
-        <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={remove}>
-          Удалить
-        </Button>
-      </div>
+      {canEdit ? (
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
+            Изменить
+          </Button>
+          <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={remove}>
+            Удалить
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

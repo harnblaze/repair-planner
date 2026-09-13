@@ -200,6 +200,7 @@ export function WeekBoard({
   days,
   backlog,
   categories,
+  canEdit,
   children,
 }: {
   projectId: string;
@@ -208,6 +209,8 @@ export function WeekBoard({
   days: Record<string, DayTask[]>;
   backlog: BacklogTask[];
   categories: { id: string; name: string }[];
+  /** false — только просмотр: без перетаскивания и формы создания. */
+  canEdit: boolean;
   /** Остальные панели нижнего ряда — дополнительные списки. */
   children: React.ReactNode;
 }) {
@@ -333,6 +336,7 @@ export function WeekBoard({
                 isToday={date === today}
                 tasks={board.days[date] ?? []}
                 highlighted={dropAllowed(date)}
+                canEdit={canEdit}
               />
             ))}
           </div>
@@ -347,6 +351,7 @@ export function WeekBoard({
             tasks={board.backlog}
             categories={categories}
             highlighted={dropAllowed(BACKLOG)}
+            canEdit={canEdit}
           />
           {children}
         </section>
@@ -382,6 +387,7 @@ function DayColumn({
   isToday,
   tasks,
   highlighted,
+  canEdit,
 }: {
   projectId: string;
   date: string;
@@ -389,6 +395,7 @@ function DayColumn({
   isToday: boolean;
   tasks: DayTask[];
   highlighted: boolean;
+  canEdit: boolean;
 }) {
   const { setNodeRef } = useDroppable({ id: `day:${date}`, data: { container: date } satisfies DragData });
 
@@ -426,7 +433,13 @@ function DayColumn({
             <p className="px-0.5 py-1.5 text-[11.5px] text-faint">Нет запланированных работ</p>
           ) : (
             tasks.map((task) => (
-              <SortableTaskChip key={task.id} projectId={projectId} date={date} task={task} />
+              <SortableTaskChip
+                key={task.id}
+                projectId={projectId}
+                date={date}
+                task={task}
+                canEdit={canEdit}
+              />
             ))
           )}
         </div>
@@ -438,11 +451,26 @@ function DayColumn({
 // Защита от системного меню долгого нажатия на ссылку (iOS) и выделения текста при перетаскивании.
 const DRAGGABLE_CLASS = "touch-manipulation select-none [-webkit-touch-callout:none]";
 
-function SortableTaskChip({ projectId, date, task }: { projectId: string; date: string; task: DayTask }) {
+function SortableTaskChip({
+  projectId,
+  date,
+  task,
+  canEdit,
+}: {
+  projectId: string;
+  date: string;
+  task: DayTask;
+  canEdit: boolean;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `${date}|${task.id}`,
     data: { container: date, taskId: task.id, title: task.title } satisfies DragData,
+    disabled: !canEdit,
   });
+
+  if (!canEdit) {
+    return <TaskChip projectId={projectId} task={task} />;
+  }
 
   return (
     <TaskChip
@@ -462,11 +490,13 @@ function BacklogPanel({
   tasks,
   categories,
   highlighted,
+  canEdit,
 }: {
   projectId: string;
   tasks: BacklogTask[];
   categories: { id: string; name: string }[];
   highlighted: boolean;
+  canEdit: boolean;
 }) {
   const { setNodeRef } = useDroppable({ id: BACKLOG, data: { container: BACKLOG } satisfies DragData });
 
@@ -474,13 +504,13 @@ function BacklogPanel({
     <div ref={setNodeRef} className="flex min-w-0">
       <Panel className={cn("flex-1 transition-shadow duration-120", highlighted && DROP_HIGHLIGHT)}>
         <PanelHeader icon={<BookmarkIcon />} title="Текущие заявки" count={tasks.length} />
-        <CreateTaskForm projectId={projectId} categories={categories} />
+        {canEdit ? <CreateTaskForm projectId={projectId} categories={categories} /> : null}
         {tasks.length === 0 ? (
           <PanelEmpty>Нет текущих заявок</PanelEmpty>
         ) : (
           <div className="flex flex-col p-1.5">
             {tasks.map((task) => (
-              <DraggableTaskRow key={task.id} projectId={projectId} task={task} />
+              <DraggableTaskRow key={task.id} projectId={projectId} task={task} canEdit={canEdit} />
             ))}
           </div>
         )}
@@ -491,11 +521,24 @@ function BacklogPanel({
 
 // «Текущие заявки» упорядочены по дате создания, позиции у них нет — строки
 // только перетаскиваются в дни, а не сортируются внутри панели.
-function DraggableTaskRow({ projectId, task }: { projectId: string; task: BacklogTask }) {
+function DraggableTaskRow({
+  projectId,
+  task,
+  canEdit,
+}: {
+  projectId: string;
+  task: BacklogTask;
+  canEdit: boolean;
+}) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `${BACKLOG}|${task.id}`,
     data: { container: BACKLOG, taskId: task.id, title: task.title } satisfies DragData,
+    disabled: !canEdit,
   });
+
+  if (!canEdit) {
+    return <TaskRow projectId={projectId} task={task} />;
+  }
 
   return (
     <TaskRow

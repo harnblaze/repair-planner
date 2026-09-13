@@ -5,9 +5,10 @@ import { redirect } from "next/navigation";
 import { mapAuthError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
+import { safeNextPath } from "@/lib/utils";
 import { registerSchema, type RegisterInput } from "@/lib/validation/auth";
 
-export async function registerAction(input: RegisterInput): Promise<ActionResult> {
+export async function registerAction(input: RegisterInput, next?: string): Promise<ActionResult> {
   const parsed = registerSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -37,5 +38,5 @@ export async function registerAction(input: RegisterInput): Promise<ActionResult
     };
   }
 
-  redirect("/projects");
+  redirect(safeNextPath(next));
 }

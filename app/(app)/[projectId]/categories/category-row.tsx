@@ -13,7 +13,15 @@ import { setCategoryArchivedAction, updateCategoryAction } from "./actions";
 
 type Category = { id: string; name: string; is_archived: boolean };
 
-export function CategoryRow({ projectId, category }: { projectId: string; category: Category }) {
+export function CategoryRow({
+  projectId,
+  category,
+  canEdit,
+}: {
+  projectId: string;
+  category: Category;
+  canEdit: boolean;
+}) {
   const [editing, setEditing] = useState(false);
   const [pending, startTransition] = useTransition();
 
@@ -49,7 +57,7 @@ export function CategoryRow({ projectId, category }: { projectId: string; catego
     });
   };
 
-  if (editing) {
+  if (editing && canEdit) {
     return (
       <form onSubmit={onSubmit} className="flex items-start gap-2 py-1" noValidate>
         <div className="flex flex-1 flex-col gap-1">
@@ -71,16 +79,18 @@ export function CategoryRow({ projectId, category }: { projectId: string; catego
       <span className={category.is_archived ? "text-meta line-through" : ""}>
         {category.name}
       </span>
-      <div className="flex items-center gap-2">
-        {!category.is_archived ? (
-          <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
-            Изменить
+      {canEdit ? (
+        <div className="flex items-center gap-2">
+          {!category.is_archived ? (
+            <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
+              Изменить
+            </Button>
+          ) : null}
+          <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={toggleArchived}>
+            {category.is_archived ? "Восстановить" : "Архивировать"}
           </Button>
-        ) : null}
-        <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={toggleArchived}>
-          {category.is_archived ? "Восстановить" : "Архивировать"}
-        </Button>
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

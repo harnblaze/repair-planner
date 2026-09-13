@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { mapAuthError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
+import { safeNextPath } from "@/lib/utils";
 import { loginSchema, type LoginInput } from "@/lib/validation/auth";
 
 export async function loginAction(input: LoginInput, next?: string): Promise<ActionResult> {
@@ -25,5 +26,5 @@ export async function loginAction(input: LoginInput, next?: string): Promise<Act
     return { ok: false, error: mapAuthError(error.message) };
   }
 
-  redirect(next && next.startsWith("/") ? next : "/projects");
+  redirect(safeNextPath(next));
 }

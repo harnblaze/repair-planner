@@ -7,7 +7,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(49);
+select plan(89);
 
 -- ================= Фикстуры (как postgres, минуя RLS) =================
 
@@ -436,12 +436,12 @@ select throws_ok(
   'set_material_balance rejects users without access to the material''s project'
 );
 
--- 32. Добавлять участников проекта может только его владелец
+-- 32. Добавить себя в чужой проект напрямую нельзя
 select throws_ok(
   $$ insert into public.project_members (project_id, user_id, role)
      values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '22222222-2222-2222-2222-222222222222', 'member') $$,
   null::char(5), null,
-  'only the project owner can add members'
+  'an outsider cannot add themselves to a project'
 );
 
 -- 33. RPC перемещения не видят задачи и записи чужого проекта
@@ -483,6 +483,324 @@ select is(
   (select current_balance from public.materials where id = 'd0000000-0000-0000-0000-0000000000a3'),
   7.5::numeric,
   'a rejected foreign balance count leaves the balance unchanged'
+);
+
+-- ================= Приглашения и роли (0011, 0012) =================
+-- C принимает приглашение viewer, D — member. Токены сохраняются в настройках
+-- транзакции, чтобы передать их между сменами пользователя.
+
+insert into auth.users (id, email) values
+  ('33333333-3333-3333-3333-333333333333', 'viewer-c@example.com'),
+  ('44444444-4444-4444-4444-444444444444', 'member-d@example.com');
+
+select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true) as _;
+set role authenticated;
+
+select set_config('test.viewer_token', token, true) as _
+  from create_project_invitation('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'viewer');
+select set_config('test.member_token', token, true) as _
+  from create_project_invitation('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'member');
+select set_config('test.expired_token', token, true) as _
+  from create_project_invitation('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'viewer');
+select set_config('test.pending_token', token, true) as _
+  from create_project_invitation('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'member');
+
+-- 42. Роль owner через приглашение не выдаётся
+select throws_ok(
+  $$ select * from create_project_invitation('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'owner') $$,
+  null::char(5), 'invalid_role',
+  'an invitation cannot grant the owner role'
+);
+
+-- 43. Токен не хранится в открытом виде
+select is(
+  (select count(*) from public.project_invitations
+     where token_hash = convert_to(current_setting('test.viewer_token'), 'UTF8')),
+  0::bigint,
+  'invitation token is stored only as a hash'
+);
+
+reset role;
+update public.project_invitations set expires_at = now() - interval '1 minute'
+  where token_hash = extensions.digest(current_setting('test.expired_token'), 'sha256');
+
+-- ----- Посторонний B -----
+select set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true) as _;
+set role authenticated;
+
+-- 44. Приглашение в чужой проект создать нельзя
+select throws_ok(
+  $$ select * from create_project_invitation('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'viewer') $$,
+  null::char(5), 'access_denied',
+  'an outsider cannot create invitations'
+);
+
+-- 45. Приглашения и участники чужого проекта не видны
+select is(
+  (select count(*) from public.project_invitations where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  0::bigint,
+  'an outsider cannot select invitations of another project'
+);
+
+select is(
+  (select count(*) from project_member_list('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')),
+  0::bigint,
+  'an outsider gets an empty member list'
+);
+
+-- ----- Viewer C -----
+reset role;
+select set_config('request.jwt.claim.sub', '33333333-3333-3333-3333-333333333333', true) as _;
+set role authenticated;
+
+-- 46. Экран приглашения видит проект и статус
+select is(
+  (select project_name || ':' || role::text || ':' || status
+     from get_project_invitation(current_setting('test.viewer_token'))),
+  'Project A:viewer:valid',
+  'get_project_invitation shows the project, role and status by token'
+);
+
+select is(
+  (select count(*) from get_project_invitation('not-a-real-token')),
+  0::bigint,
+  'get_project_invitation returns nothing for an unknown token'
+);
+
+-- 47. Недействительные ссылки (до принятия: участнику любая ссылка проекта
+-- просто возвращает проект)
+select throws_ok(
+  $$ select accept_project_invitation(current_setting('test.expired_token')) $$,
+  null::char(5), 'invitation_expired',
+  'an expired invitation cannot be accepted'
+);
+
+select throws_ok(
+  $$ select accept_project_invitation('not-a-real-token') $$,
+  null::char(5), 'invitation_not_found',
+  'an unknown invitation token is rejected'
+);
+
+-- 48. Принятие даёт роль viewer
+select is(
+  accept_project_invitation(current_setting('test.viewer_token')),
+  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid,
+  'accept_project_invitation returns the project id'
+);
+
+select is(
+  project_access('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')::text,
+  'viewer',
+  'accepted invitation grants its role'
+);
+
+-- 49. Viewer читает данные проекта
+select ok(
+  (select count(*) from public.tasks where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') > 0,
+  'viewer can select project tasks'
+);
+
+-- 50. Viewer не может менять данные проекта
+select throws_ok(
+  $$ insert into public.categories (project_id, name) values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Viewer category') $$,
+  '42501', null,
+  'viewer cannot insert categories'
+);
+
+select throws_ok(
+  $$ insert into public.task_materials (project_id, task_id, material_id, quantity)
+     values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'e0000000-0000-0000-0000-0000000000a2', 'd0000000-0000-0000-0000-0000000000a3', 1) $$,
+  '42501', null,
+  'viewer cannot record material consumption'
+);
+
+with upd as (
+  update public.tasks set title = 'hacked' where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' returning id
+)
+select is((select count(*) from upd), 0::bigint, 'viewer cannot update tasks');
+
+with del as (
+  delete from public.board_items where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' returning id
+)
+select is((select count(*) from del), 0::bigint, 'viewer cannot delete board items');
+
+select throws_ok(
+  $$ select record_material_movement('d0000000-0000-0000-0000-0000000000a3', 'receipt', 1, null) $$,
+  null::char(5), 'access_denied',
+  'viewer cannot record a receipt'
+);
+
+select throws_ok(
+  $$ select set_material_balance('d0000000-0000-0000-0000-0000000000a3', 100, null) $$,
+  null::char(5), 'access_denied',
+  'viewer cannot count a material balance'
+);
+
+select throws_ok(
+  $$ select plan_task_on_day('e0000000-0000-0000-0000-0000000000a2', '2020-01-10', null) $$,
+  null::char(5), 'task_not_found',
+  'viewer cannot plan tasks through the board RPC'
+);
+
+-- 51. Viewer не управляет участниками и не видит приглашения
+select throws_ok(
+  $$ select * from create_project_invitation('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'member') $$,
+  null::char(5), 'access_denied',
+  'viewer cannot create invitations'
+);
+
+select is(
+  (select count(*) from public.project_invitations where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  0::bigint,
+  'viewer cannot select invitations'
+);
+
+with upd as (
+  update public.project_members set role = 'member'
+    where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and user_id = '33333333-3333-3333-3333-333333333333'
+    returning user_id
+)
+select is((select count(*) from upd), 0::bigint, 'viewer cannot raise their own role');
+
+-- 52. Email других участников скрыт от не-владельца
+select is(
+  (select string_agg(role::text || ':' || coalesce(email, '-'), ',' order by role)
+     from project_member_list('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')),
+  'owner:-,viewer:viewer-c@example.com',
+  'member list hides other members'' emails from non-owners'
+);
+
+-- ----- Member D -----
+reset role;
+select set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true) as _;
+set role authenticated;
+
+-- 53. Использованную ссылку повторно принять нельзя
+select throws_ok(
+  $$ select accept_project_invitation(current_setting('test.viewer_token')) $$,
+  null::char(5), 'invitation_used',
+  'a used invitation cannot be accepted again'
+);
+
+select accept_project_invitation(current_setting('test.member_token'));
+
+-- 54. Member редактирует данные проекта
+select lives_ok(
+  $$ insert into public.tasks (project_id, title) values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Member task') $$,
+  'member can create tasks'
+);
+
+select lives_ok(
+  $$ select record_material_movement('d0000000-0000-0000-0000-00000000000a', 'receipt', 1, null) $$,
+  'member can record a receipt'
+);
+
+-- 55. Member не меняет настройки проекта и роли участников
+with upd as (
+  update public.projects set name = 'renamed by member' where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' returning id
+)
+select is((select count(*) from upd), 0::bigint, 'member cannot update project settings');
+
+with upd as (
+  update public.project_members set role = 'member'
+    where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and user_id = '33333333-3333-3333-3333-333333333333'
+    returning user_id
+)
+select is((select count(*) from upd), 0::bigint, 'member cannot change roles of other members');
+
+-- ----- Owner A -----
+reset role;
+select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true) as _;
+set role authenticated;
+
+-- 56. Владелец меняет роль участника
+with upd as (
+  update public.project_members set role = 'member'
+    where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and user_id = '33333333-3333-3333-3333-333333333333'
+    returning user_id
+)
+select is((select count(*) from upd), 1::bigint, 'owner can change a member role');
+
+select throws_ok(
+  $$ update public.project_members set role = 'owner'
+       where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and user_id = '33333333-3333-3333-3333-333333333333' $$,
+  '42501', null,
+  'owner cannot grant the owner role'
+);
+
+select throws_ok(
+  $$ update public.project_members set user_id = '22222222-2222-2222-2222-222222222222'
+       where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and user_id = '33333333-3333-3333-3333-333333333333' $$,
+  '42501', null,
+  'owner cannot replace the user of a membership'
+);
+
+select throws_ok(
+  $$ insert into public.project_members (project_id, user_id, role)
+     values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '22222222-2222-2222-2222-222222222222', 'viewer') $$,
+  '42501', null,
+  'owner cannot add members directly, only through invitations'
+);
+
+-- 57. Строку владельца удалить нельзя
+with del as (
+  delete from public.project_members
+    where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and role = 'owner' returning user_id
+)
+select is((select count(*) from del), 0::bigint, 'the owner membership cannot be deleted');
+
+-- 58. Отозвать можно только непринятое приглашение
+with del as (
+  delete from public.project_invitations
+    where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and accepted_at is not null returning id
+)
+select is((select count(*) from del), 0::bigint, 'accepted invitations cannot be revoked');
+
+with del as (
+  delete from public.project_invitations
+    where token_hash = extensions.digest(current_setting('test.pending_token'), 'sha256') returning id
+)
+select is((select count(*) from del), 1::bigint, 'owner can revoke a pending invitation');
+
+select is(
+  (select status from get_project_invitation(current_setting('test.viewer_token'))),
+  'already_member',
+  'get_project_invitation reports an existing membership'
+);
+
+-- 59. Владелец видит email участников
+select is(
+  (select count(*) from project_member_list('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') where email is not null),
+  3::bigint,
+  'owner sees emails of all members'
+);
+
+-- ----- Member D выходит из проекта -----
+reset role;
+select set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', true) as _;
+set role authenticated;
+
+-- 60. Участник может покинуть проект и теряет доступ
+with del as (
+  delete from public.project_members
+    where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and user_id = '44444444-4444-4444-4444-444444444444'
+    returning user_id
+)
+select is((select count(*) from del), 1::bigint, 'a member can leave the project');
+
+select is(
+  (select count(*) from public.projects where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  0::bigint,
+  'a member who left no longer sees the project'
+);
+
+reset role;
+
+-- 61. Попытки viewer не изменили остаток
+select is(
+  (select current_balance from public.materials where id = 'd0000000-0000-0000-0000-0000000000a3'),
+  7.5::numeric,
+  'rejected viewer operations leave the balance unchanged'
 );
 
 select * from finish();

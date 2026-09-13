@@ -12,10 +12,12 @@ export function StatusSelect({
   projectId,
   taskId,
   status,
+  disabled = false,
 }: {
   projectId: string;
   taskId: string;
   status: TaskStatus;
+  disabled?: boolean;
 }) {
   const [current, setCurrent] = useState(status);
   const [pending, startTransition] = useTransition();
@@ -37,7 +39,7 @@ export function StatusSelect({
       wrapperClassName="w-44"
       aria-label="Статус заявки"
       value={current}
-      disabled={pending}
+      disabled={pending || disabled}
       onChange={(e) => onChange(e.target.value as TaskStatus)}
     >
       {TASK_STATUSES.map((s) => (

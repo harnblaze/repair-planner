@@ -27,7 +27,15 @@ type Material = {
   is_active: boolean;
 };
 
-export function MaterialRow({ projectId, material }: { projectId: string; material: Material }) {
+export function MaterialRow({
+  projectId,
+  material,
+  canEdit,
+}: {
+  projectId: string;
+  material: Material;
+  canEdit: boolean;
+}) {
   const [editing, setEditing] = useState(false);
   const [receiving, setReceiving] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -68,7 +76,7 @@ export function MaterialRow({ projectId, material }: { projectId: string; materi
     });
   };
 
-  if (editing) {
+  if (editing && canEdit) {
     return (
       <form onSubmit={onSubmit} className="flex items-start gap-2 py-1" noValidate>
         <div className="flex flex-1 flex-col gap-1">
@@ -114,29 +122,31 @@ export function MaterialRow({ projectId, material }: { projectId: string; materi
             minimumBalance={material.minimum_balance}
           />
         </div>
-        <div className="flex items-center gap-2">
-          {material.is_active ? (
-            <>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-expanded={receiving}
-                onClick={() => setReceiving((open) => !open)}
-              >
-                Приход
-              </Button>
-              <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
-                Изменить
-              </Button>
-            </>
-          ) : null}
-          <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={toggleActive}>
-            {material.is_active ? "Деактивировать" : "Активировать"}
-          </Button>
-        </div>
+        {canEdit ? (
+          <div className="flex items-center gap-2">
+            {material.is_active ? (
+              <>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-expanded={receiving}
+                  onClick={() => setReceiving((open) => !open)}
+                >
+                  Приход
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
+                  Изменить
+                </Button>
+              </>
+            ) : null}
+            <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={toggleActive}>
+              {material.is_active ? "Деактивировать" : "Активировать"}
+            </Button>
+          </div>
+        ) : null}
       </div>
-      {receiving ? (
+      {receiving && canEdit ? (
         <ReceiptForm
           projectId={projectId}
           materialId={material.id}

@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 
+import { requireProjectEdit } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
 import { createTaskSchema, type CreateTaskInput } from "@/lib/validation/task";
@@ -10,6 +11,9 @@ export async function createTaskAction(
   projectId: string,
   input: CreateTaskInput,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = createTaskSchema.safeParse(input);
 
   if (!parsed.success) {

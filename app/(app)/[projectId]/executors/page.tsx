@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 
 import { EmptyState } from "@/components/common/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { canEditProject } from "@/lib/business/project-roles";
+import { getProjectRole } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 
 import { CreateExecutorForm } from "./create-executor-form";
@@ -14,6 +16,7 @@ export const metadata: Metadata = {
 export default async function ExecutorsPage({ params }: PageProps<"/[projectId]/executors">) {
   const { projectId } = await params;
   const supabase = await createClient();
+  const canEdit = canEditProject(await getProjectRole(projectId));
   const { data: executors } = await supabase
     .from("executors")
     .select("id, name, position, is_active")
@@ -31,14 +34,14 @@ export default async function ExecutorsPage({ params }: PageProps<"/[projectId]/
           <CardTitle>Исполнители</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <CreateExecutorForm projectId={projectId} />
+          {canEdit ? <CreateExecutorForm projectId={projectId} /> : null}
 
           <div className="flex flex-col divide-y divide-line-subtle">
             {active.length === 0 ? (
               <EmptyState>Пока нет ни одного исполнителя.</EmptyState>
             ) : (
               active.map((executor) => (
-                <ExecutorRow key={executor.id} projectId={projectId} executor={executor} />
+                <ExecutorRow key={executor.id} projectId={projectId} executor={executor} canEdit={canEdit} />
               ))
             )}
           </div>
@@ -50,7 +53,7 @@ export default async function ExecutorsPage({ params }: PageProps<"/[projectId]/
               </summary>
               <div className="flex flex-col divide-y divide-line-subtle pt-2">
                 {inactive.map((executor) => (
-                  <ExecutorRow key={executor.id} projectId={projectId} executor={executor} />
+                  <ExecutorRow key={executor.id} projectId={projectId} executor={executor} canEdit={canEdit} />
                 ))}
               </div>
             </details>

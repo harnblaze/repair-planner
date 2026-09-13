@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { canEditProject } from "@/lib/business/project-roles";
+import { getProjectRole } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 
 import { CarryOverButton } from "./carry-over-button";
@@ -20,6 +22,7 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
   const supabase = await createClient();
 
   const [
+    role,
     { data: task },
     { data: categories },
     { data: executors },
@@ -27,6 +30,7 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
     { data: materials },
     { data: taskMaterials },
   ] = await Promise.all([
+    getProjectRole(projectId),
     supabase
       .from("tasks")
       .select("id, title, description, category_id, status, planned_date")
@@ -62,13 +66,19 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
   }
 
   const assignedExecutorIds = assigned?.map((a) => a.executor_id) ?? [];
+  const canEdit = canEditProject(role);
 
   return (
     <main className="mx-auto flex max-w-lg w-full flex-col gap-4 px-5 pt-6 pb-7">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Заявка</CardTitle>
-          <StatusSelect projectId={projectId} taskId={taskId} status={task.status} />
+          <StatusSelect
+            projectId={projectId}
+            taskId={taskId}
+            status={task.status}
+            disabled={!canEdit}
+          />
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
           <TaskDetailsForm
@@ -80,6 +90,7 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
               categoryId: task.category_id ?? "",
             }}
             categories={categories ?? []}
+            disabled={!canEdit}
           />
 
           <ExecutorsPicker
@@ -87,6 +98,7 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
             taskId={taskId}
             executors={executors ?? []}
             assignedExecutorIds={assignedExecutorIds}
+            disabled={!canEdit}
           />
 
           {/* key пересоздаёт форму при смене planned_date переносом (действие
@@ -97,20 +109,24 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
             projectId={projectId}
             taskId={taskId}
             plannedDate={task.planned_date}
+            disabled={!canEdit}
           />
 
-          <CarryOverButton
-            projectId={projectId}
-            taskId={taskId}
-            plannedDate={task.planned_date}
-            status={task.status}
-          />
+          {canEdit ? (
+            <CarryOverButton
+              projectId={projectId}
+              taskId={taskId}
+              plannedDate={task.planned_date}
+              status={task.status}
+            />
+          ) : null}
 
           <TaskMaterials
             projectId={projectId}
             taskId={taskId}
             materials={materials ?? []}
             taskMaterials={taskMaterials ?? []}
+            canEdit={canEdit}
           />
         </CardContent>
       </Card>

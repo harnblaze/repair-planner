@@ -4,7 +4,9 @@ import Link from "next/link";
 import { CalendarIcon } from "@/components/common/icons";
 import { formatDateShort, todayInTimezone } from "@/lib/business/dates";
 import { describeOccurrence, lastWorkDate, type ScheduleDay } from "@/lib/business/task-planning";
+import { canEditProject } from "@/lib/business/project-roles";
 import { addWeeks, mondayOf, weekWorkingDays } from "@/lib/business/working-days";
+import { getProjectRole } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 
 import type { BoardItem } from "./board-item-row";
@@ -57,12 +59,14 @@ export default async function BoardPage({
   const weekDates = weekWorkingDays(monday);
 
   const [
+    role,
     { data: backlogTasks },
     { data: scheduleRows },
     { data: categories },
     { data: boardLists },
     { data: boardItems },
   ] = await Promise.all([
+    getProjectRole(projectId),
     supabase
       .from("tasks")
       // task_schedule — дни истории отложенной задачи: новый день не может быть раньше последнего.
@@ -142,6 +146,7 @@ export default async function BoardPage({
   }
 
   const isCurrentWeek = monday === currentMonday;
+  const canEdit = canEditProject(role);
 
   return (
     <main className="flex flex-1 flex-col gap-4 px-5 pt-[18px] pb-7">
@@ -174,6 +179,7 @@ export default async function BoardPage({
         days={days}
         backlog={backlog}
         categories={categories ?? []}
+        canEdit={canEdit}
       >
         {(boardLists ?? []).map((list) => (
           <BoardList
@@ -183,6 +189,7 @@ export default async function BoardPage({
             name={list.name}
             items={itemsByList.get(list.id) ?? []}
             today={today}
+            canEdit={canEdit}
           />
         ))}
       </WeekBoard>

@@ -29,10 +29,12 @@ export function BoardItemRow({
   projectId,
   item,
   today,
+  canEdit,
 }: {
   projectId: string;
   item: BoardItem;
   today: string;
+  canEdit: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -42,7 +44,7 @@ export function BoardItemRow({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
     data: { title: item.title },
-    disabled: editing,
+    disabled: editing || !canEdit,
   });
   const sortableStyle = { transform: CSS.Translate.toString(transform), transition };
 
@@ -95,7 +97,7 @@ export function BoardItemRow({
     .filter(Boolean)
     .join(" · ");
 
-  if (editing) {
+  if (editing && canEdit) {
     return (
       <form
         ref={setNodeRef}
@@ -129,8 +131,8 @@ export function BoardItemRow({
     <div
       ref={setNodeRef}
       style={sortableStyle}
-      {...dragAttributes(attributes)}
-      {...dragListeners(listeners)}
+      {...(canEdit ? dragAttributes(attributes) : {})}
+      {...(canEdit ? dragListeners(listeners) : {})}
       className={cn(
         "group relative flex touch-manipulation items-center gap-2.5 rounded-[7px] bg-surface px-[9px] py-2 transition-colors duration-120 select-none hover:bg-row-hover",
         isDragging && "z-10 shadow-[0_6px_16px_rgba(20,30,50,0.14)]",
@@ -138,9 +140,9 @@ export function BoardItemRow({
     >
       <input
         type="checkbox"
-        className="size-3.5 shrink-0 cursor-pointer accent-[var(--color-brand)]"
+        className="size-3.5 shrink-0 cursor-pointer accent-[var(--color-brand)] disabled:cursor-default"
         checked={item.is_done}
-        disabled={pending}
+        disabled={pending || !canEdit}
         aria-label={
           item.is_done ? `Вернуть «${item.title}» в работу` : `Отметить «${item.title}» выполненным`
         }
@@ -164,14 +166,16 @@ export function BoardItemRow({
       ) : null}
       {/* Действия перекрывают строку, а не занимают её ширину: в панели шириной
           ~150px иначе не остаётся места под название (docs/redesign.md §6). */}
-      <div className="absolute inset-y-0 right-1 flex items-center gap-0.5 rounded-[7px] bg-row-hover pl-3 opacity-0 transition-opacity duration-120 group-focus-within:opacity-100 group-hover:opacity-100">
-        <Button type="button" variant="ghost" size="xs" onClick={() => setEditing(true)}>
-          Изменить
-        </Button>
-        <Button type="button" variant="ghost" size="xs" disabled={pending} onClick={onDelete}>
-          Удалить
-        </Button>
-      </div>
+      {canEdit ? (
+        <div className="absolute inset-y-0 right-1 flex items-center gap-0.5 rounded-[7px] bg-row-hover pl-3 opacity-0 transition-opacity duration-120 group-focus-within:opacity-100 group-hover:opacity-100">
+          <Button type="button" variant="ghost" size="xs" onClick={() => setEditing(true)}>
+            Изменить
+          </Button>
+          <Button type="button" variant="ghost" size="xs" disabled={pending} onClick={onDelete}>
+            Удалить
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

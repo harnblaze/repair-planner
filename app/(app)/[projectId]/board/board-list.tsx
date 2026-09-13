@@ -32,12 +32,15 @@ export function BoardList({
   name,
   items,
   today,
+  canEdit,
 }: {
   projectId: string;
   listId: string;
   name: string;
   items: BoardItem[];
   today: string;
+  /** false — только просмотр: без добавления, правки и перетаскивания. */
+  canEdit: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const { icon, empty } = presentation(name);
@@ -87,18 +90,20 @@ export function BoardList({
   return (
     <Panel>
       <PanelHeader icon={icon} title={name} />
-      <form onSubmit={onSubmit} className={PANEL_FORM_CLASS} noValidate>
-        <div className="flex gap-2">
-          <Input placeholder="Добавить" {...register("title")} />
-          <Button type="submit" disabled={pending}>
-            <PlusIcon />
-            Добавить
-          </Button>
-        </div>
-        {errors.title ? (
-          <p className="text-[11.5px] text-status-alert-fg">{errors.title.message}</p>
-        ) : null}
-      </form>
+      {canEdit ? (
+        <form onSubmit={onSubmit} className={PANEL_FORM_CLASS} noValidate>
+          <div className="flex gap-2">
+            <Input placeholder="Добавить" {...register("title")} />
+            <Button type="submit" disabled={pending}>
+              <PlusIcon />
+              Добавить
+            </Button>
+          </div>
+          {errors.title ? (
+            <p className="text-[11.5px] text-status-alert-fg">{errors.title.message}</p>
+          ) : null}
+        </form>
+      ) : null}
       {items.length === 0 ? (
         <PanelEmpty>{empty}</PanelEmpty>
       ) : (
@@ -113,7 +118,13 @@ export function BoardList({
           <SortableContext items={orderedItems.map((item) => item.id)} strategy={verticalListSortingStrategy}>
             <div className="flex flex-col p-1.5" onClickCapture={clicks.onClickCapture}>
               {orderedItems.map((item) => (
-                <BoardItemRow key={item.id} projectId={projectId} item={item} today={today} />
+                <BoardItemRow
+                  key={item.id}
+                  projectId={projectId}
+                  item={item}
+                  today={today}
+                  canEdit={canEdit}
+                />
               ))}
             </div>
           </SortableContext>

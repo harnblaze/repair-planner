@@ -16,14 +16,17 @@ export function TaskDetailsForm({
   taskId,
   task,
   categories,
+  disabled = false,
 }: {
   projectId: string;
   taskId: string;
   task: { title: string; description: string; categoryId: string };
   categories: Category[];
+  disabled?: boolean;
 }) {
+  // fieldset disabled выключает все вложенные поля разом (режим только просмотра).
   return (
-    <div className="flex flex-col gap-4">
+    <fieldset disabled={disabled} className="flex min-w-0 flex-col gap-4">
       <TitleField projectId={projectId} taskId={taskId} initialValue={task.title} />
       <DescriptionField projectId={projectId} taskId={taskId} initialValue={task.description} />
       <CategoryField
@@ -32,7 +35,7 @@ export function TaskDetailsForm({
         initialValue={task.categoryId}
         categories={categories}
       />
-    </div>
+    </fieldset>
   );
 }
 

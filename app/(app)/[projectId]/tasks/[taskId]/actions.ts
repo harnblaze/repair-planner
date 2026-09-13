@@ -7,6 +7,7 @@ import { canCarryOverTask } from "@/lib/business/task-planning";
 import type { TaskStatus } from "@/lib/business/task-status";
 import { isWorkingDay, nextWorkingDay } from "@/lib/business/working-days";
 import { isUniqueViolation, mapBoardMoveError } from "@/lib/errors";
+import { requireProjectEdit } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
 import {
@@ -34,6 +35,9 @@ export async function updateTaskTitleAction(
   taskId: string,
   title: string,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = taskTitleSchema.safeParse(title);
 
   if (!parsed.success) {
@@ -65,6 +69,9 @@ export async function updateTaskDescriptionAction(
   taskId: string,
   description: string,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = taskDescriptionSchema.safeParse(description);
 
   if (!parsed.success) {
@@ -96,6 +103,9 @@ export async function updateTaskCategoryAction(
   taskId: string,
   categoryId: string | null,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("tasks")
@@ -123,6 +133,9 @@ export async function setTaskStatusAction(
   taskId: string,
   status: TaskStatus,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("tasks")
@@ -153,6 +166,9 @@ export async function setTaskPlannedDateAction(
   taskId: string,
   workDate: string | null,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   if (workDate && (!/^\d{4}-\d{2}-\d{2}$/.test(workDate) || !isWorkingDay(workDate))) {
     return { ok: false, error: "Планировать можно только на рабочий день (Пн–Пт)." };
   }
@@ -250,6 +266,9 @@ export async function setTaskExecutorsAction(
   taskId: string,
   executorIds: string[],
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const supabase = await createClient();
 
   // Убеждаемся, что задача действительно в этом проекте, прежде чем менять
@@ -299,6 +318,9 @@ export async function carryOverTaskAction(
   projectId: string,
   taskId: string,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -361,6 +383,9 @@ export async function addTaskMaterialAction(
   taskId: string,
   input: TaskMaterialInput,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = taskMaterialSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -410,6 +435,9 @@ export async function updateTaskMaterialAction(
   quantity: number,
   note: string,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = taskMaterialSchema.shape.quantity.safeParse(quantity);
 
   if (!parsed.success) {
@@ -444,6 +472,9 @@ export async function removeTaskMaterialAction(
   taskId: string,
   taskMaterialId: string,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const supabase = await createClient();
   // Удаление строки расхода возвращает списанное количество на остаток
   // (корректировка +quantity) — той же триггерной функцией (§7.1).

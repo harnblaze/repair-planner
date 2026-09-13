@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { isUniqueViolation, mapMaterialMovementError } from "@/lib/errors";
+import { requireProjectEdit } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
 import {
@@ -25,6 +26,9 @@ export async function createMaterialAction(
   projectId: string,
   input: CreateMaterialInput,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = createMaterialSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -85,6 +89,9 @@ export async function updateMaterialAction(
   materialId: string,
   input: MaterialInput,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = materialSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -127,6 +134,9 @@ export async function setMaterialActiveAction(
   materialId: string,
   isActive: boolean,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("materials")
@@ -156,6 +166,9 @@ export async function recordMaterialReceiptAction(
   materialId: string,
   input: MaterialReceiptInput,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = materialReceiptSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -188,6 +201,9 @@ export async function setMaterialBalanceAction(
   materialId: string,
   input: MaterialCountInput,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = materialCountSchema.safeParse(input);
 
   if (!parsed.success) {

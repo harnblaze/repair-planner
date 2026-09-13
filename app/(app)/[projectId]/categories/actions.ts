@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { isUniqueViolation } from "@/lib/errors";
+import { requireProjectEdit } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
 import { categorySchema, type CategoryInput } from "@/lib/validation/reference-data";
@@ -15,6 +16,9 @@ export async function createCategoryAction(
   projectId: string,
   input: CategoryInput,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = categorySchema.safeParse(input);
 
   if (!parsed.success) {
@@ -47,6 +51,9 @@ export async function updateCategoryAction(
   categoryId: string,
   input: CategoryInput,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = categorySchema.safeParse(input);
 
   if (!parsed.success) {
@@ -85,6 +92,9 @@ export async function setCategoryArchivedAction(
   categoryId: string,
   isArchived: boolean,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("categories")

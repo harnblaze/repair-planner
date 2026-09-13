@@ -2,6 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 
@@ -14,6 +15,8 @@ import { registerSchema, type RegisterInput } from "@/lib/validation/auth";
 import { registerAction } from "./actions";
 
 export function RegisterForm() {
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next") ?? undefined;
   const [serverError, setServerError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -27,7 +30,7 @@ export function RegisterForm() {
   const onSubmit = handleSubmit((data) => {
     setServerError(null);
     startTransition(async () => {
-      const result = await registerAction(data);
+      const result = await registerAction(data, next);
       if (!result.ok) {
         setServerError(result.error);
       } else if (result.message) {
@@ -98,7 +101,10 @@ export function RegisterForm() {
 
       <p className="text-center text-[12px] text-meta">
         Уже есть аккаунт?{" "}
-        <Link href="/login" className="text-foreground hover:underline">
+        <Link
+          href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"}
+          className="text-foreground hover:underline"
+        >
           Войти
         </Link>
       </p>

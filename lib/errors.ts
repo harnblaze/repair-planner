@@ -51,6 +51,7 @@ const MATERIAL_MOVEMENT_ERROR_MESSAGES: Record<string, string> = {
   invalid_quantity: "Проверьте количество.",
   material_not_found: "Материал не найден. Обновите страницу.",
   balance_unchanged: "Остаток уже равен указанному значению.",
+  access_denied: "Недостаточно прав для изменения данных проекта.",
 };
 
 /** Переводит код исключения RPC движения материала в понятное сообщение. */
@@ -58,5 +59,22 @@ export function mapMaterialMovementError(message: string | undefined | null): st
   return (
     (message && MATERIAL_MOVEMENT_ERROR_MESSAGES[message]) ||
     "Не удалось сохранить движение материала. Попробуйте ещё раз."
+  );
+}
+
+// Коды исключений RPC приглашений (supabase/migrations/0012).
+const INVITATION_ERROR_MESSAGES: Record<string, string> = {
+  access_denied: "Приглашать участников может только владелец проекта.",
+  invalid_role: "Выберите роль участника.",
+  invitation_not_found: "Приглашение не найдено. Попросите владельца проекта прислать новую ссылку.",
+  invitation_used: "Это приглашение уже использовано. Попросите владельца проекта прислать новую ссылку.",
+  invitation_expired: "Срок действия приглашения истёк. Попросите владельца проекта прислать новую ссылку.",
+};
+
+/** Переводит код исключения RPC приглашения в понятное сообщение. */
+export function mapInvitationError(message: string | undefined | null): string {
+  return (
+    (message && INVITATION_ERROR_MESSAGES[message]) ||
+    "Не удалось выполнить операцию с приглашением. Попробуйте ещё раз."
   );
 }

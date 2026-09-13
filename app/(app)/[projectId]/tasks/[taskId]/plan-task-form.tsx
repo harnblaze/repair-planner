@@ -13,10 +13,12 @@ export function PlanTaskForm({
   projectId,
   taskId,
   plannedDate,
+  disabled = false,
 }: {
   projectId: string;
   taskId: string;
   plannedDate: string | null;
+  disabled?: boolean;
 }) {
   const [value, setValue] = useState(plannedDate ?? "");
   const [savedValue, setSavedValue] = useState(plannedDate ?? "");
@@ -47,12 +49,14 @@ export function PlanTaskForm({
         id="plan-date"
         type="date"
         value={value}
-        disabled={pending}
+        disabled={pending || disabled}
         onChange={(e) => onChange(e.target.value)}
       />
-      <p className="text-[11px] text-meta-alt">
-        Очистите дату, чтобы вернуть заявку в «Текущие заявки».
-      </p>
+      {disabled ? null : (
+        <p className="text-[11px] text-meta-alt">
+          Очистите дату, чтобы вернуть заявку в «Текущие заявки».
+        </p>
+      )}
     </div>
   );
 }

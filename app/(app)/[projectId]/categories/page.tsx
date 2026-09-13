@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 
 import { EmptyState } from "@/components/common/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { canEditProject } from "@/lib/business/project-roles";
+import { getProjectRole } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 
 import { CategoryRow } from "./category-row";
@@ -14,6 +16,7 @@ export const metadata: Metadata = {
 export default async function CategoriesPage({ params }: PageProps<"/[projectId]/categories">) {
   const { projectId } = await params;
   const supabase = await createClient();
+  const canEdit = canEditProject(await getProjectRole(projectId));
   const { data: categories } = await supabase
     .from("categories")
     .select("id, name, is_archived")
@@ -31,14 +34,14 @@ export default async function CategoriesPage({ params }: PageProps<"/[projectId]
           <CardTitle>Категории</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <CreateCategoryForm projectId={projectId} />
+          {canEdit ? <CreateCategoryForm projectId={projectId} /> : null}
 
           <div className="flex flex-col divide-y divide-line-subtle">
             {active.length === 0 ? (
               <EmptyState>Пока нет ни одной категории.</EmptyState>
             ) : (
               active.map((category) => (
-                <CategoryRow key={category.id} projectId={projectId} category={category} />
+                <CategoryRow key={category.id} projectId={projectId} category={category} canEdit={canEdit} />
               ))
             )}
           </div>
@@ -50,7 +53,7 @@ export default async function CategoriesPage({ params }: PageProps<"/[projectId]
               </summary>
               <div className="flex flex-col divide-y divide-line-subtle pt-2">
                 {archived.map((category) => (
-                  <CategoryRow key={category.id} projectId={projectId} category={category} />
+                  <CategoryRow key={category.id} projectId={projectId} category={category} canEdit={canEdit} />
                 ))}
               </div>
             </details>

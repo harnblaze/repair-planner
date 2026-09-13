@@ -358,6 +358,64 @@ export type Database = {
         }
         Relationships: []
       }
+      project_invitations: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          created_at: string
+          created_by: string
+          expires_at: string
+          id: string
+          project_id: string
+          role: Database["public"]["Enums"]["project_role"]
+          token_hash: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          created_by: string
+          expires_at?: string
+          id?: string
+          project_id: string
+          role: Database["public"]["Enums"]["project_role"]
+          token_hash: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          id?: string
+          project_id?: string
+          role?: Database["public"]["Enums"]["project_role"]
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_invitations_accepted_by_fkey"
+            columns: ["accepted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_invitations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_invitations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_members: {
         Row: {
           created_at: string
@@ -673,6 +731,28 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_project_invitation: { Args: { p_token: string }; Returns: string }
+      create_project_invitation: {
+        Args: {
+          p_project_id: string
+          p_role: Database["public"]["Enums"]["project_role"]
+        }
+        Returns: {
+          expires_at: string
+          id: string
+          token: string
+        }[]
+      }
+      get_project_invitation: {
+        Args: { p_token: string }
+        Returns: {
+          expires_at: string
+          inviter_name: string
+          project_name: string
+          role: Database["public"]["Enums"]["project_role"]
+          status: string
+        }[]
+      }
       material_consumption_by_category: {
         Args: { p_month: string; p_project_id: string }
         Returns: {
@@ -705,6 +785,17 @@ export type Database = {
       project_access: {
         Args: { p_project_id: string }
         Returns: Database["public"]["Enums"]["project_role"]
+      }
+      project_can_edit: { Args: { p_project_id: string }; Returns: boolean }
+      project_member_list: {
+        Args: { p_project_id: string }
+        Returns: {
+          created_at: string
+          email: string
+          full_name: string
+          role: Database["public"]["Enums"]["project_role"]
+          user_id: string
+        }[]
       }
       record_material_movement: {
         Args: {
@@ -763,7 +854,7 @@ export type Database = {
     }
     Enums: {
       movement_kind: "receipt" | "consumption" | "adjustment"
-      project_role: "owner" | "member"
+      project_role: "owner" | "member" | "viewer"
       task_status:
         | "new"
         | "planned"
@@ -902,7 +993,7 @@ export const Constants = {
   public: {
     Enums: {
       movement_kind: ["receipt", "consumption", "adjustment"],
-      project_role: ["owner", "member"],
+      project_role: ["owner", "member", "viewer"],
       task_status: [
         "new",
         "planned",

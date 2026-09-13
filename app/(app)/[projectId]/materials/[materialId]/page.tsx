@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDateTime } from "@/lib/business/dates";
 import { movementLabel, withBalanceAfter } from "@/lib/business/material-movements";
 import { formatQuantity } from "@/lib/business/material-report";
+import { canEditProject } from "@/lib/business/project-roles";
+import { getProjectRole } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 
@@ -41,8 +43,9 @@ export default async function MaterialPage({
   const limit = resolveLimit(limitParam);
 
   const supabase = await createClient();
-  const [{ data: material }, { data: project }, { data: movements, error: movementsError }] =
+  const [role, { data: material }, { data: project }, { data: movements, error: movementsError }] =
     await Promise.all([
+      getProjectRole(projectId),
       supabase
         .from("materials")
         .select("id, name, unit, current_balance, minimum_balance, is_active")
@@ -99,21 +102,23 @@ export default async function MaterialPage({
             <BalanceBadge balance={material.current_balance} minimumBalance={material.minimum_balance} />
           </p>
         </CardHeader>
-        <CardContent className="grid gap-5 sm:grid-cols-2">
-          <section className="flex flex-col gap-2">
-            <h2 className="text-[13px] font-semibold text-ink">Приход</h2>
-            <ReceiptForm projectId={projectId} materialId={material.id} unit={material.unit} />
-          </section>
-          <section className="flex flex-col gap-2">
-            <h2 className="text-[13px] font-semibold text-ink">Корректировка по пересчёту</h2>
-            <CountForm
-              projectId={projectId}
-              materialId={material.id}
-              unit={material.unit}
-              currentBalance={material.current_balance}
-            />
-          </section>
-        </CardContent>
+        {canEditProject(role) ? (
+          <CardContent className="grid gap-5 sm:grid-cols-2">
+            <section className="flex flex-col gap-2">
+              <h2 className="text-[13px] font-semibold text-ink">Приход</h2>
+              <ReceiptForm projectId={projectId} materialId={material.id} unit={material.unit} />
+            </section>
+            <section className="flex flex-col gap-2">
+              <h2 className="text-[13px] font-semibold text-ink">Корректировка по пересчёту</h2>
+              <CountForm
+                projectId={projectId}
+                materialId={material.id}
+                unit={material.unit}
+                currentBalance={material.current_balance}
+              />
+            </section>
+          </CardContent>
+        ) : null}
       </Card>
 
       <Card>

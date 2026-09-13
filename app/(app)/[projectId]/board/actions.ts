@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { mapBoardMoveError } from "@/lib/errors";
+import { requireProjectEdit } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
 import { boardItemSchema, type BoardItemInput } from "@/lib/validation/board-item";
@@ -37,6 +38,9 @@ export async function createTaskFromBoardAction(
   projectId: string,
   input: CreateTaskInput,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = createTaskSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -78,6 +82,9 @@ export async function createBoardItemAction(
   listId: string,
   input: BoardItemInput,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = boardItemSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -127,6 +134,9 @@ export async function updateBoardItemAction(
   itemId: string,
   input: BoardItemInput,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = boardItemSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -166,6 +176,9 @@ export async function setBoardItemDoneAction(
   itemId: string,
   isDone: boolean,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("board_items")
@@ -190,6 +203,9 @@ export async function deleteBoardItemAction(
   projectId: string,
   itemId: string,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("board_items")
@@ -220,6 +236,9 @@ export async function planTaskOnDayAction(
   projectId: string,
   input: PlanTaskOnDayInput,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = planTaskOnDaySchema.safeParse(input);
   if (!parsed.success) return INVALID_MOVE;
 
@@ -243,6 +262,9 @@ export async function moveTaskScheduleAction(
   projectId: string,
   input: MoveTaskScheduleInput,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = moveTaskScheduleSchema.safeParse(input);
   if (!parsed.success) return INVALID_MOVE;
 
@@ -267,6 +289,9 @@ export async function returnTaskToBacklogAction(
   projectId: string,
   taskId: string,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = idSchema.safeParse(taskId);
   if (!parsed.success) return INVALID_MOVE;
 
@@ -293,6 +318,9 @@ export async function moveBoardItemAction(
   projectId: string,
   input: MoveBoardItemInput,
 ): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
   const parsed = moveBoardItemSchema.safeParse(input);
   if (!parsed.success) return INVALID_MOVE;
 
