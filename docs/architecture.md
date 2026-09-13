@@ -153,6 +153,7 @@ app/
       tasks/                         список заявок, быстрое создание
       tasks/[taskId]/               карточка задачи
       materials/                    справочник и остатки
+      reports/                      отчёт по расходу материалов (page, data.ts, export/route.ts — CSV)
       executors/
       categories/
       settings/                     название проекта, timezone
@@ -164,7 +165,7 @@ components/
                                     project-nav.tsx, empty-state.tsx, sign-out-button.tsx
 lib/
   supabase/                         client.ts, server.ts, proxy.ts
-  business/                         working-days.ts, task-planning.ts, materials.ts, dates.ts
+  business/                         working-days.ts, task-planning.ts, material-report.ts, dates.ts
   validation/                       Zod-схемы, общие для клиента и сервера
   errors.ts
   types/database.ts                 типы, сгенерированные Supabase CLI

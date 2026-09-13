@@ -372,6 +372,15 @@ update materials set current_balance = current_balance + delta where id = p_mate
 
 Выбранный вариант — редактируемая строка расхода + неизменяемый журнал + кешированный баланс — сохраняет и удобство, и аудит, и производительность.
 
+### 7.5 Месячный отчёт по расходу
+
+Функция `material_consumption_by_category(p_project_id uuid, p_month date)` (миграция `0009`) — `SECURITY INVOKER`, `STABLE`, только чтение: RLS ограничивает строки проектами с доступом, для чужого проекта результат пуст.
+
+* Границы месяца вычисляются в `projects.timezone`: `date_trunc('month', p_month)::timestamp at time zone tz` — `occurred_at` сравнивается с моментами, а не с датой сервера.
+* Строки — `material_movements` с `task_id is not null` и `kind in ('consumption', 'adjustment')`; `quantity = -sum(quantity)`, группировка по текущей категории заявки и материалу, нулевые суммы отбрасываются.
+* Запрос идёт по индексу `material_movements (project_id, occurred_at)`; новых индексов не требуется.
+* Снимок категории в журнале не хранится (product-requirements.md §4.6). Если понадобится «цех на момент списания» — добавить `category_id` в `material_movements` и заполнять триггером расхода.
+
 ## 8. Рабочие дни в БД
 
 Функция `next_working_day(d date) returns date`, `immutable`: пропускает субботу и воскресенье. В MVP используется только для серверных операций; основной расчёт для UI — в `lib/business/working-days.ts`. Праздники добавляются позже отдельной таблицей `holidays (project_id, date)` без изменения существующих таблиц.
@@ -388,7 +397,8 @@ update materials set current_balance = current_balance + delta where id = p_mate
 6. `0006_board_lists` — `board_lists`, `board_items`, засев системных списков, RLS.
 7. `0007_fix_projects_select_returning` — исправление SELECT-политики `projects` для `INSERT … RETURNING`.
 8. `0008_board_drag_and_drop` — `task_schedule.postponed`, пересчёт `planned_date` с учётом отложенных задач, RPC перемещения, схема `private`.
+9. `0009_material_consumption_report` — функция месячного отчёта по расходу в разрезе цехов.
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
-Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (`supabase test db`, 39/39 успешно). TypeScript-типы сгенерированы в `lib/types/database.ts`.
+Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (`supabase test db`, 42/42 успешно). TypeScript-типы сгенерированы в `lib/types/database.ts`.

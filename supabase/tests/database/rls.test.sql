@@ -7,7 +7,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(39);
+select plan(42);
 
 -- ================= Фикстуры (как postgres, минуя RLS) =================
 
@@ -325,20 +325,66 @@ select is(
   'move_board_item reorders items within a list'
 );
 
+-- ================= Отчёт по расходу материалов (0009) =================
+
+insert into public.materials (id, project_id, name, unit) values
+  ('d0000000-0000-0000-0000-0000000000a2', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Report Material', 'шт');
+
+insert into public.tasks (id, project_id, title, category_id) values
+  ('e0000000-0000-0000-0000-0000000000a1', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Report Task 1', 'c0000000-0000-0000-0000-00000000000a'),
+  ('e0000000-0000-0000-0000-0000000000a2', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Report Task 2', null);
+
+insert into public.task_materials (project_id, task_id, material_id, quantity) values
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'e0000000-0000-0000-0000-0000000000a1', 'd0000000-0000-0000-0000-0000000000a2', 5),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'e0000000-0000-0000-0000-0000000000a2', 'd0000000-0000-0000-0000-0000000000a2', 2);
+
+update public.task_materials set quantity = 7
+  where task_id = 'e0000000-0000-0000-0000-0000000000a1' and material_id = 'd0000000-0000-0000-0000-0000000000a2';
+
+-- Даты движений задаются в обход RLS: клиент журнал не меняет.
+-- Проект в Europe/Moscow (UTC+3): 2026-03-31 21:30 UTC — это уже 1 апреля по Москве.
+reset role;
+update public.material_movements set occurred_at = '2026-03-31 21:30:00+00'
+  where task_id = 'e0000000-0000-0000-0000-0000000000a1' and kind = 'consumption';
+update public.material_movements set occurred_at = '2026-04-15 12:00:00+00'
+  where task_id = 'e0000000-0000-0000-0000-0000000000a1' and kind = 'adjustment';
+update public.material_movements set occurred_at = '2026-03-31 20:30:00+00'
+  where task_id = 'e0000000-0000-0000-0000-0000000000a2';
+select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true) as _;
+set role authenticated;
+
+-- 29. Месяц — в timezone проекта; правка расхода суммируется с исходным списанием
+select is(
+  (select string_agg(coalesce(category_name, '—') || ':' || material_name || ':' || quantity::text, ',')
+     from public.material_consumption_by_category('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '2026-04-01')
+     where material_name = 'Report Material'),
+  'Category A:Report Material:7.000',
+  'monthly report uses the project timezone and nets consumption edits by movement date'
+);
+
+-- 30. Заявка без категории попадает в отдельную группу своего месяца
+select is(
+  (select string_agg(coalesce(category_name, '—') || ':' || quantity::text, ',')
+     from public.material_consumption_by_category('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '2026-03-15')
+     where material_name = 'Report Material'),
+  '—:2.000',
+  'monthly report groups tasks without a category separately'
+);
+
 -- ================= Пользователь B: проверки без доступа к проекту A =================
 
 reset role;
 select set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true) as _;
 set role authenticated;
 
--- 29. RPC отказывает пользователю без доступа к проекту материала
+-- 31. RPC отказывает пользователю без доступа к проекту материала
 select throws_ok(
   $$ select record_material_movement('d0000000-0000-0000-0000-00000000000a', 'receipt', 1, null) $$,
   null::char(5), null,
   'record_material_movement rejects users without access to the material''s project'
 );
 
--- 30. Добавлять участников проекта может только его владелец
+-- 32. Добавлять участников проекта может только его владелец
 select throws_ok(
   $$ insert into public.project_members (project_id, user_id, role)
      values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '22222222-2222-2222-2222-222222222222', 'member') $$,
@@ -346,7 +392,7 @@ select throws_ok(
   'only the project owner can add members'
 );
 
--- 31. RPC перемещения не видят задачи и записи чужого проекта
+-- 33. RPC перемещения не видят задачи и записи чужого проекта
 select throws_ok(
   $$ select plan_task_on_day('e0000000-0000-0000-0000-00000000000a', '2020-01-10', null) $$,
   null::char(5), 'task_not_found',
@@ -369,6 +415,13 @@ select throws_ok(
   $$ select move_board_item('f0000000-0000-0000-0000-000000000001', 0) $$,
   null::char(5), 'item_not_found',
   'move_board_item rejects items of a project without access'
+);
+
+-- 34. Отчёт не показывает расход чужого проекта
+select is(
+  (select count(*) from public.material_consumption_by_category('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '2026-04-01')),
+  0::bigint,
+  'monthly report returns nothing for a project without access'
 );
 
 reset role;

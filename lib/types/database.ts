@@ -673,6 +673,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      material_consumption_by_category: {
+        Args: { p_month: string; p_project_id: string }
+        Returns: {
+          category_id: string
+          category_name: string
+          material_id: string
+          material_name: string
+          quantity: number
+          unit: string
+        }[]
+      }
       move_board_item: {
         Args: { p_item_id: string; p_position: number }
         Returns: undefined
