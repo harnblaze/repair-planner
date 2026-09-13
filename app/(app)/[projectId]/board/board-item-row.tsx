@@ -1,5 +1,7 @@
 "use client";
 
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
@@ -13,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { boardItemSchema, type BoardItemInput } from "@/lib/validation/board-item";
 
 import { deleteBoardItemAction, setBoardItemDoneAction, updateBoardItemAction } from "./actions";
+import { dragAttributes, dragListeners } from "./dnd";
 
 export type BoardItem = {
   id: string;
@@ -33,6 +36,15 @@ export function BoardItemRow({
 }) {
   const [editing, setEditing] = useState(false);
   const [pending, startTransition] = useTransition();
+
+  // Во время редактирования строка не перетаскивается — иначе выделение текста
+  // в полях формы начинало бы перетаскивание.
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.id,
+    data: { title: item.title },
+    disabled: editing,
+  });
+  const sortableStyle = { transform: CSS.Translate.toString(transform), transition };
 
   const {
     register,
@@ -85,7 +97,13 @@ export function BoardItemRow({
 
   if (editing) {
     return (
-      <form onSubmit={onSubmit} className="flex flex-col gap-2 px-[9px] py-2" noValidate>
+      <form
+        ref={setNodeRef}
+        style={sortableStyle}
+        onSubmit={onSubmit}
+        className="flex flex-col gap-2 px-[9px] py-2"
+        noValidate
+      >
         <Input {...register("title")} autoFocus />
         {errors.title ? (
           <p className="text-[11.5px] text-status-alert-fg">{errors.title.message}</p>
@@ -108,7 +126,16 @@ export function BoardItemRow({
   }
 
   return (
-    <div className="group relative flex items-center gap-2.5 rounded-[7px] px-[9px] py-2 transition-colors duration-120 hover:bg-row-hover">
+    <div
+      ref={setNodeRef}
+      style={sortableStyle}
+      {...dragAttributes(attributes)}
+      {...dragListeners(listeners)}
+      className={cn(
+        "group relative flex touch-manipulation items-center gap-2.5 rounded-[7px] bg-surface px-[9px] py-2 transition-colors duration-120 select-none hover:bg-row-hover",
+        isDragging && "z-10 shadow-[0_6px_16px_rgba(20,30,50,0.14)]",
+      )}
+    >
       <input
         type="checkbox"
         className="size-3.5 shrink-0 cursor-pointer accent-[var(--color-brand)]"

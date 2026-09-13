@@ -160,7 +160,7 @@ PK: `(project_id, user_id)`. Индекс: `(user_id)` — для списка �
 | `description` | text | |
 | `category_id` | uuid null | FK составной → `categories(id, project_id)`, on delete set null |
 | `status` | task_status not null default `'new'` | |
-| `planned_date` | date null | **кеш** — максимальная дата из `task_schedule`, поддерживается триггером |
+| `planned_date` | date null | **кеш** — последняя дата из `task_schedule` (null, если последний день отложен), поддерживается триггером |
 | `completed_at` | timestamptz null | |
 | `created_by` | uuid | FK → `profiles(id)` |
 | `created_at`, `updated_at` | timestamptz | |
@@ -187,7 +187,8 @@ PK: `(project_id, user_id)`. Индекс: `(user_id)` — для списка �
 | `task_id` | uuid | составной FK → `tasks(id, project_id)` on delete cascade |
 | `work_date` | date not null | |
 | `position` | int not null default 0 | порядок внутри дня |
-| `carried_over` | boolean not null default false | `true` — день добавлен переносом, а не первичным планированием |
+| `carried_over` | boolean not null default false | `true` — день добавлен переносом (или продолжением отложенной задачи), а не первичным планированием |
+| `postponed` | boolean not null default false | `true` — после этого дня задача была отложена (возвращена в «Текущие заявки»), миграция `0008` |
 | `note` | text | причина переноса, опционально |
 | `created_by` | uuid | |
 | `created_at` | timestamptz | |
@@ -197,7 +198,20 @@ PK: `(project_id, user_id)`. Индекс: `(user_id)` — для списка �
 
 Эта таблица одновременно является **историей переносов**: последовательность `work_date` с признаком `carried_over` и `created_by` полностью описывает, как задача двигалась по дням. Отдельная таблица `task_transfers` не нужна.
 
-Триггер `after insert/update/delete`: пересчитывает `tasks.planned_date = max(work_date)` (или `null`).
+Триггер `after insert/delete/update of work_date, postponed, task_id`: пересчитывает `tasks.planned_date` = `work_date` последнего дня, либо `null`, если дней нет или последний день `postponed`. Смена одной `position` триггер не вызывает; `tasks` обновляется только при фактическом изменении значения.
+
+#### RPC перемещения на доске (`0008`)
+
+Все — `SECURITY INVOKER`: доступ проверяют те же RLS-политики. Исключения — стабильные коды (`task_not_found`, `task_has_history`, …), переводятся в текст в `lib/errors.ts::mapBoardMoveError`.
+
+| Функция | Что делает |
+|---|---|
+| `plan_task_on_day(p_task_id, p_work_date, p_position default null)` | задача из «Текущих заявок» → день; дата не раньше последнего дня истории; тот же день снимает `postponed`; `new` → `planned` |
+| `move_task_schedule(p_task_id, p_from_date, p_to_date, p_position)` | порядок внутри дня или смена дня (только для единственного неотложенного дня задачи) |
+| `return_task_to_backlog(p_task_id) returns boolean` | правило «Отложить» (product-requirements.md §4.4); `true` — история сохранена |
+| `move_board_item(p_item_id, p_position)` | порядок записи внутри списка |
+
+Позиции перенумеровываются `0..n-1` одним `UPDATE`. Конкурентные перестановки одного дня/списка сериализуются `pg_advisory_xact_lock` (строк дня может ещё не быть, `FOR UPDATE` не подходит), строка задачи блокируется `FOR UPDATE`. Служебные функции `private.lock_board_container` и `private.place_task_in_day` лежат в схеме `private`, которая не публикуется через API.
 
 ### 5.9 `task_executors`
 
@@ -372,7 +386,9 @@ update materials set current_balance = current_balance + delta where id = p_mate
 4. `0004_tasks` — `tasks`, `task_schedule`, `task_executors`, триггер `planned_date`, RLS.
 5. `0005_materials_flow` — `task_materials`, `material_movements`, триггеры баланса, RPC движения, RLS.
 6. `0006_board_lists` — `board_lists`, `board_items`, засев системных списков, RLS.
+7. `0007_fix_projects_select_returning` — исправление SELECT-политики `projects` для `INSERT … RETURNING`.
+8. `0008_board_drag_and_drop` — `task_schedule.postponed`, пересчёт `planned_date` с учётом отложенных задач, RPC перемещения, схема `private`.
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
-Все шесть миграций применены на локальном стеке (`supabase start` / `supabase db reset`) и покрыты pgTAP-тестами RLS в `supabase/tests/database/rls.test.sql` (`supabase test db --local`, 21/21 успешно). TypeScript-типы сгенерированы в `lib/types/database.ts`.
+Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (`supabase test db`, 39/39 успешно). TypeScript-типы сгенерированы в `lib/types/database.ts`.

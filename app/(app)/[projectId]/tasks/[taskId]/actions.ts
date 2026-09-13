@@ -6,7 +6,7 @@ import { formatDateLong } from "@/lib/business/dates";
 import { canCarryOverTask } from "@/lib/business/task-planning";
 import type { TaskStatus } from "@/lib/business/task-status";
 import { isWorkingDay, nextWorkingDay } from "@/lib/business/working-days";
-import { isUniqueViolation } from "@/lib/errors";
+import { isUniqueViolation, mapBoardMoveError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
 import {
@@ -168,13 +168,31 @@ export async function setTaskPlannedDateAction(
 
   const { data: task } = await supabase
     .from("tasks")
-    .select("id, status")
+    .select("id, status, planned_date")
     .eq("id", taskId)
     .eq("project_id", projectId)
     .maybeSingle();
 
   if (!task) {
     return { ok: false, error: "Заявка не найдена." };
+  }
+
+  // Задача сейчас в «Текущих заявках» (в т.ч. отложенная с историей дней) —
+  // планируем тем же RPC, что и перетаскивание на доске: история сохраняется,
+  // статус new → planned выставляется в той же транзакции.
+  if (workDate && !task.planned_date) {
+    const { error: planError } = await supabase.rpc("plan_task_on_day", {
+      p_task_id: taskId,
+      p_work_date: workDate,
+    });
+
+    if (planError) {
+      console.error("setTaskPlannedDateAction (plan):", planError);
+      return { ok: false, error: mapBoardMoveError(planError.message) };
+    }
+
+    revalidateTask(projectId, taskId);
+    return { ok: true };
   }
 
   // Это ручной выбор конкретной даты (поле в карточке), а не перенос — он

@@ -1,7 +1,9 @@
 "use client";
 
+import { DndContext, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useTransition } from "react";
+import { useId, useOptimistic, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -10,8 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { boardItemSchema, type BoardItemInput } from "@/lib/validation/board-item";
 
-import { createBoardItemAction } from "./actions";
+import { createBoardItemAction, moveBoardItemAction } from "./actions";
 import { BoardItemRow, type BoardItem } from "./board-item-row";
+import { BOARD_ACCESSIBILITY, useBoardSensors, useSuppressClickAfterDrag } from "./dnd";
 import { PANEL_FORM_CLASS, Panel, PanelEmpty, PanelHeader } from "./panel";
 
 // Иконка и текст пустого состояния подбираются по названию списка: сами списки
@@ -38,6 +41,29 @@ export function BoardList({
 }) {
   const [pending, startTransition] = useTransition();
   const { icon, empty } = presentation(name);
+
+  // Порядок записей — перетаскиванием внутри списка (board_items.position).
+  const dndId = useId();
+  const sensors = useBoardSensors();
+  const clicks = useSuppressClickAfterDrag();
+  const [orderedItems, moveOptimistic] = useOptimistic(
+    items,
+    (current, move: { from: number; to: number }) => arrayMove(current, move.from, move.to),
+  );
+
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    clicks.onDragFinish();
+    if (!over || active.id === over.id) return;
+    const from = orderedItems.findIndex((item) => item.id === active.id);
+    const to = orderedItems.findIndex((item) => item.id === over.id);
+    if (from === -1 || to === -1) return;
+
+    startTransition(async () => {
+      moveOptimistic({ from, to });
+      const result = await moveBoardItemAction(projectId, { itemId: String(active.id), position: to });
+      if (!result.ok) toast.error(result.error);
+    });
+  };
 
   const {
     register,
@@ -76,11 +102,22 @@ export function BoardList({
       {items.length === 0 ? (
         <PanelEmpty>{empty}</PanelEmpty>
       ) : (
-        <div className="flex flex-col p-1.5">
-          {items.map((item) => (
-            <BoardItemRow key={item.id} projectId={projectId} item={item} today={today} />
-          ))}
-        </div>
+        <DndContext
+          id={dndId}
+          sensors={sensors}
+          accessibility={BOARD_ACCESSIBILITY}
+          onDragStart={clicks.onDragStart}
+          onDragEnd={onDragEnd}
+          onDragCancel={clicks.onDragFinish}
+        >
+          <SortableContext items={orderedItems.map((item) => item.id)} strategy={verticalListSortingStrategy}>
+            <div className="flex flex-col p-1.5" onClickCapture={clicks.onClickCapture}>
+              {orderedItems.map((item) => (
+                <BoardItemRow key={item.id} projectId={projectId} item={item} today={today} />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
     </Panel>
   );

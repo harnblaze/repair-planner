@@ -7,7 +7,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(21);
+select plan(39);
 
 -- ================= Фикстуры (как postgres, минуя RLS) =================
 
@@ -195,25 +195,180 @@ select throws_ok(
   'record_material_movement rejects consumption movements'
 );
 
+-- ================= Drag-and-drop: RPC перемещения (0008) =================
+
+insert into public.tasks (id, project_id, title) values
+  ('e0000000-0000-0000-0000-00000000000c', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Task C'),
+  ('e0000000-0000-0000-0000-00000000000d', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Task D');
+
+-- 20. Из «Текущих заявок» в день: planned_date и статус new → planned
+select plan_task_on_day('e0000000-0000-0000-0000-00000000000c', '2020-01-06', null);
+
+select is(
+  (select planned_date::text || ':' || status::text from public.tasks where id = 'e0000000-0000-0000-0000-00000000000c'),
+  '2020-01-06:planned',
+  'plan_task_on_day schedules the task and moves status new to planned'
+);
+
+-- 21. Выходной отклоняется
+select throws_ok(
+  $$ select plan_task_on_day('e0000000-0000-0000-0000-00000000000d', '2020-01-11', null) $$,
+  null::char(5), 'not_working_day',
+  'plan_task_on_day rejects weekends'
+);
+
+-- 22. Однодневная задача меняет день
+select move_task_schedule('e0000000-0000-0000-0000-00000000000c', '2020-01-06', '2020-01-07', 0);
+
+select is(
+  (select planned_date from public.tasks where id = 'e0000000-0000-0000-0000-00000000000c'),
+  '2020-01-07'::date,
+  'move_task_schedule moves a single-day task to another day'
+);
+
+-- 23. Возврат незапущенной задачи снимает весь план
+select is(
+  return_task_to_backlog('e0000000-0000-0000-0000-00000000000c'),
+  false,
+  'return_task_to_backlog reports no history for a task that was not started'
+);
+
+select is(
+  (select count(*) from public.task_schedule where task_id = 'e0000000-0000-0000-0000-00000000000c'),
+  0::bigint,
+  'returning a not-started task removes all its schedule days'
+);
+
+-- 24. Задача в работе: прошедшие дни остаются историей, будущие удаляются
+update public.tasks set status = 'in_progress' where id = 'e0000000-0000-0000-0000-00000000000c';
+
+insert into public.task_schedule (project_id, task_id, work_date, carried_over) values
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'e0000000-0000-0000-0000-00000000000c', '2020-01-06', false),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'e0000000-0000-0000-0000-00000000000c', '2020-01-07', true),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'e0000000-0000-0000-0000-00000000000c', '2099-01-05', true);
+
+select is(
+  return_task_to_backlog('e0000000-0000-0000-0000-00000000000c'),
+  true,
+  'return_task_to_backlog keeps history for a task in progress'
+);
+
+select is(
+  (select string_agg(work_date::text || ':' || postponed::text, ',' order by work_date)
+     from public.task_schedule where task_id = 'e0000000-0000-0000-0000-00000000000c'),
+  '2020-01-06:false,2020-01-07:true',
+  'past days stay as history, the last one is marked postponed, future days are removed'
+);
+
+select is(
+  (select planned_date from public.tasks where id = 'e0000000-0000-0000-0000-00000000000c'),
+  null::date,
+  'a postponed task has no planned_date and is back in the backlog'
+);
+
+-- 25. Возврат к отложенной задаче не раньше последнего дня истории
+select throws_ok(
+  $$ select plan_task_on_day('e0000000-0000-0000-0000-00000000000c', '2020-01-06', null) $$,
+  null::char(5), 'date_before_history',
+  'plan_task_on_day rejects a date before the task history'
+);
+
+select plan_task_on_day('e0000000-0000-0000-0000-00000000000c', '2020-01-08', null);
+
+select is(
+  (select count(*) from public.task_schedule where task_id = 'e0000000-0000-0000-0000-00000000000c'),
+  3::bigint,
+  'resuming a postponed task adds a day and keeps the history'
+);
+
+-- 26. Задачу с историей нельзя перетащить на другой день
+select throws_ok(
+  $$ select move_task_schedule('e0000000-0000-0000-0000-00000000000c', '2020-01-08', '2020-01-09', 0) $$,
+  null::char(5), 'task_has_history',
+  'move_task_schedule rejects moving a task with history to another day'
+);
+
+-- 27. Порядок внутри дня
+select plan_task_on_day('e0000000-0000-0000-0000-00000000000d', '2020-01-08', 0);
+
+select is(
+  (select string_agg(t.title, ',' order by s.position)
+     from public.task_schedule s join public.tasks t on t.id = s.task_id
+     where s.project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and s.work_date = '2020-01-08'),
+  'Task D,Task C',
+  'plan_task_on_day inserts the task at the requested position'
+);
+
+select move_task_schedule('e0000000-0000-0000-0000-00000000000d', '2020-01-08', '2020-01-08', 1);
+
+select is(
+  (select string_agg(t.title || ':' || s.position, ',' order by s.position)
+     from public.task_schedule s join public.tasks t on t.id = s.task_id
+     where s.project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and s.work_date = '2020-01-08'),
+  'Task C:0,Task D:1',
+  'move_task_schedule reorders tasks within a day'
+);
+
+-- 28. Порядок в дополнительном списке
+insert into public.board_items (id, project_id, list_id, title, position)
+  select ('f0000000-0000-0000-0000-00000000000' || n)::uuid, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', l.id, 'Item ' || n, n - 1
+  from (select id from public.board_lists
+          where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' order by sort_order limit 1) l,
+       generate_series(1, 3) n;
+
+select move_board_item('f0000000-0000-0000-0000-000000000003', 0);
+
+select is(
+  (select string_agg(title, ',' order by position) from public.board_items
+     where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  'Item 3,Item 1,Item 2',
+  'move_board_item reorders items within a list'
+);
+
 -- ================= Пользователь B: проверки без доступа к проекту A =================
 
 reset role;
 select set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true) as _;
 set role authenticated;
 
--- 20. RPC отказывает пользователю без доступа к проекту материала
+-- 29. RPC отказывает пользователю без доступа к проекту материала
 select throws_ok(
   $$ select record_material_movement('d0000000-0000-0000-0000-00000000000a', 'receipt', 1, null) $$,
   null::char(5), null,
   'record_material_movement rejects users without access to the material''s project'
 );
 
--- 21. Добавлять участников проекта может только его владелец
+-- 30. Добавлять участников проекта может только его владелец
 select throws_ok(
   $$ insert into public.project_members (project_id, user_id, role)
      values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '22222222-2222-2222-2222-222222222222', 'member') $$,
   null::char(5), null,
   'only the project owner can add members'
+);
+
+-- 31. RPC перемещения не видят задачи и записи чужого проекта
+select throws_ok(
+  $$ select plan_task_on_day('e0000000-0000-0000-0000-00000000000a', '2020-01-10', null) $$,
+  null::char(5), 'task_not_found',
+  'plan_task_on_day rejects tasks of a project without access'
+);
+
+select throws_ok(
+  $$ select move_task_schedule('e0000000-0000-0000-0000-00000000000d', '2020-01-08', '2020-01-09', 0) $$,
+  null::char(5), 'task_not_found',
+  'move_task_schedule rejects tasks of a project without access'
+);
+
+select throws_ok(
+  $$ select return_task_to_backlog('e0000000-0000-0000-0000-00000000000d') $$,
+  null::char(5), 'task_not_found',
+  'return_task_to_backlog rejects tasks of a project without access'
+);
+
+select throws_ok(
+  $$ select move_board_item('f0000000-0000-0000-0000-000000000001', 0) $$,
+  null::char(5), 'item_not_found',
+  'move_board_item rejects items of a project without access'
 );
 
 reset role;

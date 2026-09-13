@@ -551,6 +551,7 @@ export type Database = {
           id: string
           note: string | null
           position: number
+          postponed: boolean
           project_id: string
           task_id: string
           work_date: string
@@ -562,6 +563,7 @@ export type Database = {
           id?: string
           note?: string | null
           position?: number
+          postponed?: boolean
           project_id: string
           task_id: string
           work_date: string
@@ -573,6 +575,7 @@ export type Database = {
           id?: string
           note?: string | null
           position?: number
+          postponed?: boolean
           project_id?: string
           task_id?: string
           work_date?: string
@@ -670,7 +673,24 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      move_board_item: {
+        Args: { p_item_id: string; p_position: number }
+        Returns: undefined
+      }
+      move_task_schedule: {
+        Args: {
+          p_from_date: string
+          p_position: number
+          p_task_id: string
+          p_to_date: string
+        }
+        Returns: undefined
+      }
       next_working_day: { Args: { d: string }; Returns: string }
+      plan_task_on_day: {
+        Args: { p_position?: number; p_task_id: string; p_work_date: string }
+        Returns: undefined
+      }
       project_access: {
         Args: { p_project_id: string }
         Returns: Database["public"]["Enums"]["project_role"]
@@ -702,6 +722,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      return_task_to_backlog: { Args: { p_task_id: string }; Returns: boolean }
     }
     Enums: {
       movement_kind: "receipt" | "consumption" | "adjustment"

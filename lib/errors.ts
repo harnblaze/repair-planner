@@ -22,3 +22,26 @@ export function mapAuthError(message: string | undefined | null): string {
 export function isUniqueViolation(error: { code?: string } | null | undefined): boolean {
   return error?.code === "23505";
 }
+
+// Коды исключений RPC перемещения на доске (supabase/migrations/0008).
+const BOARD_MOVE_ERROR_MESSAGES: Record<string, string> = {
+  not_working_day: "Планировать можно только на рабочий день (Пн–Пт).",
+  task_not_found: "Заявка не найдена. Обновите страницу.",
+  task_closed: "Завершённую или отменённую заявку нельзя вернуть в текущие заявки.",
+  task_already_planned: "Заявка уже запланирована. Обновите страницу.",
+  task_not_planned: "Заявка уже в текущих заявках. Обновите страницу.",
+  date_before_history:
+    "Нельзя запланировать раньше последнего дня, в который над заявкой уже работали.",
+  task_has_history:
+    "Перенесённую заявку можно только упорядочить внутри дня. Дату можно изменить в карточке заявки.",
+  schedule_not_found: "Заявка не найдена в этом дне. Обновите страницу.",
+  item_not_found: "Запись не найдена. Обновите страницу.",
+};
+
+/**
+ * Переводит код исключения RPC перемещения в понятное сообщение.
+ * Неизвестная ошибка — общий текст; детали остаются в логах сервера.
+ */
+export function mapBoardMoveError(message: string | undefined | null): string {
+  return (message && BOARD_MOVE_ERROR_MESSAGES[message]) || "Не удалось переместить. Попробуйте ещё раз.";
+}

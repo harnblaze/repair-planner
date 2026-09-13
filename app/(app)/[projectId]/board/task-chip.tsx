@@ -11,10 +11,15 @@ export type BoardTask = {
   status: TaskStatus;
   categoryName: string | null;
   executorNames: string[];
-  // Заполняется, когда этот день — не последний день работы над задачей:
-  // задача была перенесена дальше (product-requirements.md §4.3).
+  // День — история: после него задачу перенесли или отложили
+  // (product-requirements.md §4.3, §4.4). Карточка приглушается.
+  isHistory?: boolean;
   transferNote?: string | null;
 };
+
+// Пропсы перетаскивания (ref, listeners, style) передаются прямо на ссылку:
+// у карточки одна точка фокуса и для перехода, и для перетаскивания с клавиатуры.
+type LinkRestProps = Omit<React.ComponentProps<typeof Link>, "href" | "children">;
 
 // Статус вынесен в бейдж, поэтому в текстовые метаданные он больше не входит.
 function metaOf(task: BoardTask): string {
@@ -22,16 +27,25 @@ function metaOf(task: BoardTask): string {
 }
 
 /** Карточка задачи в колонке рабочего дня (docs/redesign.md §5). */
-export function TaskChip({ projectId, task }: { projectId: string; task: BoardTask }) {
+export function TaskChip({
+  projectId,
+  task,
+  className,
+  ...rest
+}: { projectId: string; task: BoardTask } & LinkRestProps) {
   const meta = metaOf(task);
-  const carriedOver = Boolean(task.transferNote);
+  const isHistory = Boolean(task.isHistory);
 
   return (
     <Link
       href={`/${projectId}/tasks/${task.id}`}
+      // Нативное перетаскивание ссылки браузером конфликтует с drag-and-drop доски.
+      draggable={false}
+      {...rest}
       className={cn(
         "flex flex-col gap-[5px] rounded-[7px] border border-line-card bg-surface px-2.5 pt-2 pb-[9px] transition-[border-color,box-shadow] duration-120 hover:border-line-card-hover hover:shadow-[0_1px_2px_rgba(20,30,50,0.06)]",
-        carriedOver && "opacity-[0.66]",
+        isHistory && "opacity-[0.66]",
+        className,
       )}
     >
       {/* Заголовок занимает отдельную строку: в колонке ~165px он не должен
@@ -40,7 +54,7 @@ export function TaskChip({ projectId, task }: { projectId: string; task: BoardTa
         {task.title}
       </span>
       <span className="flex flex-wrap items-center gap-1.5">
-        <StatusBadge status={task.status} muted={carriedOver} />
+        <StatusBadge status={task.status} muted={isHistory} />
         {meta ? <span className="text-[11.5px] break-words text-meta">{meta}</span> : null}
       </span>
       {task.transferNote ? (
@@ -54,13 +68,23 @@ export function TaskChip({ projectId, task }: { projectId: string; task: BoardTa
 }
 
 /** Компактная строка задачи в панели «Текущие заявки» (docs/redesign.md §6). */
-export function TaskRow({ projectId, task }: { projectId: string; task: BoardTask }) {
+export function TaskRow({
+  projectId,
+  task,
+  className,
+  ...rest
+}: { projectId: string; task: BoardTask } & LinkRestProps) {
   const meta = metaOf(task);
 
   return (
     <Link
       href={`/${projectId}/tasks/${task.id}`}
-      className="flex items-center gap-2.5 rounded-[7px] px-[9px] py-2 transition-colors duration-120 hover:bg-row-hover"
+      draggable={false}
+      {...rest}
+      className={cn(
+        "flex items-center gap-2.5 rounded-[7px] px-[9px] py-2 transition-colors duration-120 hover:bg-row-hover",
+        className,
+      )}
     >
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate text-[12.5px] font-semibold text-ink">{task.title}</span>

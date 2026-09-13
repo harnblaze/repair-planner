@@ -1,24 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { BookmarkIcon, CalendarIcon } from "@/components/common/icons";
-import { formatDateLong, formatDateShort, todayInTimezone } from "@/lib/business/dates";
-import { isCarriedOverOccurrence } from "@/lib/business/task-planning";
-import {
-  WEEKDAY_LABELS_RU,
-  addWeeks,
-  mondayOf,
-  nextWorkingDay,
-  weekWorkingDays,
-} from "@/lib/business/working-days";
+import { CalendarIcon } from "@/components/common/icons";
+import { formatDateShort, todayInTimezone } from "@/lib/business/dates";
+import { describeOccurrence, lastWorkDate, type ScheduleDay } from "@/lib/business/task-planning";
+import { addWeeks, mondayOf, weekWorkingDays } from "@/lib/business/working-days";
 import { createClient } from "@/lib/supabase/server";
-import { cn } from "@/lib/utils";
 
 import type { BoardItem } from "./board-item-row";
 import { BoardList } from "./board-list";
-import { CreateTaskForm } from "./create-task-form";
-import { Panel, PanelEmpty, PanelHeader } from "./panel";
-import { TaskChip, TaskRow, type BoardTask } from "./task-chip";
+import { WeekBoard, type BacklogTask, type DayTask } from "./week-board";
 
 export const metadata: Metadata = {
   title: "Доска — Repair Planner",
@@ -28,6 +19,12 @@ type ExecutorJoin = { executors: { name: string } | null };
 
 function toExecutorNames(rows: ExecutorJoin[] | null | undefined): string[] {
   return (rows ?? []).map((r) => r.executors?.name).filter((name): name is string => Boolean(name));
+}
+
+type ScheduleJoin = { work_date: string; postponed: boolean };
+
+function toScheduleDays(rows: ScheduleJoin[] | null | undefined): ScheduleDay[] {
+  return (rows ?? []).map((r) => ({ workDate: r.work_date, postponed: r.postponed }));
 }
 
 // Сегментированная группа кнопок недели (docs/redesign.md §3): общая рамка у
@@ -68,7 +65,10 @@ export default async function BoardPage({
   ] = await Promise.all([
     supabase
       .from("tasks")
-      .select("id, title, status, categories(name), task_executors(executors(name))")
+      // task_schedule — дни истории отложенной задачи: новый день не может быть раньше последнего.
+      .select(
+        "id, title, status, categories(name), task_executors(executors(name)), task_schedule(work_date, postponed)",
+      )
       .eq("project_id", projectId)
       .is("planned_date", null)
       .neq("status", "completed")
@@ -77,12 +77,13 @@ export default async function BoardPage({
     supabase
       .from("task_schedule")
       .select(
-        "work_date, position, tasks(id, title, status, planned_date, categories(name), task_executors(executors(name)))",
+        "work_date, position, tasks(id, title, status, planned_date, categories(name), task_executors(executors(name)), task_schedule(work_date, postponed))",
       )
       .eq("project_id", projectId)
       .in("work_date", weekDates)
       .order("work_date", { ascending: true })
-      .order("position", { ascending: true }),
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true }),
     supabase
       .from("categories")
       .select("id, name")
@@ -98,15 +99,17 @@ export default async function BoardPage({
       .from("board_items")
       .select("id, list_id, title, note, is_done, due_date")
       .eq("project_id", projectId)
-      .order("position", { ascending: true }),
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true }),
   ]);
 
-  const backlog: BoardTask[] = (backlogTasks ?? []).map((t) => ({
+  const backlog: BacklogTask[] = (backlogTasks ?? []).map((t) => ({
     id: t.id,
     title: t.title,
     status: t.status,
     categoryName: t.categories?.name ?? null,
     executorNames: toExecutorNames(t.task_executors),
+    lastWorkDate: lastWorkDate(toScheduleDays(t.task_schedule)),
   }));
 
   const itemsByList = new Map<string, BoardItem[]>();
@@ -116,22 +119,25 @@ export default async function BoardPage({
     itemsByList.set(item.list_id, list);
   }
 
-  const byDate = new Map<string, BoardTask[]>(weekDates.map((d) => [d, []]));
+  const days: Record<string, DayTask[]> = Object.fromEntries(weekDates.map((d) => [d, []]));
   for (const row of scheduleRows ?? []) {
     if (!row.tasks) continue;
-    const list = byDate.get(row.work_date);
+    const list = days[row.work_date];
     if (!list) continue;
-    const carriedOver = isCarriedOverOccurrence(row.work_date, row.tasks.planned_date);
+    const occurrence = describeOccurrence(
+      row.work_date,
+      row.tasks.planned_date,
+      toScheduleDays(row.tasks.task_schedule),
+    );
     list.push({
       id: row.tasks.id,
       title: row.tasks.title,
       status: row.tasks.status,
       categoryName: row.tasks.categories?.name ?? null,
       executorNames: toExecutorNames(row.tasks.task_executors),
-      // Дни расписания идут подряд по рабочим дням (перенос всегда добавляет
-      // именно ближайший следующий рабочий день), поэтому следующий день этой
-      // задачи вычисляется без дополнительного запроса.
-      transferNote: carriedOver ? `Перенесена на ${formatDateLong(nextWorkingDay(row.work_date))}` : null,
+      isHistory: occurrence.isHistory,
+      transferNote: occurrence.note,
+      canChangeDay: occurrence.canChangeDay,
     });
   }
 
@@ -161,86 +167,14 @@ export default async function BoardPage({
         </div>
       </div>
 
-      {/* Неделя — ряд из пяти колонок на всю ширину, без прокрутки и без переноса
-          (docs/redesign.md §4). minmax(0,1fr) обязателен: иначе длинный заголовок
-          задачи распирает колонку. */}
-      <section className="overflow-hidden rounded-[10px] border border-line-strong bg-surface">
-        <div className="grid grid-cols-[repeat(5,minmax(0,1fr))]">
-          {weekDates.map((date, i) => {
-            const tasks = byDate.get(date) ?? [];
-            const isToday = date === today;
-
-            return (
-              <div
-                key={date}
-                className={cn(
-                  "flex min-h-[216px] min-w-0 flex-col border-r border-line-subtle transition-colors duration-120",
-                  isToday ? "bg-surface-today" : "bg-surface hover:bg-surface-column-hover",
-                )}
-              >
-                <h2
-                  className={cn(
-                    "flex items-baseline gap-[7px] border-b border-line-subtle px-3.5 pt-[11px] pb-2.5",
-                    isToday && "shadow-[inset_0_2px_0_0_var(--color-brand)]",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "text-[13px] font-semibold",
-                      isToday ? "text-brand" : "text-ink",
-                    )}
-                  >
-                    {WEEKDAY_LABELS_RU[i]}
-                  </span>
-                  <span
-                    className={cn("font-mono text-[12px]", isToday ? "text-brand" : "text-meta-dim")}
-                  >
-                    {formatDateShort(date)}
-                  </span>
-                  {tasks.length > 0 ? (
-                    <span className="ml-auto font-mono text-[11px] font-medium text-counter">
-                      {tasks.length}
-                    </span>
-                  ) : null}
-                </h2>
-                <div className="flex flex-col gap-[7px] p-2 xl:p-2.5">
-                  {tasks.length === 0 ? (
-                    <p className="px-0.5 py-1.5 text-[11.5px] text-faint">
-                      Нет запланированных работ
-                    </p>
-                  ) : (
-                    tasks.map((task) => (
-                      <TaskChip key={task.id} projectId={projectId} task={task} />
-                    ))
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Дополнительные списки: «Текущие заявки» (задачи) и board_lists
-          («Материалы к заказу», «Напоминания», «Мероприятия») — четыре панели
-          в одном ряду под неделей. */}
-      <section className="grid grid-cols-[repeat(4,minmax(0,1fr))] gap-2.5 xl:gap-3.5">
-        <Panel>
-          <PanelHeader
-            icon={<BookmarkIcon />}
-            title="Текущие заявки"
-            count={backlog.length}
-          />
-          <CreateTaskForm projectId={projectId} categories={categories ?? []} />
-          {backlog.length === 0 ? (
-            <PanelEmpty>Нет текущих заявок</PanelEmpty>
-          ) : (
-            <div className="flex flex-col p-1.5">
-              {backlog.map((task) => (
-                <TaskRow key={task.id} projectId={projectId} task={task} />
-              ))}
-            </div>
-          )}
-        </Panel>
+      <WeekBoard
+        projectId={projectId}
+        today={today}
+        weekDates={weekDates}
+        days={days}
+        backlog={backlog}
+        categories={categories ?? []}
+      >
         {(boardLists ?? []).map((list) => (
           <BoardList
             key={list.id}
@@ -251,7 +185,7 @@ export default async function BoardPage({
             today={today}
           />
         ))}
-      </section>
+      </WeekBoard>
     </main>
   );
 }
