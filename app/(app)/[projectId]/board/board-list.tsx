@@ -17,12 +17,16 @@ import { BoardItemRow, type BoardItem } from "./board-item-row";
 import { BOARD_ACCESSIBILITY, useBoardSensors, useSuppressClickAfterDrag } from "./dnd";
 import { PANEL_FORM_CLASS, Panel, PanelEmpty, PanelHeader } from "./panel";
 
-// Иконка и текст пустого состояния подбираются по названию списка: сами списки
-// создаются в БД, поэтому жёсткой привязки к id здесь нет (docs/redesign.md §6).
-function presentation(name: string): { icon: React.ReactNode; empty: string } {
-  if (/материал/i.test(name)) return { icon: <BoxIcon />, empty: "Нет материалов к заказу" };
-  if (/напомин/i.test(name)) return { icon: <BellIcon />, empty: "Нет напоминаний" };
-  if (/мероприят/i.test(name)) return { icon: <ClockIcon />, empty: "Нет мероприятий" };
+// Иконка и текст пустого состояния стандартных списков подбираются по названию:
+// сами списки создаются в БД, поэтому жёсткой привязки к id здесь нет
+// (docs/redesign.md §6). Пользовательские списки — всегда общая иконка, чтобы
+// «Материалы для отчёта» не выглядели как «Материалы к заказу».
+function presentation(name: string, isSystem: boolean): { icon: React.ReactNode; empty: string } {
+  if (isSystem) {
+    if (/материал/i.test(name)) return { icon: <BoxIcon />, empty: "Нет материалов к заказу" };
+    if (/напомин/i.test(name)) return { icon: <BellIcon />, empty: "Нет напоминаний" };
+    if (/мероприят/i.test(name)) return { icon: <ClockIcon />, empty: "Нет мероприятий" };
+  }
   return { icon: <ListIcon />, empty: "Список пуст" };
 }
 
@@ -30,6 +34,7 @@ export function BoardList({
   projectId,
   listId,
   name,
+  isSystem,
   items,
   today,
   canEdit,
@@ -37,13 +42,14 @@ export function BoardList({
   projectId: string;
   listId: string;
   name: string;
+  isSystem: boolean;
   items: BoardItem[];
   today: string;
   /** false — только просмотр: без добавления, правки и перетаскивания. */
   canEdit: boolean;
 }) {
   const [pending, startTransition] = useTransition();
-  const { icon, empty } = presentation(name);
+  const { icon, empty } = presentation(name, isSystem);
 
   // Порядок записей — перетаскиванием внутри списка (board_items.position).
   const dndId = useId();

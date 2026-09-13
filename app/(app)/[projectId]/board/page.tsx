@@ -112,9 +112,10 @@ export default async function BoardPage({
       .order("sort_order", { ascending: true }),
     supabase
       .from("board_lists")
-      .select("id, name")
+      .select("id, name, is_system")
       .eq("project_id", projectId)
-      .order("sort_order", { ascending: true }),
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true }),
     supabase
       .from("board_items")
       .select("id, list_id, title, note, is_done, due_date")
@@ -203,6 +204,14 @@ export default async function BoardPage({
             {formatDateShort(weekDates[0])} — {formatDateShort(weekDates[weekDates.length - 1])}
           </span>
         </div>
+        {canEdit ? (
+          <Link
+            href={`/${projectId}/settings/lists`}
+            className="ml-auto text-[12.5px] text-meta transition-colors duration-120 hover:text-ink"
+          >
+            Настроить списки
+          </Link>
+        ) : null}
       </div>
 
       <WeekBoard
@@ -221,6 +230,7 @@ export default async function BoardPage({
             projectId={projectId}
             listId={list.id}
             name={list.name}
+            isSystem={list.is_system}
             items={itemsByList.get(list.id) ?? []}
             today={today}
             canEdit={canEdit}

@@ -817,6 +817,10 @@ export type Database = {
         Args: { p_item_id: string; p_position: number }
         Returns: undefined
       }
+      move_board_list: {
+        Args: { p_list_id: string; p_position: number }
+        Returns: undefined
+      }
       move_task_schedule: {
         Args: {
           p_from_date: string

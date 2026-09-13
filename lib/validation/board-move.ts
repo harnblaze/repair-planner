@@ -32,6 +32,12 @@ export const moveBoardItemSchema = z.object({
   position: positionSchema,
 });
 
+export const moveBoardListSchema = z.object({
+  listId: idSchema,
+  position: positionSchema,
+});
+
 export type PlanTaskOnDayInput = z.infer<typeof planTaskOnDaySchema>;
 export type MoveTaskScheduleInput = z.infer<typeof moveTaskScheduleSchema>;
 export type MoveBoardItemInput = z.infer<typeof moveBoardItemSchema>;
+export type MoveBoardListInput = z.infer<typeof moveBoardListSchema>;

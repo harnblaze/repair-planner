@@ -25,7 +25,7 @@ export function isUniqueViolation(error: { code?: string } | null | undefined): 
 
 export const NOT_WORKING_DAY_MESSAGE = "Этот день нерабочий. Выберите рабочий день.";
 
-// Коды исключений RPC перемещения и переноса на доске (supabase/migrations/0008, 0013).
+// Коды исключений RPC перемещения и переноса на доске (supabase/migrations/0008, 0013, 0014).
 const BOARD_MOVE_ERROR_MESSAGES: Record<string, string> = {
   not_working_day: NOT_WORKING_DAY_MESSAGE,
   no_working_day: "В календаре проекта не найден следующий рабочий день.",
@@ -39,6 +39,8 @@ const BOARD_MOVE_ERROR_MESSAGES: Record<string, string> = {
     "Перенесённую заявку можно только упорядочить внутри дня. Дату можно изменить в карточке заявки.",
   schedule_not_found: "Заявка не найдена в этом дне. Обновите страницу.",
   item_not_found: "Запись не найдена. Обновите страницу.",
+  list_not_found: "Список не найден. Обновите страницу.",
+  access_denied: "Недостаточно прав для изменения данных проекта.",
 };
 
 /**

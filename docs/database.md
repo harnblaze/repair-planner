@@ -259,6 +259,7 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 | `move_task_schedule(p_task_id, p_from_date, p_to_date, p_position)` | порядок внутри дня или смена дня (только для единственного неотложенного дня задачи) |
 | `return_task_to_backlog(p_task_id) returns boolean` | правило «Отложить» (product-requirements.md §4.4); `true` — история сохранена |
 | `move_board_item(p_item_id, p_position)` | порядок записи внутри списка |
+| `move_board_list(p_list_id, p_position)` (0014) | порядок списков проекта: перенумеровывает `board_lists.sort_order` 0..n-1 под advisory-блокировкой проекта; `list_not_found` без доступа к проекту, `access_denied` без права записи |
 | `carry_over_task(p_task_id) returns date` (0013) | перенос на следующий рабочий день по календарю проекта: новый день с `carried_over = true` в конец дня; возвращает дату |
 
 С 0013 `plan_task_on_day` и смена дня в `move_task_schedule` проверяют рабочий день через `private.is_working_day` вместо `isodow`. Порядок внутри дня меняется и в нерабочий день.
@@ -322,7 +323,13 @@ PK: `(task_id, executor_id)`. Составные FK на `tasks` и `executors`.
 `board_items`: `id`, `project_id`, `list_id` (составной FK), `title`, `note`, `is_done boolean default false`, `due_date date null`, `position int`, `created_by`, timestamps.
 Индексы: `(project_id, list_id, position)`.
 
-Модель универсальна: пользовательские списки в будущем — просто `board_lists` с `is_system = false`, без миграции.
+Пользовательские списки (этап 17) — строки `board_lists` с `is_system = false`; новая таблица не понадобилась. Миграция `0014` закрепляет в БД то, что раньше держалось только на отсутствии UI:
+
+* `check (char_length(btrim(name)) between 1 and 80)`;
+* INSERT-политика: `project_can_edit(project_id) and not is_system` — системный список создаёт только `handle_new_project` (security definer);
+* триггер `board_lists_guard_update` (`private.guard_board_list_update`): `is_system` и `project_id` неизменяемы (`board_list_system_readonly`, `board_list_project_readonly`). Без него редактор мог бы снять `is_system` и удалить стандартный список;
+* порядок — `sort_order`, меняется RPC `move_board_list` (§5.8); новый список добавляется в конец (`max(sort_order) + 1`), при равных значениях порядок — по `created_at`;
+* удаление пользовательского списка каскадно удаляет его `board_items`.
 
 ### 5.13 `project_calendar_days` — производственный календарь (0013)
 
@@ -501,7 +508,8 @@ update materials set current_balance = current_balance + delta where id = p_mate
 11. `0011_project_role_viewer` — значение `viewer` в `project_role`.
 12. `0012_project_invitations` — `project_can_edit`, политики записи через неё, `access_denied` в RPC материалов, ужесточение `project_members`, таблица и RPC приглашений, `project_member_list`.
 13. `0013_project_calendar` — `calendar_day_kind`, `project_calendar_days`, `private.is_working_day` / `private.next_working_day`, триггер рабочего дня на `task_schedule`, календарь в `plan_task_on_day` и `move_task_schedule`, RPC `carry_over_task`; удалена `public.next_working_day(date)`.
+14. `0014_custom_board_lists` — ограничение длины названия `board_lists`, запрет создавать системные списки клиентом, триггер неизменяемости `is_system` / `project_id`, RPC `move_board_list`.
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
-Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (`supabase test db`, 110/110 успешно). TypeScript-типы сгенерированы в `lib/types/database.ts`.
+Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (`supabase test db`, 127/127 успешно). TypeScript-типы сгенерированы в `lib/types/database.ts`.

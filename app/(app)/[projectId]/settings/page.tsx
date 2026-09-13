@@ -74,6 +74,23 @@ export default async function ProjectSettingsPage({ params }: PageProps<"/[proje
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Дополнительные списки</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-[12.5px] text-ink-muted">
+            Списки на доске рядом с «Текущими заявками»: добавление своих, переименование и порядок.
+          </p>
+          <Link
+            href={`/${projectId}/settings/lists`}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "self-start")}
+          >
+            Открыть списки
+          </Link>
+        </CardContent>
+      </Card>
+
       <MembersSection projectId={projectId} role={role} timezone={project.timezone} />
     </main>
   );

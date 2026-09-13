@@ -7,7 +7,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(110);
+select plan(127);
 
 -- ================= Фикстуры (как postgres, минуя RLS) =================
 
@@ -179,6 +179,75 @@ with del as (
     where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and is_system returning id
 )
 select is((select count(*) from del), 0::bigint, 'system board lists cannot be deleted');
+
+-- ================= Пользовательские списки (0014) =================
+
+-- 17a. Системный список нельзя создать и нельзя снять с него признак
+select throws_ok(
+  $$ insert into public.board_lists (project_id, name, is_system)
+     values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Fake system', true) $$,
+  '42501', null,
+  'a client cannot create a system board list'
+);
+
+select throws_ok(
+  $$ update public.board_lists set is_system = false
+       where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and is_system $$,
+  null::char(5), 'board_list_system_readonly',
+  'is_system of a board list is immutable'
+);
+
+-- 17b. Пустое название отклоняется
+select throws_ok(
+  $$ insert into public.board_lists (project_id, name) values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '   ') $$,
+  '23514', null,
+  'a board list name cannot be blank'
+);
+
+-- 17c. Пользовательский список: создание, переименование, порядок
+insert into public.board_lists (id, project_id, name, sort_order) values
+  ('9a000000-0000-0000-0000-000000000001', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Инструмент', 3),
+  ('9a000000-0000-0000-0000-000000000002', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Временный', 4);
+
+with upd as (
+  update public.board_lists set name = 'Инструмент в ремонт'
+    where id = '9a000000-0000-0000-0000-000000000001' returning id
+)
+select is((select count(*) from upd), 1::bigint, 'owner can rename a custom board list');
+
+select move_board_list('9a000000-0000-0000-0000-000000000001', 0);
+
+select is(
+  (select string_agg(name || ':' || sort_order, ',' order by sort_order)
+     from public.board_lists where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  'Инструмент в ремонт:0,Материалы к заказу:1,Напоминания:2,Мероприятия:3,Временный:4',
+  'move_board_list reorders the lists of a project'
+);
+
+-- Возвращаем системные списки вперёд: тест 28 берёт первый список проекта.
+select move_board_list('9a000000-0000-0000-0000-000000000001', 3);
+
+select throws_ok(
+  $$ update public.board_lists set project_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+       where id = '9a000000-0000-0000-0000-000000000001' $$,
+  null::char(5), 'board_list_project_readonly',
+  'a board list cannot be moved to another project'
+);
+
+-- 17d. Удаление пользовательского списка удаляет его записи
+insert into public.board_items (project_id, list_id, title) values
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '9a000000-0000-0000-0000-000000000002', 'Временная запись');
+
+with del as (
+  delete from public.board_lists where id = '9a000000-0000-0000-0000-000000000002' returning id
+)
+select is((select count(*) from del), 1::bigint, 'owner can delete a custom board list');
+
+select is(
+  (select count(*) from public.board_items where list_id = '9a000000-0000-0000-0000-000000000002'),
+  0::bigint,
+  'deleting a custom board list removes its items'
+);
 
 -- 18. RPC приёма материала увеличивает остаток
 select record_material_movement('d0000000-0000-0000-0000-00000000000a', 'receipt', 4, 'приход');
@@ -565,6 +634,30 @@ select throws_ok(
   'move_board_item rejects items of a project without access'
 );
 
+select throws_ok(
+  $$ select move_board_list('9a000000-0000-0000-0000-000000000001', 0) $$,
+  null::char(5), 'list_not_found',
+  'move_board_list rejects lists of a project without access'
+);
+
+-- 33b. Списки чужого проекта не видны, не создаются и не удаляются
+select is(
+  (select count(*) from public.board_lists where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  0::bigint,
+  'an outsider cannot select board lists of another project'
+);
+
+select throws_ok(
+  $$ insert into public.board_lists (project_id, name) values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Чужой список') $$,
+  '42501', null,
+  'an outsider cannot create a board list in another project'
+);
+
+with del as (
+  delete from public.board_lists where id = '9a000000-0000-0000-0000-000000000001' returning id
+)
+select is((select count(*) from del), 0::bigint, 'an outsider cannot delete a board list of another project');
+
 -- 33a. Календарь чужого проекта не виден и не изменяется
 select is(
   (select count(*) from public.project_calendar_days where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
@@ -747,6 +840,23 @@ with del as (
 select is((select count(*) from del), 0::bigint, 'viewer cannot delete board items');
 
 select throws_ok(
+  $$ insert into public.board_lists (project_id, name) values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Список viewer') $$,
+  '42501', null,
+  'viewer cannot create board lists'
+);
+
+with del as (
+  delete from public.board_lists where id = '9a000000-0000-0000-0000-000000000001' returning id
+)
+select is((select count(*) from del), 0::bigint, 'viewer cannot delete board lists');
+
+select throws_ok(
+  $$ select move_board_list('9a000000-0000-0000-0000-000000000001', 0) $$,
+  null::char(5), 'access_denied',
+  'viewer cannot reorder board lists'
+);
+
+select throws_ok(
   $$ select record_material_movement('d0000000-0000-0000-0000-0000000000a3', 'receipt', 1, null) $$,
   null::char(5), 'access_denied',
   'viewer cannot record a receipt'
@@ -840,6 +950,16 @@ select lives_ok(
 select lives_ok(
   $$ select record_material_movement('d0000000-0000-0000-0000-00000000000a', 'receipt', 1, null) $$,
   'member can record a receipt'
+);
+
+select lives_ok(
+  $$ insert into public.board_lists (project_id, name) values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Список редактора') $$,
+  'member can create board lists'
+);
+
+select lives_ok(
+  $$ select move_board_list('9a000000-0000-0000-0000-000000000001', 0) $$,
+  'member can reorder board lists'
 );
 
 -- 54a. Member ведёт календарь проекта
