@@ -734,6 +734,32 @@ export type Database = {
         }
       }
       return_task_to_backlog: { Args: { p_task_id: string }; Returns: boolean }
+      set_material_balance: {
+        Args: {
+          p_actual_balance: number
+          p_material_id: string
+          p_note?: string
+        }
+        Returns: {
+          created_at: string
+          created_by: string | null
+          id: string
+          kind: Database["public"]["Enums"]["movement_kind"]
+          material_id: string
+          note: string | null
+          occurred_at: string
+          project_id: string
+          quantity: number
+          task_id: string | null
+          task_material_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "material_movements"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
     }
     Enums: {
       movement_kind: "receipt" | "consumption" | "adjustment"

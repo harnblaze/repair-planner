@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -14,6 +15,7 @@ import {
   type MaterialFormValues,
 } from "@/lib/validation/reference-data";
 
+import { ReceiptForm } from "./[materialId]/receipt-form";
 import { setMaterialActiveAction, updateMaterialAction } from "./actions";
 
 type Material = {
@@ -27,6 +29,7 @@ type Material = {
 
 export function MaterialRow({ projectId, material }: { projectId: string; material: Material }) {
   const [editing, setEditing] = useState(false);
+  const [receiving, setReceiving] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const {
@@ -93,28 +96,55 @@ export function MaterialRow({ projectId, material }: { projectId: string; materi
   }
 
   return (
-    <div className="flex items-center justify-between gap-2 py-1">
-      <div className={material.is_active ? "" : "text-meta line-through"}>
-        <span className="text-[12.5px] font-semibold text-ink">{material.name}</span>{" "}
-        <span className="font-mono text-[11.5px] text-meta">
-          — {material.current_balance} / мин. {material.minimum_balance} {material.unit}
-        </span>
-        <BalanceBadge
-          className="ml-2 align-middle"
-          balance={material.current_balance}
-          minimumBalance={material.minimum_balance}
-        />
-      </div>
-      <div className="flex items-center gap-2">
-        {material.is_active ? (
-          <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
-            Изменить
+    <div className="flex flex-col gap-2 py-1">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className={material.is_active ? "" : "text-meta line-through"}>
+          <Link
+            href={`/${projectId}/materials/${material.id}`}
+            className="text-[12.5px] font-semibold text-ink underline-offset-2 hover:underline"
+          >
+            {material.name}
+          </Link>{" "}
+          <span className="font-mono text-[11.5px] text-meta">
+            — {material.current_balance} / мин. {material.minimum_balance} {material.unit}
+          </span>
+          <BalanceBadge
+            className="ml-2 align-middle"
+            balance={material.current_balance}
+            minimumBalance={material.minimum_balance}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          {material.is_active ? (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-expanded={receiving}
+                onClick={() => setReceiving((open) => !open)}
+              >
+                Приход
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
+                Изменить
+              </Button>
+            </>
+          ) : null}
+          <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={toggleActive}>
+            {material.is_active ? "Деактивировать" : "Активировать"}
           </Button>
-        ) : null}
-        <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={toggleActive}>
-          {material.is_active ? "Деактивировать" : "Активировать"}
-        </Button>
+        </div>
       </div>
+      {receiving ? (
+        <ReceiptForm
+          projectId={projectId}
+          materialId={material.id}
+          unit={material.unit}
+          compact
+          onDone={() => setReceiving(false)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -7,7 +7,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(42);
+select plan(49);
 
 -- ================= Фикстуры (как postgres, минуя RLS) =================
 
@@ -371,6 +371,51 @@ select is(
   'monthly report groups tasks without a category separately'
 );
 
+-- ================= Приход и корректировка по пересчёту (0010) =================
+
+insert into public.materials (id, project_id, name, unit) values
+  ('d0000000-0000-0000-0000-0000000000a3', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Count Material', 'кг');
+
+select record_material_movement('d0000000-0000-0000-0000-0000000000a3', 'receipt', 10, null);
+
+-- 35. Приход не может быть отрицательным
+select throws_ok(
+  $$ select record_material_movement('d0000000-0000-0000-0000-0000000000a3', 'receipt', -1, null) $$,
+  null::char(5), 'invalid_quantity',
+  'record_material_movement rejects a negative receipt'
+);
+
+-- 36-37. Фактический остаток: база считает разницу и пишет корректировку
+select set_material_balance('d0000000-0000-0000-0000-0000000000a3', 7.5, '  пересчёт  ');
+
+select is(
+  (select current_balance from public.materials where id = 'd0000000-0000-0000-0000-0000000000a3'),
+  7.5::numeric,
+  'set_material_balance sets the exact counted balance'
+);
+
+select is(
+  (select kind::text || ':' || quantity::text || ':' || coalesce(note, '') || ':' || (task_id is null)::text
+     from public.material_movements
+     where material_id = 'd0000000-0000-0000-0000-0000000000a3' and kind = 'adjustment'),
+  'adjustment:-2.500:пересчёт:true',
+  'set_material_balance records an adjustment with the computed delta and trimmed note'
+);
+
+-- 38. Остаток уже равен введённому значению
+select throws_ok(
+  $$ select set_material_balance('d0000000-0000-0000-0000-0000000000a3', 7.5, null) $$,
+  null::char(5), 'balance_unchanged',
+  'set_material_balance rejects a count equal to the current balance'
+);
+
+-- 39. Фактический остаток не может быть отрицательным
+select throws_ok(
+  $$ select set_material_balance('d0000000-0000-0000-0000-0000000000a3', -1, null) $$,
+  null::char(5), 'invalid_quantity',
+  'set_material_balance rejects a negative count'
+);
+
 -- ================= Пользователь B: проверки без доступа к проекту A =================
 
 reset role;
@@ -380,8 +425,15 @@ set role authenticated;
 -- 31. RPC отказывает пользователю без доступа к проекту материала
 select throws_ok(
   $$ select record_material_movement('d0000000-0000-0000-0000-00000000000a', 'receipt', 1, null) $$,
-  null::char(5), null,
+  null::char(5), 'material_not_found',
   'record_material_movement rejects users without access to the material''s project'
+);
+
+-- 40. Корректировка чужого материала неотличима от несуществующего
+select throws_ok(
+  $$ select set_material_balance('d0000000-0000-0000-0000-0000000000a3', 100, null) $$,
+  null::char(5), 'material_not_found',
+  'set_material_balance rejects users without access to the material''s project'
 );
 
 -- 32. Добавлять участников проекта может только его владелец
@@ -425,6 +477,13 @@ select is(
 );
 
 reset role;
+
+-- 41. Отклонённая корректировка пользователя B не изменила остаток
+select is(
+  (select current_balance from public.materials where id = 'd0000000-0000-0000-0000-0000000000a3'),
+  7.5::numeric,
+  'a rejected foreign balance count leaves the balance unchanged'
+);
 
 select * from finish();
 

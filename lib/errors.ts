@@ -45,3 +45,18 @@ const BOARD_MOVE_ERROR_MESSAGES: Record<string, string> = {
 export function mapBoardMoveError(message: string | undefined | null): string {
   return (message && BOARD_MOVE_ERROR_MESSAGES[message]) || "Не удалось переместить. Попробуйте ещё раз.";
 }
+
+// Коды исключений RPC прихода и корректировки (supabase/migrations/0010).
+const MATERIAL_MOVEMENT_ERROR_MESSAGES: Record<string, string> = {
+  invalid_quantity: "Проверьте количество.",
+  material_not_found: "Материал не найден. Обновите страницу.",
+  balance_unchanged: "Остаток уже равен указанному значению.",
+};
+
+/** Переводит код исключения RPC движения материала в понятное сообщение. */
+export function mapMaterialMovementError(message: string | undefined | null): string {
+  return (
+    (message && MATERIAL_MOVEMENT_ERROR_MESSAGES[message]) ||
+    "Не удалось сохранить движение материала. Попробуйте ещё раз."
+  );
+}

@@ -348,7 +348,14 @@ create policy "<t>_delete" on public.<t> for delete to authenticated
 
 Ситуация «расход записался, но остаток не изменился» невозможна: обе операции находятся в одной транзакции, и клиент не может выполнить их по отдельности.
 
-Приход и ручная корректировка (полноценный UI отложен) — RPC `record_material_movement(p_material_id, p_kind, p_quantity, p_note)`, `SECURITY DEFINER`, с проверкой `project_access` первой строкой. Единственное текущее место вызова — поле «Начальный остаток» в форме создания материала (kind = `receipt`), чтобы новый материал сразу можно было списывать в задаче.
+Приход и ручная корректировка — две RPC, обе `SECURITY DEFINER` с `search_path = ''` и проверкой `project_access`; `EXECUTE` только у `authenticated`:
+
+| RPC | Назначение | Движение |
+|---|---|---|
+| `record_material_movement(p_material_id, p_kind, p_quantity, p_note)` | Приход (страница материала, строка списка, «Начальный остаток» при создании). `consumption` запрещён — только через `task_materials`. | `receipt`: `p_quantity > 0`; `adjustment`: `p_quantity ≠ 0` (дельта) |
+| `set_material_balance(p_material_id, p_actual_balance, p_note)` (0010) | Корректировка по пересчёту: вводится фактический остаток | `adjustment`, `quantity = p_actual_balance − current_balance` |
+
+Коды исключений (переводятся в `lib/errors.ts`): `invalid_quantity`, `balance_unchanged` (разница 0 — движение не пишется), `material_not_found` — и для несуществующего материала, и для материала чужого проекта, чтобы нельзя было проверить существование чужого id. Комментарий обрезается, пустой сохраняется как `null`.
 
 ### 7.2 Race conditions
 
@@ -359,6 +366,8 @@ update materials set current_balance = current_balance + delta where id = p_mate
 ```
 
 а не чтением значения в приложение и записью обратно. PostgreSQL блокирует строку на время обновления, поэтому два одновременных списания одного материала сериализуются и не теряют друг друга.
+
+Корректировка по пересчёту — единственное место, где разница зависит от прочитанного остатка. Поэтому `set_material_balance` читает строку `SELECT … FOR UPDATE`: одновременное списание либо уже учтено в прочитанном значении, либо ждёт конца транзакции и применяется поверх нового остатка. Разницу нельзя считать в приложении — форма видит устаревший остаток.
 
 ### 7.3 Отрицательный остаток
 
@@ -398,7 +407,8 @@ update materials set current_balance = current_balance + delta where id = p_mate
 7. `0007_fix_projects_select_returning` — исправление SELECT-политики `projects` для `INSERT … RETURNING`.
 8. `0008_board_drag_and_drop` — `task_schedule.postponed`, пересчёт `planned_date` с учётом отложенных задач, RPC перемещения, схема `private`.
 9. `0009_material_consumption_report` — функция месячного отчёта по расходу в разрезе цехов.
+10. `0010_material_receipt_and_count` — усиление `record_material_movement` (положительный приход, единый код `material_not_found`), RPC `set_material_balance`.
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
-Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (`supabase test db`, 42/42 успешно). TypeScript-типы сгенерированы в `lib/types/database.ts`.
+Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (`supabase test db`, 49/49 успешно). TypeScript-типы сгенерированы в `lib/types/database.ts`.
