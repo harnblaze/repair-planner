@@ -5,7 +5,14 @@ import { CalendarIcon } from "@/components/common/icons";
 import { formatDateShort, todayInTimezone } from "@/lib/business/dates";
 import { describeOccurrence, lastWorkDate, type ScheduleDay } from "@/lib/business/task-planning";
 import { canEditProject } from "@/lib/business/project-roles";
-import { addWeeks, mondayOf, weekWorkingDays } from "@/lib/business/working-days";
+import {
+  addWeeks,
+  buildWorkCalendar,
+  isWorkingDay,
+  mondayOf,
+  saturdayOf,
+  weekBoardDays,
+} from "@/lib/business/working-days";
 import { getProjectRole } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 
@@ -56,10 +63,11 @@ export default async function BoardPage({
     requestedWeek && /^\d{4}-\d{2}-\d{2}$/.test(requestedWeek)
       ? mondayOf(requestedWeek)
       : currentMonday;
-  const weekDates = weekWorkingDays(monday);
+  const saturday = saturdayOf(monday);
 
   const [
     role,
+    { data: calendarDays },
     { data: backlogTasks },
     { data: scheduleRows },
     { data: categories },
@@ -67,6 +75,12 @@ export default async function BoardPage({
     { data: boardItems },
   ] = await Promise.all([
     getProjectRole(projectId),
+    supabase
+      .from("project_calendar_days")
+      .select("day, kind, name")
+      .eq("project_id", projectId)
+      .gte("day", monday)
+      .lte("day", saturday),
     supabase
       .from("tasks")
       // task_schedule — дни истории отложенной задачи: новый день не может быть раньше последнего.
@@ -84,7 +98,9 @@ export default async function BoardPage({
         "work_date, position, tasks(id, title, status, planned_date, categories(name), task_executors(executors(name)), task_schedule(work_date, postponed))",
       )
       .eq("project_id", projectId)
-      .in("work_date", weekDates)
+      // Пн–Сб: какие колонки показать, зависит от календаря и от задач на субботу.
+      .gte("work_date", monday)
+      .lte("work_date", saturday)
       .order("work_date", { ascending: true })
       .order("position", { ascending: true })
       .order("created_at", { ascending: true }),
@@ -106,6 +122,23 @@ export default async function BoardPage({
       .order("position", { ascending: true })
       .order("created_at", { ascending: true }),
   ]);
+
+  const calendar = buildWorkCalendar(calendarDays ?? []);
+  const weekDates = weekBoardDays(
+    monday,
+    calendar,
+    (scheduleRows ?? []).some((row) => row.work_date === saturday),
+  );
+  // Нерабочие дни недели: дата → подпись под заголовком колонки. Суббота без
+  // исключения попадает сюда, только если на неё остались задачи.
+  const daysOff: Record<string, string> = Object.fromEntries(
+    weekDates
+      .filter((date) => !isWorkingDay(date, calendar))
+      .map((date) => {
+        const exception = calendar.get(date);
+        return [date, exception ? (exception.name ?? "Нерабочий день") : "Выходной"];
+      }),
+  );
 
   const backlog: BacklogTask[] = (backlogTasks ?? []).map((t) => ({
     id: t.id,
@@ -167,7 +200,7 @@ export default async function BoardPage({
         <div className="flex h-[30px] items-center gap-[7px] rounded-[7px] border border-control-line bg-surface px-[11px]">
           <CalendarIcon size={13} className="text-icon" />
           <span className="font-mono text-[12.5px] font-medium tracking-[-0.01em] text-ink">
-            {formatDateShort(weekDates[0])} — {formatDateShort(weekDates[4])}
+            {formatDateShort(weekDates[0])} — {formatDateShort(weekDates[weekDates.length - 1])}
           </span>
         </div>
       </div>
@@ -176,6 +209,7 @@ export default async function BoardPage({
         projectId={projectId}
         today={today}
         weekDates={weekDates}
+        daysOff={daysOff}
         days={days}
         backlog={backlog}
         categories={categories ?? []}

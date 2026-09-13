@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { canEditProject } from "@/lib/business/project-roles";
+import { addDays, nextWorkingDay } from "@/lib/business/working-days";
 import { getProjectRole } from "@/lib/projects/access";
+import { getWorkCalendar } from "@/lib/projects/calendar";
 import { createClient } from "@/lib/supabase/server";
 
 import { CarryOverButton } from "./carry-over-button";
@@ -68,6 +70,15 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
   const assignedExecutorIds = assigned?.map((a) => a.executor_id) ?? [];
   const canEdit = canEditProject(role);
 
+  // Подпись кнопки переноса. Месяца исключений достаточно: столько нерабочих
+  // дней подряд не бывает. Без календаря дата не показывается — перенос всё
+  // равно считает БД.
+  let nextDate: string | null = null;
+  if (canEdit && task.planned_date) {
+    const calendar = await getWorkCalendar(projectId, task.planned_date, addDays(task.planned_date, 31));
+    nextDate = calendar ? nextWorkingDay(task.planned_date, calendar) : null;
+  }
+
   return (
     <main className="mx-auto flex max-w-lg w-full flex-col gap-4 px-5 pt-6 pb-7">
       <Card>
@@ -117,6 +128,7 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
               projectId={projectId}
               taskId={taskId}
               plannedDate={task.planned_date}
+              nextDate={nextDate}
               status={task.status}
             />
           ) : null}

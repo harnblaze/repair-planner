@@ -1,6 +1,6 @@
 # Database
 
-> Статус: согласовано 2026-09-11, миграции 0001–0007 реализованы 2026-09-12, 0008–0012 — после MVP. Документ соответствует фактической схеме.
+> Статус: согласовано 2026-09-11, миграции 0001–0007 реализованы 2026-09-12, 0008–0013 — после MVP. Документ соответствует фактической схеме.
 
 ## 1. ER-модель
 
@@ -12,6 +12,7 @@ auth.users 1─1 profiles
               projects 1──* project_members *──1 profiles
                   │
                   ├──* project_invitations (ссылки-приглашения)
+                  ├──* project_calendar_days (исключения из правила Пн–Пт)
                   ├──* categories
                   ├──* executors
                   ├──* materials ──* material_movements
@@ -41,6 +42,7 @@ auth.users 1─1 profiles
 | `project_role` | `owner`, `member`, `viewer` (0011) |
 | `task_status` | `new`, `planned`, `in_progress`, `paused`, `completed`, `cancelled` |
 | `movement_kind` | `receipt`, `consumption`, `adjustment` |
+| `calendar_day_kind` | `holiday`, `working_day` (0013) |
 
 Права ролей (0012):
 
@@ -243,6 +245,8 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 
 Эта таблица одновременно является **историей переносов**: последовательность `work_date` с признаком `carried_over` и `created_by` полностью описывает, как задача двигалась по дням. Отдельная таблица `task_transfers` не нужна.
 
+Триггер `before insert/update of work_date` (0013): новый день расписания должен быть рабочим по календарю проекта (`private.is_working_day`), иначе `not_working_day`. Существующие строки не перепроверяются: если день позже объявили нерабочим, задачи остаются.
+
 Триггер `after insert/delete/update of work_date, postponed, task_id`: пересчитывает `tasks.planned_date` = `work_date` последнего дня, либо `null`, если дней нет или последний день `postponed`. Смена одной `position` триггер не вызывает; `tasks` обновляется только при фактическом изменении значения.
 
 #### RPC перемещения на доске (`0008`)
@@ -255,6 +259,9 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 | `move_task_schedule(p_task_id, p_from_date, p_to_date, p_position)` | порядок внутри дня или смена дня (только для единственного неотложенного дня задачи) |
 | `return_task_to_backlog(p_task_id) returns boolean` | правило «Отложить» (product-requirements.md §4.4); `true` — история сохранена |
 | `move_board_item(p_item_id, p_position)` | порядок записи внутри списка |
+| `carry_over_task(p_task_id) returns date` (0013) | перенос на следующий рабочий день по календарю проекта: новый день с `carried_over = true` в конец дня; возвращает дату |
+
+С 0013 `plan_task_on_day` и смена дня в `move_task_schedule` проверяют рабочий день через `private.is_working_day` вместо `isodow`. Порядок внутри дня меняется и в нерабочий день.
 
 Позиции перенумеровываются `0..n-1` одним `UPDATE`. Конкурентные перестановки одного дня/списка сериализуются `pg_advisory_xact_lock` (строк дня может ещё не быть, `FOR UPDATE` не подходит), строка задачи блокируется `FOR UPDATE`. Служебные функции `private.lock_board_container` и `private.place_task_in_day` лежат в схеме `private`, которая не публикуется через API.
 
@@ -317,6 +324,28 @@ PK: `(task_id, executor_id)`. Составные FK на `tasks` и `executors`.
 
 Модель универсальна: пользовательские списки в будущем — просто `board_lists` с `is_system = false`, без миграции.
 
+### 5.13 `project_calendar_days` — производственный календарь (0013)
+
+Хранит только **исключения** из правила «Пн–Пт рабочие». Базовое правило в таблицу не записывается: год без праздников — пустая таблица, а доска читает не больше шести строк на неделю.
+
+| Поле | Тип | Примечание |
+|---|---|---|
+| `id` | uuid PK | |
+| `project_id` | uuid | FK → `projects` on delete cascade |
+| `day` | date not null | |
+| `kind` | `calendar_day_kind` | `holiday` — нерабочий будний день; `working_day` — рабочая суббота |
+| `name` | text null | 1–120 символов: «Новогодние каникулы», «Перенос с 3 января» |
+| `created_by` | uuid | |
+| `created_at`, `updated_at` | timestamptz | |
+
+Ограничения: `unique (project_id, day)` (он же индекс для выборки диапазона); `check`: `holiday` — только Пн–Пт, `working_day` — только суббота. Бессмысленные исключения (праздник в воскресенье, «рабочий» вторник) невозможны, поэтому правило однозначно.
+
+RLS: SELECT — любой участник; INSERT/UPDATE/DELETE — `project_can_edit` (owner, member), по шаблону §6.2.
+
+Почему не `holidays (project_id, date)`: производственный календарь РФ переносит выходные на субботы, и таблица только праздников не выразила бы рабочую субботу. Почему не полный календарь на каждый день: пришлось бы заранее генерировать строки на годы вперёд, а пропущенный день молча становился бы нерабочим.
+
+Будущие индивидуальные графики исполнителей — отдельная таблица поверх рабочего дня проекта; эта модель не меняется.
+
 ## 6. RLS
 
 ### 6.1 Проблема рекурсии и её решение
@@ -343,7 +372,7 @@ grant execute on function public.project_access(uuid) to authenticated;
 
 ### 6.2 Шаблон политики для таблиц проекта
 
-Для `categories`, `executors`, `materials`, `tasks`, `task_schedule`, `task_executors`, `task_materials`, `board_lists`, `board_items` (запись — с 0012):
+Для `categories`, `executors`, `materials`, `tasks`, `task_schedule`, `task_executors`, `task_materials`, `board_lists`, `board_items` (запись — с 0012), `project_calendar_days` (0013):
 
 ```sql
 alter table public.<t> enable row level security;
@@ -444,7 +473,16 @@ update materials set current_balance = current_balance + delta where id = p_mate
 
 ## 8. Рабочие дни в БД
 
-Функция `next_working_day(d date) returns date`, `immutable`: пропускает субботу и воскресенье. В MVP используется только для серверных операций; основной расчёт для UI — в `lib/business/working-days.ts`. Праздники добавляются позже отдельной таблицей `holidays (project_id, date)` без изменения существующих таблиц.
+С 0013 рабочий день определяется календарём проекта (§5.13). Функции в схеме `private` (не публикуются через API), `STABLE`, `SECURITY INVOKER` — календарь читается через RLS; все вызывающие уже требуют доступа к проекту:
+
+| Функция | Правило |
+|---|---|
+| `private.is_working_day(p_project_id, p_day) returns boolean` | есть исключение → `kind = 'working_day'`; иначе `isodow <= 5` |
+| `private.next_working_day(p_project_id, p_day) returns date` | первый рабочий день после `p_day`; горизонт поиска 366 дней, дальше — `no_working_day` |
+
+Используются в `plan_task_on_day`, `move_task_schedule`, `carry_over_task` и триггере `task_schedule_check_working_day` (§5.8). Прежняя `public.next_working_day(d date)` из 0006 (без календаря, нигде не использовалась) удалена, чтобы не осталось второго правила.
+
+Приложение повторяет правило в `lib/business/working-days.ts` (`isWorkingDay`, `nextWorkingDay`, `weekBoardDays`) для отображения доски, подписи кнопки переноса и мгновенного отказа при перетаскивании. Источник истины — БД.
 
 ## 9. Миграции
 
@@ -462,7 +500,8 @@ update materials set current_balance = current_balance + delta where id = p_mate
 10. `0010_material_receipt_and_count` — усиление `record_material_movement` (положительный приход, единый код `material_not_found`), RPC `set_material_balance`.
 11. `0011_project_role_viewer` — значение `viewer` в `project_role`.
 12. `0012_project_invitations` — `project_can_edit`, политики записи через неё, `access_denied` в RPC материалов, ужесточение `project_members`, таблица и RPC приглашений, `project_member_list`.
+13. `0013_project_calendar` — `calendar_day_kind`, `project_calendar_days`, `private.is_working_day` / `private.next_working_day`, триггер рабочего дня на `task_schedule`, календарь в `plan_task_on_day` и `move_task_schedule`, RPC `carry_over_task`; удалена `public.next_working_day(date)`.
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
-Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (`supabase test db`, 89/89 успешно). TypeScript-типы сгенерированы в `lib/types/database.ts`.
+Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (`supabase test db`, 110/110 успешно). TypeScript-типы сгенерированы в `lib/types/database.ts`.

@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { formatDateLong } from "@/lib/business/dates";
 import { canCarryOverTask } from "@/lib/business/task-planning";
 import type { TaskStatus } from "@/lib/business/task-status";
-import { nextWorkingDay } from "@/lib/business/working-days";
 
 import { carryOverTaskAction } from "./actions";
 
@@ -16,11 +15,14 @@ export function CarryOverButton({
   projectId,
   taskId,
   plannedDate,
+  nextDate,
   status,
 }: {
   projectId: string;
   taskId: string;
   plannedDate: string | null;
+  /** Следующий рабочий день по календарю проекта — только подпись; перенос считает БД. */
+  nextDate: string | null;
   status: TaskStatus;
 }) {
   const router = useRouter();
@@ -29,8 +31,6 @@ export function CarryOverButton({
   if (!plannedDate || !canCarryOverTask(status)) {
     return null;
   }
-
-  const nextDate = nextWorkingDay(plannedDate);
 
   const onClick = () => {
     startTransition(async () => {
@@ -46,7 +46,7 @@ export function CarryOverButton({
 
   return (
     <Button variant="outline" size="sm" disabled={pending} onClick={onClick}>
-      Перенести на следующий рабочий день ({formatDateLong(nextDate)})
+      Перенести на следующий рабочий день{nextDate ? ` (${formatDateLong(nextDate)})` : ""}
     </Button>
   );
 }

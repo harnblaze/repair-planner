@@ -5,9 +5,10 @@ import { revalidatePath } from "next/cache";
 import { formatDateLong } from "@/lib/business/dates";
 import { canCarryOverTask } from "@/lib/business/task-planning";
 import type { TaskStatus } from "@/lib/business/task-status";
-import { isWorkingDay, nextWorkingDay } from "@/lib/business/working-days";
+import { isValidDateString, isWorkingDay } from "@/lib/business/working-days";
 import { isUniqueViolation, mapBoardMoveError } from "@/lib/errors";
 import { requireProjectEdit } from "@/lib/projects/access";
+import { getWorkCalendar } from "@/lib/projects/calendar";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
 import {
@@ -169,8 +170,20 @@ export async function setTaskPlannedDateAction(
   const denied = await requireProjectEdit(projectId);
   if (denied) return denied;
 
-  if (workDate && (!/^\d{4}-\d{2}-\d{2}$/.test(workDate) || !isWorkingDay(workDate))) {
-    return { ok: false, error: "Планировать можно только на рабочий день (Пн–Пт)." };
+  if (workDate && !isValidDateString(workDate)) {
+    return { ok: false, error: "Укажите дату." };
+  }
+
+  // Проверка до удаления текущего плана ниже: иначе отклонённая БД вставка
+  // (триггер рабочего дня, 0013) оставила бы задачу без плана.
+  if (workDate) {
+    const calendar = await getWorkCalendar(projectId, workDate, workDate);
+    if (!calendar) {
+      return { ok: false, error: "Не удалось изменить план. Попробуйте ещё раз." };
+    }
+    if (!isWorkingDay(workDate, calendar)) {
+      return { ok: false, error: `${formatDateLong(workDate)} — нерабочий день. Выберите рабочий день.` };
+    }
   }
 
   const supabase = await createClient();
@@ -314,6 +327,14 @@ export async function setTaskExecutorsAction(
   return { ok: true };
 }
 
+// Коды исключений public.carry_over_task (supabase/migrations/0013).
+const CARRY_OVER_ERROR_MESSAGES: Record<string, string> = {
+  task_not_found: "Заявка не найдена.",
+  task_closed: "Завершённую или отменённую заявку нельзя переносить.",
+  task_not_planned: "Заявка ещё не запланирована.",
+  no_working_day: "В календаре проекта не найден следующий рабочий день.",
+};
+
 export async function carryOverTaskAction(
   projectId: string,
   taskId: string,
@@ -322,14 +343,6 @@ export async function carryOverTaskAction(
   if (denied) return denied;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { ok: false, error: "Сессия истекла. Войдите снова." };
-  }
-
   const { data: task } = await supabase
     .from("tasks")
     .select("id, status, planned_date")
@@ -349,29 +362,17 @@ export async function carryOverTaskAction(
 
   // Перенос добавляет новый день расписания и сохраняет предыдущие — задача
   // остаётся видимой во всех днях, в которых над ней работали (CLAUDE.md §27).
-  const nextDate = nextWorkingDay(task.planned_date);
+  // Следующий рабочий день по календарю проекта считает RPC в той же транзакции.
+  const { data: nextDate, error } = await supabase.rpc("carry_over_task", { p_task_id: taskId });
 
-  const { count } = await supabase
-    .from("task_schedule")
-    .select("id", { count: "exact", head: true })
-    .eq("project_id", projectId)
-    .eq("work_date", nextDate);
-
-  const { error: insertError } = await supabase.from("task_schedule").insert({
-    project_id: projectId,
-    task_id: taskId,
-    work_date: nextDate,
-    position: count ?? 0,
-    carried_over: true,
-    created_by: user.id,
-  });
-
-  if (insertError) {
-    console.error("carryOverTaskAction:", insertError);
-    if (insertError.code === "23505") {
-      return { ok: false, error: "Заявка уже запланирована на этот день." };
-    }
-    return { ok: false, error: "Не удалось перенести заявку. Попробуйте ещё раз." };
+  if (error || !nextDate) {
+    console.error("carryOverTaskAction:", error);
+    return {
+      ok: false,
+      error:
+        (error?.message && CARRY_OVER_ERROR_MESSAGES[error.message]) ||
+        "Не удалось перенести заявку. Попробуйте ещё раз.",
+    };
   }
 
   revalidateTask(projectId, taskId);

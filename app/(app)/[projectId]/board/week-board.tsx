@@ -24,7 +24,7 @@ import {
   canReturnToBacklog,
   keepsDayOnReturnToBacklog,
 } from "@/lib/business/task-planning";
-import { WEEKDAY_LABELS_RU } from "@/lib/business/working-days";
+import { weekdayLabel } from "@/lib/business/working-days";
 import type { ActionResult } from "@/lib/types/action-result";
 import { cn } from "@/lib/utils";
 
@@ -143,12 +143,24 @@ type DropVerdict = { ok: true } | { ok: false; reason: string } | null;
 
 const HISTORY_REASON = "Это день из истории заявки — его можно только упорядочить внутри дня.";
 
-/** null — перемещение ничего не меняет; ok: false — запрещено с понятной причиной. */
-function checkDrop(state: BoardState, from: DragData, target: string): DropVerdict {
+const dayOffReason = (date: string) => `${formatDateLong(date)} — нерабочий день.`;
+
+/**
+ * null — перемещение ничего не меняет; ok: false — запрещено с понятной причиной.
+ * daysOff — нерабочие дни недели: в них нельзя планировать, но задачи, которые
+ * уже там стоят, можно упорядочить (supabase/migrations/0013).
+ */
+function checkDrop(
+  state: BoardState,
+  from: DragData,
+  target: string,
+  daysOff: Record<string, string>,
+): DropVerdict {
   if (from.container === BACKLOG) {
     if (target === BACKLOG) return null;
     const task = state.backlog.find((t) => t.id === from.taskId);
     if (!task) return null;
+    if (target in daysOff) return { ok: false, reason: dayOffReason(target) };
     return canPlanOnDate(task.lastWorkDate, target)
       ? { ok: true }
       : {
@@ -170,6 +182,7 @@ function checkDrop(state: BoardState, from: DragData, target: string): DropVerdi
 
   if (target === from.container) return { ok: true };
   if (task.isHistory) return { ok: false, reason: HISTORY_REASON };
+  if (target in daysOff) return { ok: false, reason: dayOffReason(target) };
   if (!task.canChangeDay) {
     return {
       ok: false,
@@ -197,6 +210,7 @@ export function WeekBoard({
   projectId,
   today,
   weekDates,
+  daysOff,
   days,
   backlog,
   categories,
@@ -205,7 +219,10 @@ export function WeekBoard({
 }: {
   projectId: string;
   today: string;
+  /** Пн–Пт и рабочая суббота (lib/business/working-days.ts::weekBoardDays). */
   weekDates: string[];
+  /** Нерабочие дни недели: дата → подпись («Новогодние каникулы», «Выходной»). */
+  daysOff: Record<string, string>;
   days: Record<string, DayTask[]>;
   backlog: BacklogTask[];
   categories: { id: string; name: string }[];
@@ -226,7 +243,7 @@ export function WeekBoard({
   const [overContainer, setOverContainer] = useState<string | null>(null);
 
   const dropAllowed = (container: string) =>
-    active !== null && overContainer === container && checkDrop(board, active, container)?.ok === true;
+    active !== null && overContainer === container && checkDrop(board, active, container, daysOff)?.ok === true;
 
   const run = (move: Move, action: () => Promise<ActionResult>) => {
     startTransition(async () => {
@@ -259,7 +276,7 @@ export function WeekBoard({
     const from = dragged.data.current as DragData;
     const to = over.data.current as DragData;
     const taskId = from.taskId!;
-    const verdict = checkDrop(board, from, to.container);
+    const verdict = checkDrop(board, from, to.container, daysOff);
 
     if (verdict === null) return;
     if (!verdict.ok) {
@@ -322,17 +339,25 @@ export function WeekBoard({
       onDragCancel={resetDrag}
     >
       <div className="contents" onClickCapture={clicks.onClickCapture}>
-        {/* Неделя — ряд из пяти колонок на всю ширину, без прокрутки и без переноса
-            (docs/redesign.md §4). minmax(0,1fr) обязателен: иначе длинный заголовок
-            задачи распирает колонку. */}
+        {/* Неделя — ряд из пяти колонок (шести с рабочей субботой) на всю ширину,
+            без прокрутки и без переноса (docs/redesign.md §4). minmax(0,1fr)
+            обязателен: иначе длинный заголовок задачи распирает колонку. */}
         <section className="overflow-hidden rounded-[10px] border border-line-strong bg-surface">
-          <div className="grid grid-cols-[repeat(5,minmax(0,1fr))]">
-            {weekDates.map((date, i) => (
+          <div
+            className={cn(
+              "grid",
+              weekDates.length > 5
+                ? "grid-cols-[repeat(6,minmax(0,1fr))]"
+                : "grid-cols-[repeat(5,minmax(0,1fr))]",
+            )}
+          >
+            {weekDates.map((date) => (
               <DayColumn
                 key={date}
                 projectId={projectId}
                 date={date}
-                label={WEEKDAY_LABELS_RU[i]}
+                label={weekdayLabel(date)}
+                dayOff={daysOff[date] ?? null}
                 isToday={date === today}
                 tasks={board.days[date] ?? []}
                 highlighted={dropAllowed(date)}
@@ -384,6 +409,7 @@ function DayColumn({
   projectId,
   date,
   label,
+  dayOff,
   isToday,
   tasks,
   highlighted,
@@ -392,6 +418,8 @@ function DayColumn({
   projectId: string;
   date: string;
   label: string;
+  /** Подпись нерабочего дня или null для рабочего. */
+  dayOff: string | null;
   isToday: boolean;
   tasks: DayTask[];
   highlighted: boolean;
@@ -404,7 +432,11 @@ function DayColumn({
       ref={setNodeRef}
       className={cn(
         "flex min-h-[216px] min-w-0 flex-col border-r border-line-subtle transition-colors duration-120",
-        isToday ? "bg-surface-today" : "bg-surface hover:bg-surface-column-hover",
+        dayOff !== null
+          ? "bg-page"
+          : isToday
+            ? "bg-surface-today"
+            : "bg-surface hover:bg-surface-column-hover",
         highlighted && DROP_HIGHLIGHT,
       )}
     >
@@ -424,13 +456,23 @@ function DayColumn({
           <span className="ml-auto font-mono text-[11px] font-medium text-counter">{tasks.length}</span>
         ) : null}
       </h2>
+      {dayOff !== null ? (
+        <p
+          className="truncate border-b border-line-subtle px-3.5 py-1.5 text-[11.5px] font-medium text-status-warn-fg"
+          title={dayOff}
+        >
+          {dayOff}
+        </p>
+      ) : null}
       <SortableContext
         items={tasks.map((t) => `${date}|${t.id}`)}
         strategy={verticalListSortingStrategy}
       >
         <div className="flex flex-1 flex-col gap-[7px] p-2 xl:p-2.5">
           {tasks.length === 0 ? (
-            <p className="px-0.5 py-1.5 text-[11.5px] text-faint">Нет запланированных работ</p>
+            <p className="px-0.5 py-1.5 text-[11.5px] text-faint">
+              {dayOff !== null ? "Работы не планируются" : "Нет запланированных работ"}
+            </p>
           ) : (
             tasks.map((task) => (
               <SortableTaskChip

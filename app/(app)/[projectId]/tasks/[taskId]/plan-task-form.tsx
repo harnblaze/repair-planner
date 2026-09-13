@@ -5,7 +5,6 @@ import { toast } from "sonner";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { isWorkingDay } from "@/lib/business/working-days";
 
 import { setTaskPlannedDateAction } from "./actions";
 
@@ -24,12 +23,9 @@ export function PlanTaskForm({
   const [savedValue, setSavedValue] = useState(plannedDate ?? "");
   const [pending, startTransition] = useTransition();
 
+  // Рабочий ли день, зависит от календаря проекта — проверяет Server Action
+  // (и триггер БД); при отказе поле возвращается к сохранённой дате.
   const onChange = (next: string) => {
-    if (next && !isWorkingDay(next)) {
-      toast.error("Планировать можно только на рабочий день (Пн–Пт).");
-      return;
-    }
-
     setValue(next);
     startTransition(async () => {
       const result = await setTaskPlannedDateAction(projectId, taskId, next || null);

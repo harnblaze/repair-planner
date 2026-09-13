@@ -7,7 +7,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(89);
+select plan(110);
 
 -- ================= Фикстуры (как postgres, минуя RLS) =================
 
@@ -163,12 +163,13 @@ select throws_ok(
 );
 
 -- 16. task_schedule пересчитывает planned_date
+-- Фиксированный понедельник: с 0013 выходной день в расписание не записывается.
 insert into public.task_schedule (project_id, task_id, work_date) values
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'e0000000-0000-0000-0000-00000000000a', current_date);
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'e0000000-0000-0000-0000-00000000000a', '2020-01-13');
 
 select is(
   (select planned_date from public.tasks where id = 'e0000000-0000-0000-0000-00000000000a'),
-  current_date,
+  '2020-01-13'::date,
   'scheduling a work day recalculates the cached planned_date'
 );
 
@@ -325,6 +326,101 @@ select is(
   'move_board_item reorders items within a list'
 );
 
+-- ================= Календарь проекта (0013) =================
+-- 2020-01-18 — суббота, 2020-01-19 — воскресенье, 2020-01-20 — понедельник.
+
+insert into public.tasks (id, project_id, title) values
+  ('e0000000-0000-0000-0000-0000000000c1', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Calendar Task 1'),
+  ('e0000000-0000-0000-0000-0000000000c2', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Calendar Task 2');
+
+-- Задача запланирована на среду до того, как среду объявили нерабочей.
+select plan_task_on_day('e0000000-0000-0000-0000-0000000000c2', '2020-01-22', null);
+
+insert into public.project_calendar_days (project_id, day, kind, name) values
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '2020-01-18', 'working_day', 'Перенос выходного'),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '2020-01-20', 'holiday', 'Праздник'),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '2020-01-22', 'holiday', 'Объявлен позже');
+
+-- 28a. Исключение должно менять правило Пн–Пт
+select throws_ok(
+  $$ insert into public.project_calendar_days (project_id, day, kind)
+     values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '2020-01-19', 'holiday') $$,
+  '23514', null,
+  'a holiday exception cannot fall on a weekend'
+);
+
+select throws_ok(
+  $$ insert into public.project_calendar_days (project_id, day, kind)
+     values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '2020-01-21', 'working_day') $$,
+  '23514', null,
+  'a working day exception must be a Saturday'
+);
+
+-- 28b. Нерабочий день отклоняется и RPC, и прямой записью расписания
+select throws_ok(
+  $$ select plan_task_on_day('e0000000-0000-0000-0000-0000000000c1', '2020-01-20', null) $$,
+  null::char(5), 'not_working_day',
+  'plan_task_on_day rejects a project holiday'
+);
+
+select throws_ok(
+  $$ insert into public.task_schedule (project_id, task_id, work_date)
+     values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'e0000000-0000-0000-0000-0000000000c1', '2020-01-20') $$,
+  null::char(5), 'not_working_day',
+  'a direct schedule insert on a project holiday is rejected'
+);
+
+select throws_ok(
+  $$ insert into public.task_schedule (project_id, task_id, work_date)
+     values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'e0000000-0000-0000-0000-0000000000c1', '2020-01-19') $$,
+  null::char(5), 'not_working_day',
+  'a direct schedule insert on a Sunday is rejected'
+);
+
+-- 28c. Рабочая суббота
+select plan_task_on_day('e0000000-0000-0000-0000-0000000000c1', '2020-01-18', null);
+
+select is(
+  (select planned_date from public.tasks where id = 'e0000000-0000-0000-0000-0000000000c1'),
+  '2020-01-18'::date,
+  'plan_task_on_day accepts a working Saturday'
+);
+
+-- 28d. Перенос пропускает воскресенье и праздник, прошлый день остаётся историей
+select is(
+  carry_over_task('e0000000-0000-0000-0000-0000000000c1'),
+  '2020-01-21'::date,
+  'carry_over_task skips Sunday and a project holiday'
+);
+
+select is(
+  (select string_agg(work_date::text || ':' || carried_over::text, ',' order by work_date)
+     from public.task_schedule where task_id = 'e0000000-0000-0000-0000-0000000000c1'),
+  '2020-01-18:false,2020-01-21:true',
+  'carry_over_task adds the next working day and keeps the previous one'
+);
+
+-- 28e. Задачи дня, объявленного нерабочим позже, остаются и упорядочиваются
+select lives_ok(
+  $$ select move_task_schedule('e0000000-0000-0000-0000-0000000000c2', '2020-01-22', '2020-01-22', 0) $$,
+  'tasks on a day declared a holiday later can still be reordered'
+);
+
+select throws_ok(
+  $$ select move_task_schedule('e0000000-0000-0000-0000-0000000000c2', '2020-01-22', '2020-01-20', 0) $$,
+  null::char(5), 'not_working_day',
+  'move_task_schedule rejects moving a task to a project holiday'
+);
+
+-- 28f. Закрытую задачу перенести нельзя
+update public.tasks set status = 'completed', completed_at = now() where id = 'e0000000-0000-0000-0000-0000000000c1';
+
+select throws_ok(
+  $$ select carry_over_task('e0000000-0000-0000-0000-0000000000c1') $$,
+  null::char(5), 'task_closed',
+  'carry_over_task rejects a closed task'
+);
+
 -- ================= Отчёт по расходу материалов (0009) =================
 
 insert into public.materials (id, project_id, name, unit) values
@@ -467,6 +563,32 @@ select throws_ok(
   $$ select move_board_item('f0000000-0000-0000-0000-000000000001', 0) $$,
   null::char(5), 'item_not_found',
   'move_board_item rejects items of a project without access'
+);
+
+-- 33a. Календарь чужого проекта не виден и не изменяется
+select is(
+  (select count(*) from public.project_calendar_days where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  0::bigint,
+  'an outsider cannot select the calendar of another project'
+);
+
+select throws_ok(
+  $$ insert into public.project_calendar_days (project_id, day, kind)
+     values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '2020-02-03', 'holiday') $$,
+  '42501', null,
+  'an outsider cannot add calendar days to another project'
+);
+
+with del as (
+  delete from public.project_calendar_days
+    where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' returning id
+)
+select is((select count(*) from del), 0::bigint, 'an outsider cannot delete calendar days of another project');
+
+select throws_ok(
+  $$ select carry_over_task('e0000000-0000-0000-0000-0000000000c2') $$,
+  null::char(5), 'task_not_found',
+  'carry_over_task rejects tasks of a project without access'
 );
 
 -- 34. Отчёт не показывает расход чужого проекта
@@ -642,6 +764,31 @@ select throws_ok(
   'viewer cannot plan tasks through the board RPC'
 );
 
+-- 50a. Viewer видит календарь, но не меняет его и не переносит задачи
+select ok(
+  (select count(*) from public.project_calendar_days where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') > 0,
+  'viewer can select the project calendar'
+);
+
+select throws_ok(
+  $$ insert into public.project_calendar_days (project_id, day, kind)
+     values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '2020-02-03', 'holiday') $$,
+  '42501', null,
+  'viewer cannot add calendar days'
+);
+
+with del as (
+  delete from public.project_calendar_days
+    where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' returning id
+)
+select is((select count(*) from del), 0::bigint, 'viewer cannot delete calendar days');
+
+select throws_ok(
+  $$ select carry_over_task('e0000000-0000-0000-0000-0000000000c2') $$,
+  null::char(5), 'task_not_found',
+  'viewer cannot carry over tasks'
+);
+
 -- 51. Viewer не управляет участниками и не видит приглашения
 select throws_ok(
   $$ select * from create_project_invitation('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'member') $$,
@@ -694,6 +841,19 @@ select lives_ok(
   $$ select record_material_movement('d0000000-0000-0000-0000-00000000000a', 'receipt', 1, null) $$,
   'member can record a receipt'
 );
+
+-- 54a. Member ведёт календарь проекта
+select lives_ok(
+  $$ insert into public.project_calendar_days (project_id, day, kind)
+     values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '2020-02-03', 'holiday') $$,
+  'member can add calendar days'
+);
+
+with del as (
+  delete from public.project_calendar_days
+    where project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and day = '2020-02-03' returning id
+)
+select is((select count(*) from del), 1::bigint, 'member can delete calendar days');
 
 -- 55. Member не меняет настройки проекта и роли участников
 with upd as (

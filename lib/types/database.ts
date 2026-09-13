@@ -358,6 +358,54 @@ export type Database = {
         }
         Relationships: []
       }
+      project_calendar_days: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          day: string
+          id: string
+          kind: Database["public"]["Enums"]["calendar_day_kind"]
+          name: string | null
+          project_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          day: string
+          id?: string
+          kind: Database["public"]["Enums"]["calendar_day_kind"]
+          name?: string | null
+          project_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          day?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["calendar_day_kind"]
+          name?: string | null
+          project_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_calendar_days_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_calendar_days_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_invitations: {
         Row: {
           accepted_at: string | null
@@ -732,6 +780,7 @@ export type Database = {
     }
     Functions: {
       accept_project_invitation: { Args: { p_token: string }; Returns: string }
+      carry_over_task: { Args: { p_task_id: string }; Returns: string }
       create_project_invitation: {
         Args: {
           p_project_id: string
@@ -777,7 +826,6 @@ export type Database = {
         }
         Returns: undefined
       }
-      next_working_day: { Args: { d: string }; Returns: string }
       plan_task_on_day: {
         Args: { p_position?: number; p_task_id: string; p_work_date: string }
         Returns: undefined
@@ -853,6 +901,7 @@ export type Database = {
       }
     }
     Enums: {
+      calendar_day_kind: "holiday" | "working_day"
       movement_kind: "receipt" | "consumption" | "adjustment"
       project_role: "owner" | "member" | "viewer"
       task_status:
@@ -992,6 +1041,7 @@ export const Constants = {
   },
   public: {
     Enums: {
+      calendar_day_kind: ["holiday", "working_day"],
       movement_kind: ["receipt", "consumption", "adjustment"],
       project_role: ["owner", "member", "viewer"],
       task_status: [

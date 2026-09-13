@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { canManageProject } from "@/lib/business/project-roles";
 import { getProjectRole } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
+import { cn } from "@/lib/utils";
 import { RUSSIAN_TIMEZONES } from "@/lib/validation/project";
 
 import { MembersSection } from "./members-section";
@@ -50,6 +53,24 @@ export default async function ProjectSettingsPage({ params }: PageProps<"/[proje
               </div>
             </dl>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Производственный календарь</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-[12.5px] text-ink-muted">
+            Праздники, перенесённые выходные и рабочие субботы. Учитываются на доске и при переносе
+            заявок.
+          </p>
+          <Link
+            href={`/${projectId}/settings/calendar`}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "self-start")}
+          >
+            Открыть календарь
+          </Link>
         </CardContent>
       </Card>
 
