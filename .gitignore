@@ -47,3 +47,7 @@ next-env.d.ts
 
 # claude code (local-only settings)
 .claude/settings.local.json
+
+# деплой (может содержать секреты — см. vibe-deploy skill)
+deploy-state.md
+DEPLOY.md
