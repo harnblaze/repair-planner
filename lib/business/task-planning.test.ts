@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canCarryOverFromBoard,
   canCarryOverTask,
   canPlanOnDate,
   describeOccurrence,
@@ -19,6 +20,27 @@ describe("canCarryOverTask", () => {
   it("запрещает перенос завершённой или отменённой задачи", () => {
     expect(canCarryOverTask("completed")).toBe(false);
     expect(canCarryOverTask("cancelled")).toBe(false);
+  });
+});
+
+describe("canCarryOverFromBoard", () => {
+  const live = { status: "in_progress" as const, isHistory: false };
+
+  it("разрешает перенос с карточки последнего дня незавершённой задачи", () => {
+    expect(canCarryOverFromBoard(live, true)).toBe(true);
+  });
+
+  it("не показывает перенос на карточке дня из истории", () => {
+    expect(canCarryOverFromBoard({ ...live, isHistory: true }, true)).toBe(false);
+  });
+
+  it("не показывает перенос завершённой или отменённой задачи", () => {
+    expect(canCarryOverFromBoard({ ...live, status: "completed" }, true)).toBe(false);
+    expect(canCarryOverFromBoard({ ...live, status: "cancelled" }, true)).toBe(false);
+  });
+
+  it("не показывает перенос без права редактирования", () => {
+    expect(canCarryOverFromBoard(live, false)).toBe(false);
   });
 });
 

@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { BookmarkIcon } from "@/components/common/icons";
 import { formatDateLong, formatDateShort } from "@/lib/business/dates";
 import {
+  canCarryOverFromBoard,
   canPlanOnDate,
   canReturnToBacklog,
   keepsDayOnReturnToBacklog,
@@ -42,6 +43,7 @@ import {
   useSuppressClickAfterDrag,
 } from "./dnd";
 import { Panel, PanelEmpty, PanelHeader } from "./panel";
+import { CarryOverChipButton } from "./carry-over-chip-button";
 import { TaskChip, TaskRow, type BoardTask } from "./task-chip";
 
 // Неделя доски и «Текущие заявки» в одном DndContext: задачу можно
@@ -516,16 +518,26 @@ function SortableTaskChip({
     return <TaskChip projectId={projectId} task={task} />;
   }
 
+  const canCarryOver = canCarryOverFromBoard(task, canEdit);
+
+  // Сдвиг при перетаскивании — на обёртке, чтобы кнопка переноса ехала вместе
+  // с карточкой; слушатели перетаскивания — только на ссылке, кнопку они не задевают.
   return (
-    <TaskChip
+    <div
       ref={setNodeRef}
-      projectId={projectId}
-      task={task}
       style={{ transform: CSS.Translate.toString(transform), transition }}
-      {...dragAttributes(attributes)}
-      {...dragListeners(listeners)}
-      className={cn(DRAGGABLE_CLASS, isDragging && "opacity-40")}
-    />
+      className={cn("group relative", isDragging && "opacity-40")}
+    >
+      <TaskChip
+        projectId={projectId}
+        task={task}
+        reserveCorner={canCarryOver}
+        {...dragAttributes(attributes)}
+        {...dragListeners(listeners)}
+        className={DRAGGABLE_CLASS}
+      />
+      {canCarryOver && !isDragging ? <CarryOverChipButton projectId={projectId} taskId={task.id} /> : null}
+    </div>
   );
 }
 

@@ -30,9 +30,18 @@ function metaOf(task: BoardTask): string {
 export function TaskChip({
   projectId,
   task,
+  reserveCorner = false,
   className,
   ...rest
-}: { projectId: string; task: BoardTask } & LinkRestProps) {
+}: {
+  projectId: string;
+  task: BoardTask;
+  /**
+   * Место под кнопку в правом нижнем углу, в строке статуса: заголовок
+   * сохраняет всю ширину колонки и не ломает слова.
+   */
+  reserveCorner?: boolean;
+} & LinkRestProps) {
   const meta = metaOf(task);
   const isHistory = Boolean(task.isHistory);
 
@@ -53,7 +62,7 @@ export function TaskChip({
       <span className="text-[13px] leading-snug font-semibold tracking-[-0.005em] break-words text-ink">
         {task.title}
       </span>
-      <span className="flex flex-wrap items-center gap-1.5">
+      <span className={cn("flex flex-wrap items-center gap-1.5", reserveCorner && "pr-6")}>
         <StatusBadge status={task.status} muted={isHistory} />
         {meta ? <span className="text-[11.5px] break-words text-meta">{meta}</span> : null}
       </span>
