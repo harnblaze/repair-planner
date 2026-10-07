@@ -9,9 +9,9 @@ export default function Loading() {
       </div>
 
       <section className="overflow-hidden rounded-[10px] border border-line-strong bg-surface">
-        <div className="grid grid-cols-[repeat(5,minmax(0,1fr))]">
+        <div className="grid grid-cols-1 md:grid-cols-[repeat(5,minmax(0,1fr))]">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="flex min-h-[216px] min-w-0 flex-col border-r border-line-subtle">
+            <div key={i} className="flex min-h-24 min-w-0 flex-col border-b border-line-subtle last:border-b-0 md:min-h-[216px] md:border-r md:border-b-0">
               <div className="border-b border-line-subtle px-3.5 pt-[11px] pb-2.5">
                 <Skeleton className="h-4 w-20" />
               </div>
@@ -24,7 +24,7 @@ export default function Loading() {
         </div>
       </section>
 
-      <section className="grid grid-cols-[repeat(4,minmax(0,1fr))] gap-2.5 xl:gap-3.5">
+      <section className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))] xl:gap-3.5">
         {Array.from({ length: 4 }).map((_, i) => (
           <div
             key={i}

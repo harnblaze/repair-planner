@@ -341,14 +341,15 @@ export function WeekBoard({
       <div className="contents" onClickCapture={clicks.onClickCapture}>
         {/* Неделя — ряд из пяти колонок (шести с рабочей субботой) на всю ширину,
             без прокрутки и без переноса (docs/redesign.md §4). minmax(0,1fr)
-            обязателен: иначе длинный заголовок задачи распирает колонку. */}
+            обязателен: иначе длинный заголовок задачи распирает колонку.
+            До md (макет — только desktop) дни идут вертикальным списком. */}
         <section className="overflow-hidden rounded-[10px] border border-line-strong bg-surface">
           <div
             className={cn(
-              "grid",
+              "grid grid-cols-1",
               weekDates.length > 5
-                ? "grid-cols-[repeat(6,minmax(0,1fr))]"
-                : "grid-cols-[repeat(5,minmax(0,1fr))]",
+                ? "md:grid-cols-[repeat(6,minmax(0,1fr))]"
+                : "md:grid-cols-[repeat(5,minmax(0,1fr))]",
             )}
           >
             {weekDates.map((date) => (
@@ -369,8 +370,9 @@ export function WeekBoard({
 
         {/* Дополнительные списки: «Текущие заявки» (задачи) и board_lists
             (стандартные и пользовательские) — по четыре панели в ряду под
-            неделей; списки сверх четырёх переносятся на следующий ряд. */}
-        <section className="grid grid-cols-[repeat(4,minmax(0,1fr))] gap-2.5 xl:gap-3.5">
+            неделей (до lg — по две, до sm — по одной); списки сверх ряда
+            переносятся на следующий. */}
+        <section className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))] xl:gap-3.5">
           <BacklogPanel
             projectId={projectId}
             tasks={board.backlog}
@@ -431,7 +433,7 @@ function DayColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex min-h-[216px] min-w-0 flex-col border-r border-line-subtle transition-colors duration-120",
+        "flex min-h-24 min-w-0 flex-col border-b border-line-subtle transition-colors duration-120 last:border-b-0 md:min-h-[216px] md:border-r md:border-b-0",
         dayOff !== null
           ? "bg-page"
           : isToday
