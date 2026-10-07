@@ -39,7 +39,7 @@ function toScheduleDays(rows: ScheduleJoin[] | null | undefined): ScheduleDay[] 
 // Сегментированная группа кнопок недели (docs/redesign.md §3): общая рамка у
 // контейнера, разделители — между сегментами.
 const WEEK_SEGMENT_CLASS =
-  "flex h-[30px] items-center px-[11px] text-[12.5px] font-medium text-ink-soft transition-colors duration-120 not-last:border-r not-last:border-control-line hover:bg-[#F4F6FA] hover:text-ink active:bg-[#EBEFF5]";
+  "flex h-[30px] items-center px-[11px] text-[12.5px] font-medium whitespace-nowrap text-ink-soft transition-colors duration-120 not-last:border-r not-last:border-control-line hover:bg-[#F4F6FA] hover:text-ink active:bg-[#EBEFF5]";
 
 export default async function BoardPage({
   params,
@@ -184,21 +184,29 @@ export default async function BoardPage({
 
   return (
     <main className="flex flex-1 flex-col gap-4 px-5 pt-[18px] pb-7">
-      <div className="flex items-center gap-2.5">
+      {/* До sm подписи короче (макет — только desktop, docs/redesign.md §3);
+          flex-wrap — страховка: «Списки» уходят на вторую строку, а не сжимаются. */}
+      <div className="flex flex-wrap items-center gap-2.5">
         <div className="flex items-center overflow-hidden rounded-[7px] border border-control bg-surface">
-          <Link href={`/${projectId}/board?week=${addWeeks(monday, -1)}`} className={WEEK_SEGMENT_CLASS}>
-            ← Пред. неделя
+          <Link
+            href={`/${projectId}/board?week=${addWeeks(monday, -1)}`}
+            className={WEEK_SEGMENT_CLASS}
+          >
+            ←<span className="sr-only sm:not-sr-only">&nbsp;Пред. неделя</span>
           </Link>
           {!isCurrentWeek ? (
             <Link href={`/${projectId}/board`} className={WEEK_SEGMENT_CLASS}>
               Сегодня
             </Link>
           ) : null}
-          <Link href={`/${projectId}/board?week=${addWeeks(monday, 1)}`} className={WEEK_SEGMENT_CLASS}>
-            След. неделя →
+          <Link
+            href={`/${projectId}/board?week=${addWeeks(monday, 1)}`}
+            className={WEEK_SEGMENT_CLASS}
+          >
+            <span className="sr-only sm:not-sr-only">След. неделя&nbsp;</span>→
           </Link>
         </div>
-        <div className="flex h-[30px] items-center gap-[7px] rounded-[7px] border border-control-line bg-surface px-[11px]">
+        <div className="flex h-[30px] items-center gap-[7px] rounded-[7px] border border-control-line bg-surface px-[11px] whitespace-nowrap">
           <CalendarIcon size={13} className="text-icon" />
           <span className="font-mono text-[12.5px] font-medium tracking-[-0.01em] text-ink">
             {formatDateShort(weekDates[0])} — {formatDateShort(weekDates[weekDates.length - 1])}
@@ -207,9 +215,10 @@ export default async function BoardPage({
         {canEdit ? (
           <Link
             href={`/${projectId}/settings/lists`}
-            className="ml-auto text-[12.5px] text-meta transition-colors duration-120 hover:text-ink"
+            className="ml-auto text-[12.5px] whitespace-nowrap text-meta transition-colors duration-120 hover:text-ink"
           >
-            Настроить списки
+            <span className="hidden sm:inline">Настроить списки</span>
+            <span className="sm:hidden">Списки</span>
           </Link>
         ) : null}
       </div>
