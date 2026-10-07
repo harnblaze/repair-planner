@@ -35,7 +35,8 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
 
   return (
     <div className="flex flex-1 flex-col">
-      <div className="flex h-11 shrink-0 items-center justify-between gap-6 border-b border-line-strong bg-surface px-5">
+      {/* До md навигация не помещается рядом с названием — уходит второй строкой. */}
+      <div className="flex shrink-0 flex-col gap-1.5 border-b border-line-strong bg-surface px-5 pt-2 pb-1.5 md:h-11 md:flex-row md:items-center md:justify-between md:gap-6 md:py-0">
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-[13px] font-semibold text-ink">{project.name}</span>
           {/* Роль в проекте — повод, почему нет кнопок редактирования. */}
