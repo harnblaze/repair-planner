@@ -1,3 +1,5 @@
+import { MAX_ATTACHMENTS_PER_TASK } from "@/lib/business/attachments";
+
 const AUTH_ERROR_MESSAGES: Record<string, string> = {
   "Invalid login credentials": "Неверный email или пароль.",
   "User already registered": "Пользователь с таким email уже зарегистрирован.",
@@ -87,4 +89,27 @@ export function mapInvitationError(message: string | undefined | null): string {
     (message && INVITATION_ERROR_MESSAGES[message]) ||
     "Не удалось выполнить операцию с приглашением. Попробуйте ещё раз."
   );
+}
+
+// Фото к задачам (docs/superpowers/specs/2026-10-07-task-attachments-design.md §8).
+// Нет прав — общий NO_EDIT_ACCESS_MESSAGE из lib/projects/access.ts.
+export const ATTACHMENT_MESSAGES = {
+  uploadFailed: "Не удалось загрузить фото. Попробуйте ещё раз.",
+  limitReached: `У задачи уже ${MAX_ATTACHMENTS_PER_TASK} фото — удалите лишние.`,
+  unsupported: "Этот формат фото не поддерживается. Сохраните его как JPEG.",
+  tooLarge: "Фото слишком большое.",
+  taskNotFound: "Заявка не найдена. Обновите страницу.",
+  notFound: "Фото не найдено. Обновите страницу.",
+  deleteFailed: "Не удалось удалить фото. Попробуйте ещё раз.",
+} as const;
+
+/**
+ * Итог загрузки нескольких фото одним сообщением. Загруженные фото остаются;
+ * показывается число неудач и первая конкретная причина.
+ */
+export function formatUploadErrors(errors: string[], total: number): string | null {
+  if (errors.length === 0) return null;
+  if (total === 1) return errors[0];
+  const reason = errors.find((error) => error !== ATTACHMENT_MESSAGES.uploadFailed);
+  return `Не удалось загрузить ${errors.length} фото из ${total}. ${reason ?? "Попробуйте ещё раз."}`;
 }

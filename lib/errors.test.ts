@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapAuthError, mapBoardMoveError, NOT_WORKING_DAY_MESSAGE } from "@/lib/errors";
+import { ATTACHMENT_MESSAGES, formatUploadErrors, mapAuthError, mapBoardMoveError, NOT_WORKING_DAY_MESSAGE } from "@/lib/errors";
 
 describe("mapBoardMoveError", () => {
   it("maps a known RPC code", () => {
@@ -26,5 +26,27 @@ describe("mapAuthError", () => {
 
   it("uses the generic message for an unknown error", () => {
     expect(mapAuthError("something unexpected")).toBe("Не удалось выполнить операцию. Попробуйте ещё раз.");
+  });
+});
+
+describe("formatUploadErrors", () => {
+  it("returns null when every photo was uploaded", () => {
+    expect(formatUploadErrors([], 3)).toBeNull();
+  });
+
+  it("returns the reason itself for a single photo", () => {
+    expect(formatUploadErrors([ATTACHMENT_MESSAGES.tooLarge], 1)).toBe(ATTACHMENT_MESSAGES.tooLarge);
+  });
+
+  it("counts failures and shows the first specific reason", () => {
+    expect(
+      formatUploadErrors([ATTACHMENT_MESSAGES.uploadFailed, ATTACHMENT_MESSAGES.unsupported], 5),
+    ).toBe(`Не удалось загрузить 2 фото из 5. ${ATTACHMENT_MESSAGES.unsupported}`);
+  });
+
+  it("does not repeat the generic text when there is no specific reason", () => {
+    expect(formatUploadErrors([ATTACHMENT_MESSAGES.uploadFailed], 3)).toBe(
+      "Не удалось загрузить 1 фото из 3. Попробуйте ещё раз.",
+    );
   });
 });
