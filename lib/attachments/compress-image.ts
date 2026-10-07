@@ -47,6 +47,10 @@ export async function compressImage(file: File): Promise<CompressedImage> {
     const context = canvas.getContext("2d");
     if (!context) throw new UnsupportedImageError();
     context.imageSmoothingQuality = "high";
+    // В JPEG нет прозрачности: без белой подложки прозрачные области PNG
+    // (скриншоты, схемы) становятся чёрными.
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
     context.drawImage(decoded.source, 0, 0, width, height);
 
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY));

@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import {
   ATTACHMENTS_BUCKET,
   MAX_ATTACHMENTS_PER_TASK,
+  attachmentFolder,
   buildAttachmentPath,
   isValidAttachmentPath,
   isValidDimension,
@@ -91,7 +92,7 @@ export async function confirmTaskAttachmentAction(
 
   const supabase = await createClient();
   const bucket = supabase.storage.from(ATTACHMENTS_BUCKET);
-  const folder = `${projectId}/${taskId}`;
+  const folder = attachmentFolder(projectId, taskId);
   const fileName = path.slice(folder.length + 1);
 
   // Размер берётся из метаданных Storage, а не от клиента.

@@ -185,6 +185,30 @@ describe("confirmTaskAttachmentAction", () => {
   });
 });
 
+describe("upper-case ids in the URL", () => {
+  it("issues a lower-case path, which the storage policy accepts", async () => {
+    const { client, storage } = fakeClient({
+      tasks: [{ data: { id: TASK }, error: null }],
+      task_attachments: [{ count: 0, error: null }],
+    });
+    state.client = client;
+    const result = await startTaskAttachmentUploadAction(PROJECT.toUpperCase(), TASK.toUpperCase());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.path.startsWith(`${PROJECT}/${TASK}/`)).toBe(true);
+    expect(storage.createSignedUploadUrl).toHaveBeenCalledWith(result.path);
+  });
+
+  it("confirms by the lower-case folder", async () => {
+    const { client, storage } = fakeClient({ task_attachments: [{ error: null }] });
+    state.client = client;
+    expect(await confirmTaskAttachmentAction(PROJECT.toUpperCase(), TASK.toUpperCase(), PATH, 2000, 1500)).toEqual({
+      ok: true,
+    });
+    expect(storage.list).toHaveBeenCalledWith(`${PROJECT}/${TASK}`, { search: `${FILE}.jpg`, limit: 1 });
+  });
+});
+
 describe("deleteTaskAttachmentAction", () => {
   it("reports a missing photo and does not touch Storage", async () => {
     const { client, storage } = fakeClient({ task_attachments: [{ data: [], error: null }] });

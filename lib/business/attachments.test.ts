@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  attachmentFolder,
   buildAttachmentPath,
   fitWithin,
   isValidAttachmentPath,
@@ -109,5 +110,19 @@ describe("urlAfterLoadError", () => {
 
   it("gives up when there is no signed url at all", () => {
     expect(urlAfterLoadError("url-a", null)).toBeNull();
+  });
+});
+
+describe("upper-case ids in the URL", () => {
+  const UPPER_PROJECT = PROJECT.toUpperCase();
+  const UPPER_TASK = TASK.toUpperCase();
+
+  it("builds the folder and path in lower case, as Postgres prints uuids", () => {
+    expect(attachmentFolder(UPPER_PROJECT, UPPER_TASK)).toBe(`${PROJECT}/${TASK}`);
+    expect(buildAttachmentPath(UPPER_PROJECT, UPPER_TASK, FILE)).toBe(`${PROJECT}/${TASK}/${FILE}.jpg`);
+  });
+
+  it("accepts a lower-case path for upper-case ids", () => {
+    expect(isValidAttachmentPath(`${PROJECT}/${TASK}/${FILE}.jpg`, UPPER_PROJECT, UPPER_TASK)).toBe(true);
   });
 });

@@ -24,13 +24,22 @@ export function fitWithin(width: number, height: number, maxSide: number): { wid
   };
 }
 
+/**
+ * Папка фото задачи. Нижний регистр — как Postgres печатает uuid: CHECK пути
+ * и политики storage.objects сравнивают с project_id::text, а id из URL
+ * может прийти и в верхнем регистре.
+ */
+export function attachmentFolder(projectId: string, taskId: string): string {
+  return `${projectId}/${taskId}`.toLowerCase();
+}
+
 export function buildAttachmentPath(projectId: string, taskId: string, fileId: string): string {
-  return `${projectId}/${taskId}/${fileId}.jpg`;
+  return `${attachmentFolder(projectId, taskId)}/${fileId}.jpg`;
 }
 
 /** Путь ровно вида {projectId}/{taskId}/{uuid}.jpg — без лишних сегментов и `..`. */
 export function isValidAttachmentPath(path: string, projectId: string, taskId: string): boolean {
-  const prefix = `${projectId}/${taskId}/`;
+  const prefix = `${attachmentFolder(projectId, taskId)}/`;
   return path.startsWith(prefix) && FILE_NAME_RE.test(path.slice(prefix.length));
 }
 
