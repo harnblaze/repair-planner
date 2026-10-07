@@ -231,3 +231,20 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` в приложении не используется; если он когда-либо понадобится для служебных скриптов — только в серверном окружении и никогда не в коде, попадающем в браузер. Файл `.env.local` в git не коммитится, в репозитории хранится `.env.example`.
+
+## 14. Деплой
+
+| Компонент | Где | Как обновляется |
+|---|---|---|
+| Приложение | Timeweb Cloud App Platform, тип backend, `framework: docker`, регион ru-1 (1 CPU / 1 ГБ), технический домен `*.twc1.net` | Автодеплой при push в `main`: сборка по `Dockerfile` (Next.js `output: "standalone"`), запуск `node server.js` |
+| База и Auth | Supabase Cloud, проект `nohygbqkegxkfcejjycv` (eu-central-1) | Миграции — `supabase db push` из `supabase/migrations`, только после локального прогона `supabase test db` |
+
+Переменные приложения задаются в настройках App Platform: `NEXT_PUBLIC_SUPABASE_URL` и `NEXT_PUBLIC_SUPABASE_ANON_KEY` (publishable key `sb_publishable_…`). Timeweb передаёт их в Docker-сборку как build-args (`ARG` в `Dockerfile`) — `NEXT_PUBLIC_*` вшиваются при `next build`. Браузерный клиент Supabase не используется: все запросы идут с сервера (Server Components, Server Actions, proxy).
+
+Настройки Auth production-проекта задаются в Supabase Dashboard, а не через `supabase/config.toml` (он описывает локальный стек; `supabase config push` перезаписал бы production локальными значениями, включая `site_url = 127.0.0.1`):
+
+- URL Configuration: Site URL — домен приложения, Redirect URLs — `https://<домен>/**`.
+- Sign In / Providers → Email: провайдер включён, Confirm email выключен — своего SMTP нет, а встроенная почта Supabase шлёт письма только участникам команды проекта. По той же причине на production не работает восстановление пароля по почте.
+- Email Templates: Confirm signup и Reset password — содержимое `supabase/templates/confirmation.html` и `recovery.html` (ссылки на `/auth/confirm?token_hash=…`; стандартные шаблоны с `?code=…` приложение не обрабатывает). Нужны, когда появится SMTP.
+
+Ограничения бесплатного тарифа Supabase: проект приостанавливается после простоя (приложение перестаёт работать до восстановления в Dashboard), встроенная почта ограничена. Ошибки Supabase Auth пишутся в лог сервера (`code`, `status`, `message`, без email и пароля) — смотреть в логах приложения Timeweb; причины отказов Auth — в Supabase Dashboard → Logs.

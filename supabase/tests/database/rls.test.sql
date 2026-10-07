@@ -7,7 +7,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(139);
+select plan(142);
 
 -- ================= Фикстуры (как postgres, минуя RLS) =================
 
@@ -1181,6 +1181,33 @@ select is(
   (select current_balance from public.materials where id = 'd0000000-0000-0000-0000-0000000000a3'),
   7.5::numeric,
   'rejected viewer operations leave the balance unchanged'
+);
+
+-- ================= Права на функции (0016) =================
+-- Supabase выдаёт EXECUTE на новые функции в public ролям anon и authenticated
+-- напрямую (default privileges), поэтому revoke ... from public их не снимает.
+
+select is(
+  (select coalesce(string_agg(p.proname, ',' order by p.proname), '')
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.prokind = 'f'
+       and has_function_privilege('anon', p.oid, 'execute')),
+  '',
+  'anon cannot execute any function in the public schema'
+);
+
+select is(
+  (select coalesce(string_agg(p.proname, ',' order by p.proname), '')
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.prorettype = 'trigger'::regtype
+       and has_function_privilege('authenticated', p.oid, 'execute')),
+  '',
+  'authenticated cannot call trigger functions through the API'
+);
+
+select ok(
+  has_function_privilege('authenticated', 'public.project_access(uuid)', 'execute'),
+  'authenticated keeps project_access for RLS policies'
 );
 
 select * from finish();

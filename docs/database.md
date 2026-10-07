@@ -423,6 +423,8 @@ RPC доски (0008) и отчёт (0009) выполняются с права�
 
 `SECURITY DEFINER` функции, доступные клиенту, **обязаны** проверять `project_access` внутри себя — иначе они становятся дырой в обход RLS.
 
+Права на вызов функций (0016). Supabase выдаёт `EXECUTE` на новые функции схемы `public` ролям `anon` и `authenticated` напрямую (default privileges), поэтому `revoke ... from public` их не снимает. Правило для новых функций: `revoke all on function ... from public, anon` и явный `grant execute ... to authenticated`, если функция — RPC для клиента; триггерные функции — `revoke ... from public, anon, authenticated` (Postgres проверяет `EXECUTE` на триггерную функцию только при `CREATE TRIGGER`, не при срабатывании). pgTAP проверяет, что `anon` не может вызвать ни одной функции `public`, а API-роли — ни одной триггерной.
+
 ## 7. Материальные операции
 
 ### 7.1 Атомарность
@@ -511,7 +513,8 @@ update materials set current_balance = current_balance + delta where id = p_mate
 13. `0013_project_calendar` — `calendar_day_kind`, `project_calendar_days`, `private.is_working_day` / `private.next_working_day`, триггер рабочего дня на `task_schedule`, календарь в `plan_task_on_day` и `move_task_schedule`, RPC `carry_over_task`; удалена `public.next_working_day(date)`.
 14. `0014_custom_board_lists` — ограничение длины названия `board_lists`, запрет создавать системные списки клиентом, триггер неизменяемости `is_system` / `project_id`, RPC `move_board_list`.
 15. `0015_set_task_planned_date` — RPC `set_task_planned_date`: атомарная смена даты плана в карточке задачи вместо удаления и вставки отдельными запросами.
+16. `0016_revoke_function_execute` — отзыв `EXECUTE` у восьми триггерных функций `public` для API-ролей и у `project_access` для `anon`.
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
-Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (`supabase test db`, 139/139 успешно). TypeScript-типы сгенерированы в `lib/types/database.ts`.
+Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (`supabase test db`, 142/142 успешно). TypeScript-типы сгенерированы в `lib/types/database.ts`.
