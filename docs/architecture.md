@@ -78,7 +78,11 @@ Layout не может передать данные страницам, поэ�
 4. Страница показывает проект, роль и пригласившего (`get_project_invitation`). «Принять» вызывает `accept_project_invitation` и переводит на доску проекта.
 5. Страница задаёт `referrer: no-referrer`, чтобы токен не уходил в заголовке Referer.
 
-Email-рассылки нет: ссылку владелец отправляет сам. `service_role` не нужен. Если в Supabase включено подтверждение email, после письма `next` теряется, и ссылку нужно открыть заново.
+Email-рассылки нет: ссылку владелец отправляет сам. `service_role` не нужен.
+
+Если в Supabase включено подтверждение email, `next` переживает письмо: `registerAction` передаёт `emailRedirectTo = <origin><next>`, шаблон `supabase/templates/confirmation.html` ведёт на `/auth/confirm?token_hash=…&type=email&next={{ .RedirectTo }}`, `verifyOtp` создаёт сессию, и человек сразу попадает на `/invite/<token>`. `/auth/confirm` принимает `next` только через `confirmRedirectPath` (`lib/utils.ts`): путь или URL того же хоста, к которому обратился браузер (`x-forwarded-host` / `host`, а не `request.url` — Next строит его от хоста сервера); любой другой сайт — `/profile`.
+
+На production это требует ручной настройки удалённого проекта Supabase (локальный `config.toml` на него не действует): Auth → URL Configuration → Redirect URLs — `https://<домен>/**`; Auth → Email Templates → Confirm signup — содержимое `confirmation.html` (или `supabase config push`). Без этого открытый редирект всё равно закрыт, но `next` теряется, как раньше.
 
 ## 5. Бизнес-логика
 

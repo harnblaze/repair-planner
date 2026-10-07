@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { mapAuthError } from "@/lib/errors";
@@ -20,10 +21,16 @@ export async function registerAction(input: RegisterInput, next?: string): Promi
   }
 
   const supabase = await createClient();
+  const origin = (await headers()).get("origin");
+  // При включённом подтверждении email next (например, ссылка-приглашение)
+  // возвращается через письмо: шаблон supabase/templates/confirmation.html.
   const { data, error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
-    options: { data: { full_name: parsed.data.fullName } },
+    options: {
+      data: { full_name: parsed.data.fullName },
+      emailRedirectTo: origin ? `${origin}${safeNextPath(next)}` : undefined,
+    },
   });
 
   if (error) {
@@ -34,7 +41,7 @@ export async function registerAction(input: RegisterInput, next?: string): Promi
   if (!data.session) {
     return {
       ok: true,
-      message: "Подтвердите email по ссылке из письма, затем войдите.",
+      message: "Мы отправили письмо со ссылкой для подтверждения email. Перейдите по ней, чтобы продолжить.",
     };
   }
 

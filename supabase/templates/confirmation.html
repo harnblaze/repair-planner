@@ -1,0 +1,11 @@
+<h2>Подтверждение регистрации</h2>
+
+<p>Перейдите по ссылке ниже, чтобы подтвердить email и войти в Repair Planner:</p>
+
+<p>
+  <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next={{ .RedirectTo }}">
+    Подтвердить email
+  </a>
+</p>
+
+<p>Если вы не регистрировались в Repair Planner, проигнорируйте это письмо.</p>
