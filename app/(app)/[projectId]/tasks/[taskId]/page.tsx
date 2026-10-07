@@ -6,6 +6,7 @@ import { canEditProject } from "@/lib/business/project-roles";
 import { addDays, nextWorkingDay } from "@/lib/business/working-days";
 import { getProjectRole } from "@/lib/projects/access";
 import { getWorkCalendar } from "@/lib/projects/calendar";
+import { ATTACHMENTS_BUCKET, SIGNED_URL_TTL_SECONDS } from "@/lib/business/attachments";
 import { createClient } from "@/lib/supabase/server";
 
 import { CarryOverButton } from "./carry-over-button";
@@ -13,6 +14,7 @@ import { ExecutorsPicker } from "./executors-picker";
 import { PlanTaskForm } from "./plan-task-form";
 import { StatusSelect } from "./status-select";
 import { TaskDetailsForm } from "./task-details-form";
+import { TaskAttachments, type TaskPhoto } from "./task-attachments";
 import { TaskMaterials } from "./task-materials";
 
 export const metadata: Metadata = {
@@ -31,6 +33,7 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
     { data: assigned },
     { data: materials },
     { data: taskMaterials },
+    { data: attachments },
   ] = await Promise.all([
     getProjectRole(projectId),
     supabase
@@ -61,6 +64,13 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
       .select("id, material_id, quantity, note")
       .eq("task_id", taskId)
       .order("created_at", { ascending: true }),
+    supabase
+      .from("task_attachments")
+      .select("id, storage_path, width, height")
+      .eq("task_id", taskId)
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true }),
   ]);
 
   if (!task) {
@@ -69,6 +79,26 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
 
   const assignedExecutorIds = assigned?.map((a) => a.executor_id) ?? [];
   const canEdit = canEditProject(role);
+
+  // Ссылки на просмотр подписываются одним запросом; RLS storage.objects
+  // пропускает только участников проекта.
+  let photos: TaskPhoto[] = [];
+  if (attachments && attachments.length > 0) {
+    const { data: signed, error: signError } = await supabase.storage
+      .from(ATTACHMENTS_BUCKET)
+      .createSignedUrls(
+        attachments.map((a) => a.storage_path),
+        SIGNED_URL_TTL_SECONDS,
+      );
+    if (signError) console.error("TaskPage (sign attachments):", signError);
+    const urlByPath = new Map((signed ?? []).map((s) => [s.path, s.signedUrl]));
+    photos = attachments.map((a) => ({
+      id: a.id,
+      url: urlByPath.get(a.storage_path) ?? null,
+      width: a.width,
+      height: a.height,
+    }));
+  }
 
   // Подпись кнопки переноса. Месяца исключений достаточно: столько нерабочих
   // дней подряд не бывает. Без календаря дата не показывается — перенос всё
@@ -140,6 +170,8 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
             taskMaterials={taskMaterials ?? []}
             canEdit={canEdit}
           />
+
+          <TaskAttachments projectId={projectId} taskId={taskId} photos={photos} canEdit={canEdit} />
         </CardContent>
       </Card>
     </main>
