@@ -51,3 +51,6 @@ next-env.d.ts
 # деплой (может содержать секреты — см. vibe-deploy skill)
 deploy-state.md
 DEPLOY.md
+
+# Serena (локальная конфигурация MCP-инструмента)
+.serena/
