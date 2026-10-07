@@ -6,6 +6,8 @@ import {
   isValidAttachmentPath,
   isValidDimension,
   MAX_SIDE,
+  rememberSignedUrls,
+  urlAfterLoadError,
 } from "./attachments";
 
 const PROJECT = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
@@ -72,5 +74,40 @@ describe("isValidDimension", () => {
     expect(isValidDimension(10.5)).toBe(false);
     expect(isValidDimension(MAX_SIDE + 1)).toBe(false);
     expect(isValidDimension("100")).toBe(false);
+  });
+});
+
+describe("rememberSignedUrls", () => {
+  it("keeps the url the browser already loaded when the page re-signs the photo", () => {
+    expect(rememberSignedUrls({ a: "url-a-old" }, [{ id: "a", url: "url-a-new" }])).toEqual({ a: "url-a-old" });
+  });
+
+  it("adds fresh urls for new photos", () => {
+    expect(rememberSignedUrls({ a: "url-a" }, [{ id: "a", url: "url-a2" }, { id: "b", url: "url-b" }])).toEqual({
+      a: "url-a",
+      b: "url-b",
+    });
+  });
+
+  it("drops deleted photos", () => {
+    expect(rememberSignedUrls({ a: "url-a", b: "url-b" }, [{ id: "b", url: "url-b2" }])).toEqual({ b: "url-b" });
+  });
+
+  it("skips photos whose url could not be signed", () => {
+    expect(rememberSignedUrls({}, [{ id: "a", url: null }])).toEqual({});
+  });
+});
+
+describe("urlAfterLoadError", () => {
+  it("switches to the newer signed url when the failed one has expired", () => {
+    expect(urlAfterLoadError("url-old", "url-new")).toBe("url-new");
+  });
+
+  it("gives up when the newest url is the one that failed", () => {
+    expect(urlAfterLoadError("url-a", "url-a")).toBeNull();
+  });
+
+  it("gives up when there is no signed url at all", () => {
+    expect(urlAfterLoadError("url-a", null)).toBeNull();
   });
 });

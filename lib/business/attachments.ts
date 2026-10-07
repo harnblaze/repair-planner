@@ -37,3 +37,26 @@ export function isValidAttachmentPath(path: string, projectId: string, taskId: s
 export function isValidDimension(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MAX_SIDE;
 }
+
+/**
+ * Ссылки на фото, которые браузер уже загрузил. Каждый рендер страницы
+ * подписывает фото заново, а новый токен — новый URL, мимо кеша браузера:
+ * без этого любое действие в карточке заново скачивало бы все фото.
+ * Удалённые фото выпадают, новые добавляются.
+ */
+export function rememberSignedUrls(
+  cache: Readonly<Record<string, string>>,
+  photos: readonly { id: string; url: string | null }[],
+): Record<string, string> {
+  const next: Record<string, string> = {};
+  for (const photo of photos) {
+    const url = cache[photo.id] ?? photo.url;
+    if (url) next[photo.id] = url;
+  }
+  return next;
+}
+
+/** Запомненная ссылка истекла: перейти на свежую из последнего рендера, если она другая. */
+export function urlAfterLoadError(failedUrl: string, freshUrl: string | null): string | null {
+  return freshUrl && freshUrl !== failedUrl ? freshUrl : null;
+}

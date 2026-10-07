@@ -10,7 +10,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { compressImage } from "@/lib/attachments/compress-image";
-import { MAX_SOURCE_BYTES } from "@/lib/business/attachments";
+import { MAX_SOURCE_BYTES, rememberSignedUrls, urlAfterLoadError } from "@/lib/business/attachments";
 import { ATTACHMENT_MESSAGES, formatUploadErrors } from "@/lib/errors";
 
 import {
@@ -40,6 +40,27 @@ export function TaskAttachments({
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [isDeleting, startDelete] = useTransition();
   const current = openIndex === null ? null : (photos[openIndex] ?? null);
+
+  // Ссылки, уже загруженные браузером: новый рендер страницы подписывает фото
+  // заново, и без этого кеша любое действие в карточке скачивало бы их снова.
+  const [urlCache, setUrlCache] = useState(() => rememberSignedUrls({}, photos));
+  const [seenPhotos, setSeenPhotos] = useState(photos);
+  if (photos !== seenPhotos) {
+    setSeenPhotos(photos);
+    setUrlCache((cache) => rememberSignedUrls(cache, photos));
+  }
+
+  function displayUrl(photo: TaskPhoto): string | null {
+    return urlCache[photo.id] ?? photo.url;
+  }
+
+  // Запомненная ссылка истекла — переходим на свежую из последнего рендера.
+  // false — свежей нет, показывается заглушка.
+  function handleLoadError(photo: TaskPhoto, failedUrl: string): boolean {
+    const next = urlAfterLoadError(failedUrl, photo.url);
+    if (next) setUrlCache((cache) => ({ ...cache, [photo.id]: next }));
+    return next !== null;
+  }
 
   // Ошибка одного фото — текст для пользователя; null — загружено.
   async function uploadOne(file: File): Promise<string | null> {
@@ -123,10 +144,12 @@ export function TaskAttachments({
         <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
           {photos.map((photo, index) => (
             <PhotoThumb
-              key={photo.url ?? photo.id}
+              key={photo.id}
               photo={photo}
+              url={displayUrl(photo)}
               index={index}
               onOpen={() => setOpenIndex(index)}
+              onLoadError={(failedUrl) => handleLoadError(photo, failedUrl)}
             />
           ))}
         </div>
@@ -188,7 +211,14 @@ export function TaskAttachments({
             </div>
 
             <div className="relative flex min-h-0 flex-1 items-center justify-center px-4 pb-4">
-              {current ? <ViewerImage key={current.url ?? current.id} photo={current} /> : null}
+              {current ? (
+                <ViewerImage
+                  key={current.id}
+                  photo={current}
+                  url={displayUrl(current)}
+                  onLoadError={(failedUrl) => handleLoadError(current, failedUrl)}
+                />
+              ) : null}
               {photos.length > 1 ? (
                 <>
                   <Button
@@ -223,12 +253,25 @@ export function TaskAttachments({
 
 const EXPIRED_TEXT = "Обновите страницу";
 
-function PhotoThumb({ photo, index, onOpen }: { photo: TaskPhoto; index: number; onOpen: () => void }) {
+type PhotoImageProps = {
+  photo: TaskPhoto;
+  url: string | null;
+  /** true — подставлена свежая ссылка; false — показать заглушку. */
+  onLoadError: (failedUrl: string) => boolean;
+};
+
+function PhotoThumb({
+  photo,
+  url,
+  index,
+  onOpen,
+  onLoadError,
+}: PhotoImageProps & { index: number; onOpen: () => void }) {
   // Подписанная ссылка живёт час: на долго открытой вкладке картинка
   // перестаёт грузиться — показываем подсказку вместо битого изображения.
-  const [broken, setBroken] = useState(false);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
 
-  if (!photo.url || broken) {
+  if (!url || failedUrl === url) {
     return (
       <div className="flex aspect-square items-center justify-center rounded-md bg-page p-1 text-center text-[11px] text-faint">
         {EXPIRED_TEXT}
@@ -245,34 +288,38 @@ function PhotoThumb({ photo, index, onOpen }: { photo: TaskPhoto; index: number;
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- подписанная ссылка живёт час, оптимизатор next/image её не кеширует */}
       <img
-        src={photo.url}
+        src={url}
         alt=""
         loading="lazy"
         width={photo.width}
         height={photo.height}
         className="size-full object-cover"
-        onError={() => setBroken(true)}
+        onError={() => {
+          if (!onLoadError(url)) setFailedUrl(url);
+        }}
       />
     </button>
   );
 }
 
-function ViewerImage({ photo }: { photo: TaskPhoto }) {
-  const [broken, setBroken] = useState(false);
+function ViewerImage({ photo, url, onLoadError }: PhotoImageProps) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
 
-  if (!photo.url || broken) {
+  if (!url || failedUrl === url) {
     return <p className="text-[13px] text-white/70">{EXPIRED_TEXT}</p>;
   }
 
   return (
     // eslint-disable-next-line @next/next/no-img-element -- подписанная ссылка живёт час, оптимизатор next/image её не кеширует
     <img
-      src={photo.url}
+      src={url}
       alt=""
       width={photo.width}
       height={photo.height}
       className="max-h-full max-w-full object-contain"
-      onError={() => setBroken(true)}
+      onError={() => {
+        if (!onLoadError(url)) setFailedUrl(url);
+      }}
     />
   );
 }
