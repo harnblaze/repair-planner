@@ -11,6 +11,11 @@ const nextConfig: NextConfig = {
   // (_next, HMR) по умолчанию отдаются только для localhost — без этого
   // страницы по ссылкам из писем не гидратируются.
   allowedDevOrigins: ["127.0.0.1"],
+  // next dev по умолчанию печатает каждый вызов Server Function с аргументами —
+  // для loginAction/registerAction это email и пароль в терминале и логах.
+  logging: {
+    serverFunctions: false,
+  },
 };
 
 export default nextConfig;
