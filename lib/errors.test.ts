@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapBoardMoveError, NOT_WORKING_DAY_MESSAGE } from "@/lib/errors";
+import { mapAuthError, mapBoardMoveError, NOT_WORKING_DAY_MESSAGE } from "@/lib/errors";
 
 describe("mapBoardMoveError", () => {
   it("maps a known RPC code", () => {
@@ -14,5 +14,17 @@ describe("mapBoardMoveError", () => {
     expect(mapBoardMoveError("duplicate key value", "Не удалось изменить план. Попробуйте ещё раз.")).toBe(
       "Не удалось изменить план. Попробуйте ещё раз.",
     );
+  });
+});
+
+describe("mapAuthError", () => {
+  it("explains that email login is disabled in Supabase Auth", () => {
+    expect(mapAuthError("Email logins are disabled")).toBe(
+      "Вход по email временно недоступен. Обратитесь к администратору.",
+    );
+  });
+
+  it("uses the generic message for an unknown error", () => {
+    expect(mapAuthError("something unexpected")).toBe("Не удалось выполнить операцию. Попробуйте ещё раз.");
   });
 });

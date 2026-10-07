@@ -20,6 +20,7 @@ export async function resetPasswordAction(input: ResetPasswordInput): Promise<Ac
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
 
   if (error) {
+    console.error("resetPasswordAction:", { code: error.code, status: error.status, message: error.message });
     return { ok: false, error: mapAuthError(error.message) };
   }
 

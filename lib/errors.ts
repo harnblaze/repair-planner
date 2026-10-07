@@ -5,6 +5,8 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   "Password should be at least 6 characters": "Пароль должен содержать не менее 6 символов.",
   "same_password": "Новый пароль должен отличаться от старого.",
   "Auth session missing!": "Сессия истекла. Запросите восстановление пароля ещё раз.",
+  // В Supabase Dashboard выключен провайдер Email (Authentication → Sign In / Providers).
+  "Email logins are disabled": "Вход по email временно недоступен. Обратитесь к администратору.",
 };
 
 const DEFAULT_MESSAGE = "Не удалось выполнить операцию. Попробуйте ещё раз.";

@@ -34,6 +34,7 @@ export async function registerAction(input: RegisterInput, next?: string): Promi
   });
 
   if (error) {
+    console.error("registerAction:", { code: error.code, status: error.status, message: error.message });
     return { ok: false, error: mapAuthError(error.message) };
   }
 

@@ -23,6 +23,7 @@ export async function loginAction(input: LoginInput, next?: string): Promise<Act
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
 
   if (error) {
+    console.error("loginAction:", { code: error.code, status: error.status, message: error.message });
     return { ok: false, error: mapAuthError(error.message) };
   }
 

@@ -26,9 +26,14 @@ export async function forgotPasswordAction(input: ForgotPasswordInput): Promise<
   const requestHeaders = await headers();
   const origin = requestHeaders.get("origin");
 
-  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+  const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
     redirectTo: `${origin}/auth/confirm?next=/reset-password`,
   });
+
+  // Ответ пользователю одинаковый и при ошибке (см. SUCCESS_MESSAGE), причина — только в лог.
+  if (error) {
+    console.error("forgotPasswordAction:", { code: error.code, status: error.status, message: error.message });
+  }
 
   return { ok: true, message: SUCCESS_MESSAGE };
 }
