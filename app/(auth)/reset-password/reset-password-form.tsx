@@ -50,7 +50,14 @@ export function ResetPasswordForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+    <form
+      // Если JS не загрузился, браузер отправит форму сам: без method="post"
+      // пароль ушёл бы GET-параметром в адрес, историю и логи.
+      method="post"
+      onSubmit={onSubmit}
+      className="flex flex-col gap-4"
+      noValidate
+    >
       {serverError ? (
         <Alert variant="destructive">
           <AlertDescription>{serverError}</AlertDescription>

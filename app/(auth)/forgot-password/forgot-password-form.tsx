@@ -39,7 +39,14 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+    <form
+      // Если JS не загрузился, браузер отправит форму сам: без method="post"
+      // email ушёл бы GET-параметром в адрес, историю и логи.
+      method="post"
+      onSubmit={onSubmit}
+      className="flex flex-col gap-4"
+      noValidate
+    >
       <div className="flex flex-col gap-2">
         <Label htmlFor="email">Email</Label>
         <Input id="email" type="email" autoComplete="email" {...register("email")} />
