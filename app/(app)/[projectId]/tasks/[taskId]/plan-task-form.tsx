@@ -1,12 +1,17 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { isSubmittablePlanDate } from "@/lib/business/plan-date-input";
 
 import { setTaskPlannedDateAction } from "./actions";
+
+// Пауза после последнего изменения: при вводе с клавиатуры поле отдаёт
+// промежуточные значения (день "01" до "13", год "0002" до "2026").
+const SAVE_DELAY_MS = 600;
 
 export function PlanTaskForm({
   projectId,
@@ -20,22 +25,55 @@ export function PlanTaskForm({
   disabled?: boolean;
 }) {
   const [value, setValue] = useState(plannedDate ?? "");
-  const [savedValue, setSavedValue] = useState(plannedDate ?? "");
-  const [pending, startTransition] = useTransition();
+  const savedRef = useRef(plannedDate ?? "");
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestRef = useRef(0);
+
+  const cancelScheduled = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  useEffect(() => cancelScheduled, []);
 
   // Рабочий ли день, зависит от календаря проекта — проверяет Server Action
-  // (и триггер БД); при отказе поле возвращается к сохранённой дате.
-  const onChange = (next: string) => {
-    setValue(next);
-    startTransition(async () => {
-      const result = await setTaskPlannedDateAction(projectId, taskId, next || null);
-      if (!result.ok) {
-        setValue(savedValue);
+  // (и БД); при отказе поле возвращается к сохранённой дате. Server Actions
+  // выполняются по очереди, поэтому ответы приходят в порядке отправки:
+  // успешный ответ всегда обновляет сохранённую дату, а откат и ошибку
+  // показываем только для последнего запроса.
+  const save = (next: string) => {
+    cancelScheduled();
+    if (next === savedRef.current || !isSubmittablePlanDate(next)) return;
+
+    const request = ++requestRef.current;
+    void setTaskPlannedDateAction(projectId, taskId, next || null).then((result) => {
+      if (result.ok) {
+        savedRef.current = next;
+      } else if (request === requestRef.current) {
+        setValue(savedRef.current);
         toast.error(result.error);
-      } else {
-        setSavedValue(next);
       }
     });
+  };
+
+  const onChange = (next: string) => {
+    setValue(next);
+    cancelScheduled();
+    if (next !== savedRef.current && isSubmittablePlanDate(next)) {
+      timerRef.current = setTimeout(() => save(next), SAVE_DELAY_MS);
+    }
+  };
+
+  // Уход из поля: полную дату сохраняем сразу, недописанную — откатываем.
+  const commit = () => {
+    if (isSubmittablePlanDate(value)) {
+      save(value);
+    } else {
+      cancelScheduled();
+      setValue(savedRef.current);
+    }
   };
 
   return (
@@ -45,8 +83,12 @@ export function PlanTaskForm({
         id="plan-date"
         type="date"
         value={value}
-        disabled={pending || disabled}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+        }}
       />
       {disabled ? null : (
         <p className="text-[11px] text-meta-alt">
