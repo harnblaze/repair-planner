@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import { BackLink } from "@/components/common/back-link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { canEditProject } from "@/lib/business/project-roles";
 import { addDays, nextWorkingDay } from "@/lib/business/working-days";
@@ -111,6 +112,7 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
 
   return (
     <main className="mx-auto flex max-w-lg w-full flex-col gap-4 px-5 pt-6 pb-7">
+      <BackLink fallbackHref={`/${projectId}/board`} />
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Заявка</CardTitle>
