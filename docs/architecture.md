@@ -51,6 +51,17 @@ PostgreSQL (Supabase)
 | `lib/supabase/server.ts` | серверный клиент для Server Components и Server Actions |
 | `lib/supabase/proxy.ts` | обновление сессии, защита маршрутов; вызывается из `proxy.ts` |
 
+### 3.1 Фото задач: загрузка в Storage
+
+Байты фото не проходят через сервер Next.js:
+
+1. Браузер сжимает фото (`lib/attachments/compress-image.ts`: ≤ 2000 px, JPEG 0.85, без EXIF).
+2. `startTaskAttachmentUploadAction` проверяет права, задачу и лимит (30 фото), выбирает путь и выдаёт signed upload URL.
+3. Браузер отправляет JPEG `PUT`-запросом прямо в Storage.
+4. `confirmTaskAttachmentAction` проверяет путь и наличие объекта, берёт размер из Storage и вставляет строку `task_attachments`.
+
+Просмотр — ссылки, подписанные на сервере на час (`createSignedUrls`). Удаление: сначала строка, затем файл (ошибка удаления файла только логируется). Server actions — `tasks/[taskId]/attachment-actions.ts`, UI — `tasks/[taskId]/task-attachments.tsx`.
+
 ## 4. Маршрутизация и выбор проекта
 
 Активный проект — часть URL: `/(app)/[projectId]/...`. Это даёт:
@@ -181,7 +192,7 @@ app/
       layout.tsx                    проверка доступа, метка роли
       board/                        главная доска: week-board.tsx (DnD недели), dnd.ts, panel.tsx
       tasks/                         список заявок, быстрое создание
-      tasks/[taskId]/               карточка задачи
+      tasks/[taskId]/               карточка задачи; фото: attachment-actions.ts, task-attachments.tsx
       materials/                    справочник и остатки, быстрый приход в строке
       materials/[materialId]/       приход, корректировка по пересчёту, история движений
       reports/                      отчёт по расходу материалов (page, data.ts, export/route.ts — CSV)
@@ -199,7 +210,8 @@ components/
 lib/
   supabase/                         client.ts, server.ts, proxy.ts
   business/                         working-days.ts, public-holidays.ts, task-planning.ts,
-                                    material-report.ts, dates.ts, project-roles.ts
+                                    material-report.ts, dates.ts, project-roles.ts, attachments.ts
+  attachments/compress-image.ts     сжатие фото в браузере перед загрузкой
   projects/access.ts                getProjectRole (cache), requireProjectEdit
   projects/calendar.ts              getWorkCalendar — исключения календаря за диапазон дат
   validation/                       Zod-схемы, общие для клиента и сервера
@@ -219,7 +231,7 @@ proxy.ts
 | Бизнес-функции (рабочие дни, перенос, расчёт остатков) | Vitest, unit-тесты |
 | Типы | `tsc --noEmit` |
 | Стиль | ESLint (конфигурация Next.js) |
-| RLS | pgTAP `supabase/tests/database/rls.test.sql`: изоляция пользователей, права viewer/member/owner, приглашения, календарь проекта и рабочие дни в RPC |
+| RLS | pgTAP `supabase/tests/database/rls.test.sql`: изоляция пользователей, права viewer/member/owner, приглашения, календарь проекта и рабочие дни в RPC; `attachments.test.sql`: фото задач — таблица, bucket и `storage.objects` |
 
 Тесты RLS обязательны: это единственный слой, который нельзя проверить глазами.
 

@@ -354,6 +354,15 @@ RLS: SELECT — любой участник; INSERT/UPDATE/DELETE — `project_c
 
 Будущие индивидуальные графики исполнителей — отдельная таблица поверх рабочего дня проекта; эта модель не меняется.
 
+### 5.14 `task_attachments` — фото к задачам (0017)
+
+Фото хранятся в приватном bucket Storage `task-attachments` (10 МБ на файл, только `image/jpeg`) по пути `{project_id}/{task_id}/{uuid}.jpg`; путь выбирает сервер. В таблице — по строке на фото: `storage_path` (unique), `size_bytes` (из метаданных Storage), `width`, `height`, `created_by`, `created_at`. Порядок в ленте — `created_at`.
+
+* Составной FK `(task_id, project_id) → tasks` (`on delete cascade`) и CHECK `task_attachments_path_matches_task`: путь принадлежит именно этой задаче и имеет вид `{uuid}.jpg`.
+* RLS таблицы: SELECT — любой участник; INSERT/DELETE — `project_can_edit`; UPDATE — никто.
+* RLS `storage.objects` для bucket: проект — первая папка пути через `private.attachment_project_id(name)` (null для не-uuid, поэтому некорректный путь даёт отказ, а не ошибку). SELECT — участник, INSERT/DELETE — `project_can_edit`, UPDATE — никто.
+* Удаление строки задачи каскадом удаляет строки фото, но не файлы — удаления задач в приложении нет; см. roadmap.
+
 ## 6. RLS
 
 ### 6.1 Проблема рекурсии и её решение
@@ -514,7 +523,8 @@ update materials set current_balance = current_balance + delta where id = p_mate
 14. `0014_custom_board_lists` — ограничение длины названия `board_lists`, запрет создавать системные списки клиентом, триггер неизменяемости `is_system` / `project_id`, RPC `move_board_list`.
 15. `0015_set_task_planned_date` — RPC `set_task_planned_date`: атомарная смена даты плана в карточке задачи вместо удаления и вставки отдельными запросами.
 16. `0016_revoke_function_execute` — отзыв `EXECUTE` у восьми триггерных функций `public` для API-ролей и у `project_access` для `anon`.
+17. `0017_task_attachments` — таблица `task_attachments`, приватный bucket `task-attachments`, RLS на таблице и `storage.objects`, helper `private.attachment_project_id`.
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
-Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (`supabase test db`, 142/142 успешно). TypeScript-типы сгенерированы в `lib/types/database.ts`.
+Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (142) и `supabase/tests/database/attachments.test.sql` (28) — `supabase test db`, 170/170 успешно. TypeScript-типы сгенерированы в `lib/types/database.ts`.
