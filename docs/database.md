@@ -261,6 +261,7 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 | `move_board_item(p_item_id, p_position)` | порядок записи внутри списка |
 | `move_board_list(p_list_id, p_position)` (0014) | порядок списков проекта: перенумеровывает `board_lists.sort_order` 0..n-1 под advisory-блокировкой проекта; `list_not_found` без доступа к проекту, `access_denied` без права записи |
 | `carry_over_task(p_task_id) returns date` (0013) | перенос на следующий рабочий день по календарю проекта: новый день с `carried_over = true` в конец дня; возвращает дату |
+| `set_task_planned_date(p_project_id, p_task_id, p_work_date default null)` (0015) | поле даты в карточке задачи, одной транзакцией: `null` снимает весь план (статус не меняется); незапланированная задача планируется через `plan_task_on_day`; запланированная — весь план заменяется одним днём в конце дня (история переносов не сохраняется), `new` → `planned`; задача должна принадлежать `p_project_id`, иначе `task_not_found` |
 
 С 0013 `plan_task_on_day` и смена дня в `move_task_schedule` проверяют рабочий день через `private.is_working_day` вместо `isodow`. Порядок внутри дня меняется и в нерабочий день.
 
@@ -509,7 +510,8 @@ update materials set current_balance = current_balance + delta where id = p_mate
 12. `0012_project_invitations` — `project_can_edit`, политики записи через неё, `access_denied` в RPC материалов, ужесточение `project_members`, таблица и RPC приглашений, `project_member_list`.
 13. `0013_project_calendar` — `calendar_day_kind`, `project_calendar_days`, `private.is_working_day` / `private.next_working_day`, триггер рабочего дня на `task_schedule`, календарь в `plan_task_on_day` и `move_task_schedule`, RPC `carry_over_task`; удалена `public.next_working_day(date)`.
 14. `0014_custom_board_lists` — ограничение длины названия `board_lists`, запрет создавать системные списки клиентом, триггер неизменяемости `is_system` / `project_id`, RPC `move_board_list`.
+15. `0015_set_task_planned_date` — RPC `set_task_planned_date`: атомарная смена даты плана в карточке задачи вместо удаления и вставки отдельными запросами.
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
-Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (`supabase test db`, 127/127 успешно). TypeScript-типы сгенерированы в `lib/types/database.ts`.
+Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (`supabase test db`, 139/139 успешно). TypeScript-типы сгенерированы в `lib/types/database.ts`.

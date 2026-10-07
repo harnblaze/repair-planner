@@ -7,7 +7,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(127);
+select plan(139);
 
 -- ================= Фикстуры (как postgres, минуя RLS) =================
 
@@ -490,6 +490,94 @@ select throws_ok(
   'carry_over_task rejects a closed task'
 );
 
+-- ================= Дата плана в карточке задачи (0015) =================
+-- 2020-01-27 — понедельник; исключений календаря на этой неделе нет.
+
+insert into public.tasks (id, project_id, title) values
+  ('e0000000-0000-0000-0000-0000000000d3', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Plan Date Task 3'),
+  ('e0000000-0000-0000-0000-0000000000d4', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Plan Date Task 4');
+
+-- У d3 есть история переносов: 27 → 28. Статус вручную возвращён в new.
+select plan_task_on_day('e0000000-0000-0000-0000-0000000000d3', '2020-01-27', null);
+select carry_over_task('e0000000-0000-0000-0000-0000000000d3');
+update public.tasks set status = 'new' where id = 'e0000000-0000-0000-0000-0000000000d3';
+
+-- 29a. Незапланированная задача планируется как с доски
+select set_task_planned_date('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'e0000000-0000-0000-0000-0000000000d4', '2020-01-29');
+
+select is(
+  (select planned_date from public.tasks where id = 'e0000000-0000-0000-0000-0000000000d4'),
+  '2020-01-29'::date,
+  'set_task_planned_date plans an unplanned task'
+);
+
+select is(
+  (select status::text from public.tasks where id = 'e0000000-0000-0000-0000-0000000000d4'),
+  'planned',
+  'set_task_planned_date moves an unplanned new task to planned'
+);
+
+-- 29b. Запланированная задача: весь план заменяется одним днём в конце дня
+select set_task_planned_date('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'e0000000-0000-0000-0000-0000000000d3', '2020-01-29');
+
+select is(
+  (select string_agg(work_date::text || ':' || carried_over::text, ',' order by work_date)
+     from public.task_schedule where task_id = 'e0000000-0000-0000-0000-0000000000d3'),
+  '2020-01-29:false',
+  'set_task_planned_date replaces the whole schedule with the chosen day'
+);
+
+select is(
+  (select status::text from public.tasks where id = 'e0000000-0000-0000-0000-0000000000d3'),
+  'planned',
+  'set_task_planned_date moves a replanned new task to planned'
+);
+
+select is(
+  (select string_agg(t.title || ':' || s.position, ',' order by s.position)
+     from public.task_schedule s join public.tasks t on t.id = s.task_id
+     where s.project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and s.work_date = '2020-01-29'),
+  'Plan Date Task 4:0,Plan Date Task 3:1',
+  'set_task_planned_date puts the replanned task at the end of the day'
+);
+
+-- 29c. Отклонённая замена не оставляет задачу без плана
+select throws_ok(
+  $$ select set_task_planned_date('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'e0000000-0000-0000-0000-0000000000d3', '2020-01-20') $$,
+  null::char(5), 'not_working_day',
+  'set_task_planned_date rejects a project holiday'
+);
+
+select is(
+  (select string_agg(work_date::text, ',' order by work_date)
+     from public.task_schedule where task_id = 'e0000000-0000-0000-0000-0000000000d3'),
+  '2020-01-29',
+  'a rejected replan keeps the previous schedule'
+);
+
+-- 29d. Задача должна принадлежать указанному проекту
+select throws_ok(
+  $$ select set_task_planned_date('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'e0000000-0000-0000-0000-0000000000d3', '2020-01-30') $$,
+  null::char(5), 'task_not_found',
+  'set_task_planned_date rejects a task from another project'
+);
+
+-- 29e. Очистка даты снимает план, статус не меняется
+select set_task_planned_date('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'e0000000-0000-0000-0000-0000000000d4', null);
+
+select is(
+  (select count(*) from public.task_schedule where task_id = 'e0000000-0000-0000-0000-0000000000d4')::text
+    || ':' || coalesce((select planned_date::text from public.tasks where id = 'e0000000-0000-0000-0000-0000000000d4'), '-'),
+  '0:-',
+  'set_task_planned_date with null clears the schedule'
+);
+
+select is(
+  (select status::text from public.tasks where id = 'e0000000-0000-0000-0000-0000000000d4'),
+  'planned',
+  'clearing the plan date keeps the task status'
+);
+
 -- ================= Отчёт по расходу материалов (0009) =================
 
 insert into public.materials (id, project_id, name, unit) values
@@ -682,6 +770,12 @@ select throws_ok(
   $$ select carry_over_task('e0000000-0000-0000-0000-0000000000c2') $$,
   null::char(5), 'task_not_found',
   'carry_over_task rejects tasks of a project without access'
+);
+
+select throws_ok(
+  $$ select set_task_planned_date('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'e0000000-0000-0000-0000-0000000000d3', '2020-01-30') $$,
+  null::char(5), 'task_not_found',
+  'set_task_planned_date rejects a foreign task passed with an own project id'
 );
 
 -- 34. Отчёт не показывает расход чужого проекта
@@ -897,6 +991,12 @@ select throws_ok(
   $$ select carry_over_task('e0000000-0000-0000-0000-0000000000c2') $$,
   null::char(5), 'task_not_found',
   'viewer cannot carry over tasks'
+);
+
+select throws_ok(
+  $$ select set_task_planned_date('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'e0000000-0000-0000-0000-0000000000d3', '2020-01-30') $$,
+  null::char(5), 'task_not_found',
+  'viewer cannot change the plan date'
 );
 
 -- 51. Viewer не управляет участниками и не видит приглашения

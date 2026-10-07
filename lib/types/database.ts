@@ -903,6 +903,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      set_task_planned_date: {
+        Args: { p_project_id: string; p_task_id: string; p_work_date?: string }
+        Returns: undefined
+      }
     }
     Enums: {
       calendar_day_kind: "holiday" | "working_day"

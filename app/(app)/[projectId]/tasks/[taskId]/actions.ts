@@ -174,8 +174,7 @@ export async function setTaskPlannedDateAction(
     return { ok: false, error: "Укажите дату." };
   }
 
-  // Проверка до удаления текущего плана ниже: иначе отклонённая БД вставка
-  // (триггер рабочего дня, 0013) оставила бы задачу без плана.
+  // БД проверит рабочий день сама (0013, 0015); здесь — только ради сообщения с датой.
   if (workDate) {
     const calendar = await getWorkCalendar(projectId, workDate, workDate);
     if (!calendar) {
@@ -186,88 +185,18 @@ export async function setTaskPlannedDateAction(
     }
   }
 
+  // Ручной выбор даты заменяет весь план задачи (не перенос — см. carryOverTaskAction).
+  // Снятие плана, замена дня и смена статуса new → planned — одна транзакция (0015).
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { error } = await supabase.rpc("set_task_planned_date", {
+    p_project_id: projectId,
+    p_task_id: taskId,
+    p_work_date: workDate ?? undefined,
+  });
 
-  if (!user) {
-    return { ok: false, error: "Сессия истекла. Войдите снова." };
-  }
-
-  const { data: task } = await supabase
-    .from("tasks")
-    .select("id, status, planned_date")
-    .eq("id", taskId)
-    .eq("project_id", projectId)
-    .maybeSingle();
-
-  if (!task) {
-    return { ok: false, error: "Заявка не найдена." };
-  }
-
-  // Задача сейчас в «Текущих заявках» (в т.ч. отложенная с историей дней) —
-  // планируем тем же RPC, что и перетаскивание на доске: история сохраняется,
-  // статус new → planned выставляется в той же транзакции.
-  if (workDate && !task.planned_date) {
-    const { error: planError } = await supabase.rpc("plan_task_on_day", {
-      p_task_id: taskId,
-      p_work_date: workDate,
-    });
-
-    if (planError) {
-      console.error("setTaskPlannedDateAction (plan):", planError);
-      return { ok: false, error: mapBoardMoveError(planError.message) };
-    }
-
-    revalidateTask(projectId, taskId);
-    return { ok: true };
-  }
-
-  // Это ручной выбор конкретной даты (поле в карточке), а не перенос — он
-  // заменяет весь план задачи, а не добавляет день. Перенос с сохранением
-  // истории — отдельное действие, carryOverTaskAction ниже.
-  // Поэтому сначала полностью снимаем текущее планирование, а не добавляем к нему.
-  const { error: deleteError } = await supabase
-    .from("task_schedule")
-    .delete()
-    .eq("task_id", taskId)
-    .eq("project_id", projectId);
-
-  if (deleteError) {
-    console.error("setTaskPlannedDateAction (delete):", deleteError);
-    return { ok: false, error: "Не удалось изменить план. Попробуйте ещё раз." };
-  }
-
-  if (workDate) {
-    const { count } = await supabase
-      .from("task_schedule")
-      .select("id", { count: "exact", head: true })
-      .eq("project_id", projectId)
-      .eq("work_date", workDate);
-
-    const { error: insertError } = await supabase.from("task_schedule").insert({
-      project_id: projectId,
-      task_id: taskId,
-      work_date: workDate,
-      position: count ?? 0,
-      created_by: user.id,
-    });
-
-    if (insertError) {
-      console.error("setTaskPlannedDateAction (insert):", insertError);
-      return { ok: false, error: "Не удалось запланировать заявку. Попробуйте ещё раз." };
-    }
-
-    // Первое планирование новой заявки переводит её в статус «Запланирована».
-    // Если статус уже другой (в работе, приостановлена и т.д.) — не трогаем его.
-    if (task.status === "new") {
-      await supabase
-        .from("tasks")
-        .update({ status: "planned" })
-        .eq("id", taskId)
-        .eq("status", "new");
-    }
+  if (error) {
+    console.error("setTaskPlannedDateAction:", error);
+    return { ok: false, error: mapBoardMoveError(error.message, "Не удалось изменить план. Попробуйте ещё раз.") };
   }
 
   revalidateTask(projectId, taskId);

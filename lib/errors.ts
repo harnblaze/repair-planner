@@ -45,10 +45,13 @@ const BOARD_MOVE_ERROR_MESSAGES: Record<string, string> = {
 
 /**
  * Переводит код исключения RPC перемещения в понятное сообщение.
- * Неизвестная ошибка — общий текст; детали остаются в логах сервера.
+ * Неизвестная ошибка — общий текст (fallback); детали остаются в логах сервера.
  */
-export function mapBoardMoveError(message: string | undefined | null): string {
-  return (message && BOARD_MOVE_ERROR_MESSAGES[message]) || "Не удалось переместить. Попробуйте ещё раз.";
+export function mapBoardMoveError(
+  message: string | undefined | null,
+  fallback = "Не удалось переместить. Попробуйте ещё раз.",
+): string {
+  return (message && BOARD_MOVE_ERROR_MESSAGES[message]) || fallback;
 }
 
 // Коды исключений RPC прихода и корректировки (supabase/migrations/0010).
