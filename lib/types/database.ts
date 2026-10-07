@@ -541,6 +541,64 @@ export type Database = {
           },
         ]
       }
+      task_attachments: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          height: number
+          id: string
+          project_id: string
+          size_bytes: number
+          storage_path: string
+          task_id: string
+          width: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          height: number
+          id?: string
+          project_id: string
+          size_bytes: number
+          storage_path: string
+          task_id: string
+          width: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          height?: number
+          id?: string
+          project_id?: string
+          size_bytes?: number
+          storage_path?: string
+          task_id?: string
+          width?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_attachments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_attachments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_attachments_task_id_project_id_fkey"
+            columns: ["task_id", "project_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id", "project_id"]
+          },
+        ]
+      }
       task_executors: {
         Row: {
           created_at: string
