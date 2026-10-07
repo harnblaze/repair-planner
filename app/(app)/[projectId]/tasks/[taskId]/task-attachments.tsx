@@ -188,6 +188,11 @@ export function TaskAttachments({
           <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/90" />
           <Dialog.Popup
             className="fixed inset-0 z-50 flex flex-col outline-none"
+            // Окно на весь экран перекрывает фон, поэтому «клик снаружи» не
+            // срабатывает: закрываем по клику мимо фото и кнопок.
+            onClick={(event) => {
+              if (!(event.target as Element).closest("img, button")) setOpenIndex(null);
+            }}
             onKeyDown={(event) => {
               if (event.key === "ArrowRight") showNext(1);
               if (event.key === "ArrowLeft") showNext(-1);
