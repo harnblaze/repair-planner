@@ -6,7 +6,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(12);
+select plan(13);
 
 -- ================= Фикстуры (как postgres, минуя RLS) =================
 -- A — владелец PA (активный) и PZ (архивный), B — владелец PB (архивный),
@@ -132,7 +132,14 @@ select is(
   'deleting consumption in a live project still records an adjustment'
 );
 
--- 11. Архивный проект с расходом удаляется (раньше падал на FK журнала)
+-- 11. …и возвращает остаток материала (было −3 после расхода)
+select is(
+  (select current_balance from public.materials where id = 'd3000000-0000-0000-0000-00000000000a'),
+  0::numeric,
+  'deleting consumption in a live project restores the balance'
+);
+
+-- 12. Архивный проект с расходом удаляется (раньше падал на FK журнала)
 with del as (
   delete from public.projects where id = 'cccccccc-cccc-cccc-cccc-cccccccccccc' returning id
 )
@@ -140,7 +147,7 @@ select is((select count(*) from del), 1::bigint, 'owner deletes an archived proj
 
 reset role;
 
--- 12. Каскад убрал данные проекта
+-- 13. Каскад убрал данные проекта
 select is(
   (select count(*) from public.tasks where project_id = 'cccccccc-cccc-cccc-cccc-cccccccccccc')
   + (select count(*) from public.material_movements where project_id = 'cccccccc-cccc-cccc-cccc-cccccccccccc'),

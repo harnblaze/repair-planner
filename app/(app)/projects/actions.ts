@@ -47,7 +47,8 @@ export async function createProjectAction(input: ProjectInput): Promise<ActionRe
 
 // Архив и удаление (docs/superpowers/specs/2026-10-08-project-archive-delete-design.md §5).
 // Права гарантирует RLS (projects_update / projects_delete — только владелец,
-// удаление — только архивного); 0 изменённых строк = нет прав.
+// удаление — только архивного); 0 изменённых строк = нет прав, если проект
+// уже не в нужном состоянии (иначе это повтор из второй вкладки — успех).
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -69,7 +70,9 @@ export async function archiveProjectAction(projectId: string): Promise<ActionRes
     console.error("archiveProjectAction:", error);
     return { ok: false, error: PROJECT_MESSAGES.archiveFailed };
   }
-  if (!data || data.length === 0) return { ok: false, error: PROJECT_MESSAGES.ownerOnly };
+  if ((!data || data.length === 0) && (await isArchived(supabase, projectId)) !== true) {
+    return { ok: false, error: PROJECT_MESSAGES.ownerOnly };
+  }
 
   revalidatePath("/projects");
   redirect("/projects");
@@ -90,7 +93,9 @@ export async function restoreProjectAction(projectId: string): Promise<ActionRes
     console.error("restoreProjectAction:", error);
     return { ok: false, error: PROJECT_MESSAGES.restoreFailed };
   }
-  if (!data || data.length === 0) return { ok: false, error: PROJECT_MESSAGES.ownerOnly };
+  if ((!data || data.length === 0) && (await isArchived(supabase, projectId)) !== false) {
+    return { ok: false, error: PROJECT_MESSAGES.ownerOnly };
+  }
 
   revalidatePath("/projects");
   return { ok: true };
@@ -116,14 +121,16 @@ export async function deleteProjectAction(projectId: string, confirmName: string
   }
 
   // Сначала файлы: после удаления строки проекта RLS storage.objects их не отдаст.
-  if (!(await removeProjectFiles(supabase, projectId))) {
-    return { ok: false, error: PROJECT_MESSAGES.deleteFailed };
-  }
+  // Если часть фото уже удалена, мастер должен повторить удаление, а не вернуть
+  // проект с битыми миниатюрами.
+  const files = await removeProjectFiles(supabase, projectId);
+  const failed = files.removedAny ? PROJECT_MESSAGES.deletePartial : PROJECT_MESSAGES.deleteFailed;
+  if (!files.ok) return { ok: false, error: failed };
 
   const { data, error } = await supabase.from("projects").delete().eq("id", projectId).select("id");
   if (error) {
     console.error("deleteProjectAction (delete):", error);
-    return { ok: false, error: PROJECT_MESSAGES.deleteFailed };
+    return { ok: false, error: failed };
   }
   if (!data || data.length === 0) return { ok: false, error: PROJECT_MESSAGES.ownerOnly };
 
@@ -131,25 +138,40 @@ export async function deleteProjectAction(projectId: string, confirmName: string
   return { ok: true };
 }
 
-/** Удаляет все файлы архивного проекта пачками; false — остановлено, проект трогать нельзя. */
-async function removeProjectFiles(supabase: Supabase, projectId: string): Promise<boolean> {
+/** Состояние архива проекта: true/false; null — проект не виден или ошибка чтения. */
+async function isArchived(supabase: Supabase, projectId: string): Promise<boolean | null> {
+  const { data, error } = await supabase.from("projects").select("archived_at").eq("id", projectId).maybeSingle();
+  if (error) console.error("isArchived:", error);
+  return data ? data.archived_at !== null : null;
+}
+
+/**
+ * Удаляет все файлы архивного проекта пачками. ok: false — остановлено, проект
+ * трогать нельзя; removedAny — часть файлов уже удалена.
+ */
+async function removeProjectFiles(
+  supabase: Supabase,
+  projectId: string,
+): Promise<{ ok: boolean; removedAny: boolean }> {
   const bucket = supabase.storage.from(ATTACHMENTS_BUCKET);
+  let removedAny = false;
 
   for (let batch = 0; batch < MAX_FILE_BATCHES; batch++) {
     const { data: paths, error } = await supabase.rpc("project_attachment_paths", { p_project_id: projectId });
     if (error) {
       console.error("deleteProjectAction (paths):", error);
-      return false;
+      return { ok: false, removedAny };
     }
-    if (!paths || paths.length === 0) return true;
+    if (!paths || paths.length === 0) return { ok: true, removedAny };
 
     const { data: removed, error: removeError } = await bucket.remove(paths);
+    if ((removed?.length ?? 0) > 0) removedAny = true;
     if (removeError || (removed?.length ?? 0) < paths.length) {
       console.error("deleteProjectAction (storage):", removeError ?? `removed ${removed?.length ?? 0} of ${paths.length}`);
-      return false;
+      return { ok: false, removedAny };
     }
   }
 
   console.error("deleteProjectAction: too many file batches", projectId);
-  return false;
+  return { ok: false, removedAny };
 }

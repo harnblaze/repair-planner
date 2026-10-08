@@ -73,7 +73,7 @@ PostgreSQL (Supabase)
 
 ### 3.3 Архив и удаление проекта
 
-Действия — `app/(app)/projects/actions.ts`: `archiveProjectAction` (карточка «Архив» в настройках), `restoreProjectAction` и `deleteProjectAction` (раздел «Архив» на `/projects`, только проекты владельца). Удаление навсегда: проверка архива и названия (`confirmsProjectName`, `lib/business/project-archive.ts`) → файлы пачками по 1000 (RPC `project_attachment_paths` → `storage.remove`; ошибка или неполное удаление — стоп, проект не трогается) → `delete from projects` под RLS, остальное — каскад. Файлы удаляются первыми: после удаления проекта RLS `storage.objects` их не отдаст. Service role не используется.
+Действия — `app/(app)/projects/actions.ts`: `archiveProjectAction` (карточка «Архив» в настройках), `restoreProjectAction` и `deleteProjectAction` (раздел «Архив» на `/projects`, только проекты владельца). Удаление навсегда: проверка архива и названия (`confirmsProjectName`, `lib/business/project-archive.ts`) → файлы пачками по 1000 (RPC `project_attachment_paths` → `storage.remove`; ошибка или неполное удаление — стоп, проект не трогается; если часть фото уже удалена — сообщение «повторите удаление») → `delete from projects` под RLS, остальное — каскад. Файлы удаляются первыми: после удаления проекта RLS `storage.objects` их не отдаст. Service role не используется. Архив и возврат при 0 изменённых строк перечитывают проект: если он уже в нужном состоянии (повтор из второй вкладки), это успех, иначе — сообщение о правах.
 
 ## 4. Маршрутизация и выбор проекта
 

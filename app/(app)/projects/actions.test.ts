@@ -71,9 +71,28 @@ describe("archiveProjectAction", () => {
   });
 
   it("reports missing rights when no row was updated", async () => {
-    state.client = fakeClient([{ data: [], error: null }]).client;
+    state.client = fakeClient([{ data: [], error: null }, { data: { archived_at: null }, error: null }]).client;
     expect(await archiveProjectAction(PROJECT)).toEqual({ ok: false, error: PROJECT_MESSAGES.ownerOnly });
     expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("reports missing rights when the project is not visible", async () => {
+    state.client = fakeClient([{ data: [], error: null }, { data: null, error: null }]).client;
+    expect(await archiveProjectAction(PROJECT)).toEqual({ ok: false, error: PROJECT_MESSAGES.ownerOnly });
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("treats an already archived project as done (second tab)", async () => {
+    const { client, builders } = fakeClient([
+      { data: [], error: null },
+      { data: { archived_at: "2026-10-08T10:00:00Z" }, error: null },
+    ]);
+    state.client = client;
+    await archiveProjectAction(PROJECT);
+    expect(builders[1].select).toHaveBeenCalledWith("archived_at");
+    expect(builders[1].eq).toHaveBeenCalledWith("id", PROJECT);
+    expect(revalidatePath).toHaveBeenCalledWith("/projects");
+    expect(redirect).toHaveBeenCalledWith("/projects");
   });
 
   it("hides database errors", async () => {
@@ -101,8 +120,17 @@ describe("restoreProjectAction", () => {
   });
 
   it("reports missing rights when no row was updated", async () => {
-    state.client = fakeClient([{ data: [], error: null }]).client;
+    state.client = fakeClient([
+      { data: [], error: null },
+      { data: { archived_at: "2026-10-08T10:00:00Z" }, error: null },
+    ]).client;
     expect(await restoreProjectAction(PROJECT)).toEqual({ ok: false, error: PROJECT_MESSAGES.ownerOnly });
+  });
+
+  it("treats an already restored project as done (second tab)", async () => {
+    state.client = fakeClient([{ data: [], error: null }, { data: { archived_at: null }, error: null }]).client;
+    expect(await restoreProjectAction(PROJECT)).toEqual({ ok: true });
+    expect(revalidatePath).toHaveBeenCalledWith("/projects");
   });
 });
 
@@ -179,7 +207,7 @@ describe("deleteProjectAction", () => {
       [{ data: [{ name: "1" }], error: null }],
     );
     state.client = client;
-    expect(await deleteProjectAction(PROJECT, NAME)).toEqual({ ok: false, error: PROJECT_MESSAGES.deleteFailed });
+    expect(await deleteProjectAction(PROJECT, NAME)).toEqual({ ok: false, error: PROJECT_MESSAGES.deletePartial });
     expect(remove).toHaveBeenCalledTimes(1);
     expect(client.from).toHaveBeenCalledTimes(1);
     spy.mockRestore();
@@ -191,6 +219,51 @@ describe("deleteProjectAction", () => {
     state.client = client;
     expect(await deleteProjectAction(PROJECT, NAME)).toEqual({ ok: false, error: PROJECT_MESSAGES.deleteFailed });
     expect(remove).not.toHaveBeenCalled();
+    expect(client.from).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+
+  it("reports partial deletion when a later batch fails", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { client } = fakeClient(
+      [archived],
+      [
+        { data: [path(1)], error: null },
+        { data: [path(2)], error: null },
+      ],
+      [
+        { data: [{ name: "1" }], error: null },
+        { data: null, error: { message: "boom" } },
+      ],
+    );
+    state.client = client;
+    expect(await deleteProjectAction(PROJECT, NAME)).toEqual({ ok: false, error: PROJECT_MESSAGES.deletePartial });
+    expect(client.from).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+
+  it("reports partial deletion when the project row fails after files were removed", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { client } = fakeClient(
+      [archived, { data: null, error: { message: "boom" } }],
+      [{ data: [path(1)], error: null }],
+      [{ data: [{ name: "1" }], error: null }],
+    );
+    state.client = client;
+    expect(await deleteProjectAction(PROJECT, NAME)).toEqual({ ok: false, error: PROJECT_MESSAGES.deletePartial });
+    spy.mockRestore();
+  });
+
+  it("stops after 100 batches when the same files keep coming back", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { client } = fakeClient(
+      [archived, deleted],
+      Array.from({ length: 100 }, () => ({ data: [path(1)], error: null })),
+      Array.from({ length: 100 }, () => ({ data: [{ name: "1" }], error: null })),
+    );
+    state.client = client;
+    expect(await deleteProjectAction(PROJECT, NAME)).toEqual({ ok: false, error: PROJECT_MESSAGES.deletePartial });
+    expect(client.rpc).toHaveBeenCalledTimes(100);
     expect(client.from).toHaveBeenCalledTimes(1);
     spy.mockRestore();
   });
