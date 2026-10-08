@@ -62,6 +62,10 @@ PostgreSQL (Supabase)
 
 Просмотр — ссылки, подписанные на сервере на час (`createSignedUrls`). Удаление: сначала строка, затем файл (ошибка удаления файла только логируется). Server actions — `tasks/[taskId]/attachment-actions.ts`, UI — `tasks/[taskId]/task-attachments.tsx`.
 
+### 3.2 Страница «Заявки»: вкладки и архив
+
+* `/[projectId]/tasks` — вкладки «Открытые» и «Архив» (`?view=archive`). Архив — Server Component: GET-форма фильтров, разбор `searchParams` в `lib/validation/archive-filters.ts`, загрузка `tasks/archive-data.ts` → RPC `search_archive_tasks` (0020). Клиентского JS у вкладки нет.
+
 ## 4. Маршрутизация и выбор проекта
 
 Активный проект — часть URL: `/(app)/[projectId]/...`. Это даёт:
@@ -192,7 +196,7 @@ app/
     [projectId]/
       layout.tsx                    проверка доступа, метка роли
       board/                        главная доска: week-board.tsx (DnD недели), dnd.ts, panel.tsx
-      tasks/                         список заявок, быстрое создание
+      tasks/                         заявки: вкладки «Открытые» (быстрое создание) и «Архив» (archive-*.tsx)
       tasks/[taskId]/               карточка задачи; фото: attachment-actions.ts, task-attachments.tsx
       materials/                    справочник и остатки, быстрый приход в строке
       materials/[materialId]/       приход, корректировка по пересчёту, история движений
