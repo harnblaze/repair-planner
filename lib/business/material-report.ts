@@ -4,6 +4,8 @@
 // фильтр и форматирование для экрана и CSV.
 // Месяц — строка "YYYY-MM"; "сегодня" берётся в timezone проекта (dates.ts).
 
+import { buildCsv, csvNumber, csvText } from "./csv";
+
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 const MONTHS_RU_NOMINATIVE = [
@@ -107,35 +109,15 @@ export function formatQuantity(quantity: number): string {
   return QUANTITY_FORMAT.format(quantity);
 }
 
-function csvCell(value: string): string {
-  return /[";\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-}
-
-/**
- * Текст от пользователя (названия цехов и материалов): ведущие = + - @ Excel
- * исполнил бы как формулу (CSV injection) — такие ячейки начинаются с апострофа.
- */
-function csvText(value: string): string {
-  return csvCell(/^[=+\-@\t\r]/.test(value) ? `'${value}` : value);
-}
-
-/**
- * CSV для Excel с русской локалью: BOM (иначе кириллица ломается),
- * разделитель «;», десятичная запятая, без разделителя тысяч.
- */
+/** CSV отчёта по расходу (формат — lib/business/csv.ts). */
 export function buildConsumptionCsv(groups: ConsumptionGroup[]): string {
   const lines = [["Цех", "Материал", "Ед. изм.", "Расход"]];
 
   for (const group of groups) {
     for (const item of group.items) {
-      lines.push([
-        csvText(group.categoryName),
-        csvText(item.materialName),
-        csvText(item.unit),
-        String(Number(item.quantity.toFixed(3))).replace(".", ","),
-      ]);
+      lines.push([csvText(group.categoryName), csvText(item.materialName), csvText(item.unit), csvNumber(item.quantity)]);
     }
   }
 
-  return "\uFEFF" + lines.map((cells) => cells.join(";")).join("\r\n") + "\r\n";
+  return buildCsv(lines);
 }
