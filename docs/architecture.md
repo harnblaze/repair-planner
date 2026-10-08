@@ -64,7 +64,7 @@ PostgreSQL (Supabase)
 
 ### 3.2 Страница «Заявки»: вкладки и архив
 
-* `/[projectId]/tasks` — вкладки «Открытые» и «Архив» (`?view=archive`). Архив — Server Component: GET-форма фильтров, разбор `searchParams` в `lib/validation/archive-filters.ts`, загрузка `tasks/archive-data.ts` → RPC `search_archive_tasks` (0020). Клиентского JS у вкладки нет.
+* `/[projectId]/tasks` — вкладки «Открытые» и «Архив» (`?view=archive`). Архив — Server Component: GET-форма фильтров, разбор `searchParams` в `lib/validation/archive-filters.ts`, загрузка `tasks/archive-data.ts` → RPC `search_archive_tasks` (0020). Клиентского JS у вкладки нет. «Открытые» — та же схема: `lib/validation/open-task-filters.ts`, цех фильтруется в запросе, текст — в памяти (`lib/business/task-search.ts`); общие хелперы разбора — `lib/validation/search-params.ts`.
 
 ## 4. Маршрутизация и выбор проекта
 

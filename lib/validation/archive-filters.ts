@@ -3,16 +3,16 @@ import { z } from "zod";
 import { isValidDateString } from "@/lib/business/working-days";
 
 import { idSchema } from "./board-move";
+import { SEARCH_QUERY_MAX, firstParam, parseParam, parseSearchText, type SearchParams } from "./search-params";
 
 // Фильтры вкладки «Архив» страницы «Заявки» живут в URL
 // (docs/superpowers/specs/2026-10-08-task-archive-search-design.md §4.1).
-// Адрес могли отредактировать руками: неверное поле молча получает значение
-// по умолчанию, остальные поля не страдают.
+// Разбор — общими хелперами lib/validation/search-params.ts.
 
 export const ARCHIVE_STATUSES = ["completed", "cancelled", "all"] as const;
 export type ArchiveStatus = (typeof ARCHIVE_STATUSES)[number];
 
-export const ARCHIVE_QUERY_MAX = 100;
+export const ARCHIVE_QUERY_MAX = SEARCH_QUERY_MAX;
 export const ARCHIVE_PAGE_SIZE = 50;
 export const ARCHIVE_MAX_PAGE = 20;
 
@@ -36,34 +36,23 @@ export const DEFAULT_ARCHIVE_FILTERS: ArchiveFilters = {
   page: 1,
 };
 
-type SearchParams = Record<string, string | string[] | undefined>;
-
 const statusSchema = z.enum(ARCHIVE_STATUSES);
 const dateSchema = z.string().refine(isValidDateString);
 const pageSchema = z.coerce.number().int().min(1).max(ARCHIVE_MAX_PAGE);
 
-function first(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function pick<T, F>(schema: z.ZodType<T>, value: unknown, fallback: F): T | F {
-  const result = schema.safeParse(value);
-  return result.success ? result.data : fallback;
-}
-
 export function parseArchiveFilters(params: SearchParams): ArchiveFilters {
-  let from = pick(dateSchema, first(params.from), null);
-  let to = pick(dateSchema, first(params.to), null);
+  let from = parseParam(dateSchema, firstParam(params.from), null);
+  let to = parseParam(dateSchema, firstParam(params.to), null);
   if (from !== null && to !== null && from > to) [from, to] = [to, from];
 
   return {
-    q: (first(params.q) ?? "").trim().slice(0, ARCHIVE_QUERY_MAX),
-    status: pick(statusSchema, first(params.status), DEFAULT_ARCHIVE_FILTERS.status),
-    category: pick(idSchema, first(params.category), null),
-    executor: pick(idSchema, first(params.executor), null),
+    q: parseSearchText(params.q),
+    status: parseParam(statusSchema, firstParam(params.status), DEFAULT_ARCHIVE_FILTERS.status),
+    category: parseParam(idSchema, firstParam(params.category), null),
+    executor: parseParam(idSchema, firstParam(params.executor), null),
     from,
     to,
-    page: pick(pageSchema, first(params.page), 1),
+    page: parseParam(pageSchema, firstParam(params.page), 1),
   };
 }
 

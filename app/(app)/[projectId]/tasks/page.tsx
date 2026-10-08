@@ -4,13 +4,16 @@ import Link from "next/link";
 import { EmptyState } from "@/components/common/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { canEditProject } from "@/lib/business/project-roles";
+import { matchesTaskText } from "@/lib/business/task-search";
 import { taskStatusLabel } from "@/lib/business/task-status";
 import { getProjectRole } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
+import { hasOpenTaskFilters, parseOpenTaskFilters, type OpenTaskFilters } from "@/lib/validation/open-task-filters";
 
 import { ArchiveTab } from "./archive-tab";
 import { CreateTaskForm } from "./create-task-form";
+import { OpenTasksFiltersForm } from "./open-tasks-filters-form";
 
 export const metadata: Metadata = {
   title: "Заявки — Repair Planner",
@@ -56,7 +59,7 @@ export default async function TasksPage({ params, searchParams }: PageProps<"/[p
           {isArchive ? (
             <ArchiveTab projectId={projectId} searchParams={query} />
           ) : (
-            <OpenTasks projectId={projectId} />
+            <OpenTasks projectId={projectId} filters={parseOpenTaskFilters(query)} />
           )}
         </CardContent>
       </Card>
@@ -64,22 +67,26 @@ export default async function TasksPage({ params, searchParams }: PageProps<"/[p
   );
 }
 
-async function OpenTasks({ projectId }: { projectId: string }) {
+async function OpenTasks({ projectId, filters }: { projectId: string; filters: OpenTaskFilters }) {
   const supabase = await createClient();
+
+  let tasksQuery = supabase
+    .from("tasks")
+    .select("id, title, description, status, categories(name)")
+    .eq("project_id", projectId)
+    // Выполненные и отменённые — во вкладке «Архив».
+    .not("status", "in", "(completed,cancelled)");
+  if (filters.category) tasksQuery = tasksQuery.eq("category_id", filters.category);
+
   const [role, { data: tasks }, { data: categories }, { data: queues }] = await Promise.all([
     getProjectRole(projectId),
-    supabase
-      .from("tasks")
-      .select("id, title, status, categories(name)")
-      .eq("project_id", projectId)
-      // Выполненные и отменённые — во вкладке «Архив».
-      .not("status", "in", "(completed,cancelled)")
-      .order("created_at", { ascending: false }),
+    tasksQuery.order("created_at", { ascending: false }),
+    // Вместе с архивными: у открытой заявки может остаться архивный цех.
     supabase
       .from("categories")
-      .select("id, name")
+      .select("id, name, is_archived")
       .eq("project_id", projectId)
-      .eq("is_archived", false)
+      .order("is_archived", { ascending: true })
       .order("sort_order", { ascending: true }),
     supabase
       .from("task_queues")
@@ -89,17 +96,27 @@ async function OpenTasks({ projectId }: { projectId: string }) {
       .order("id", { ascending: true }),
   ]);
 
-  const open = tasks ?? [];
+  // Текст — в памяти (lib/business/task-search.ts): открытых заявок немного.
+  const open = (tasks ?? []).filter((task) => matchesTaskText(task, filters.q));
+  const allCategories = categories ?? [];
 
   return (
     <>
       {canEditProject(role) ? (
-        <CreateTaskForm projectId={projectId} categories={categories ?? []} queues={queues ?? []} />
+        <CreateTaskForm
+          projectId={projectId}
+          categories={allCategories.filter((c) => !c.is_archived)}
+          queues={queues ?? []}
+        />
       ) : null}
+
+      <OpenTasksFiltersForm projectId={projectId} filters={filters} categories={allCategories} />
 
       <div className="flex flex-col divide-y divide-line-subtle">
         {open.length === 0 ? (
-          <EmptyState>Открытых заявок нет.</EmptyState>
+          <EmptyState>
+            {hasOpenTaskFilters(filters) ? "Ничего не найдено. Измените условия поиска." : "Открытых заявок нет."}
+          </EmptyState>
         ) : (
           open.map((task) => (
             <Link
