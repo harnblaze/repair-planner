@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import { RUSSIAN_TIMEZONES } from "@/lib/validation/project";
 
+import { ArchiveProjectSection } from "./archive-project-section";
 import { MembersSection } from "./members-section";
 import { SettingsForm } from "./settings-form";
 
@@ -92,6 +93,17 @@ export default async function ProjectSettingsPage({ params }: PageProps<"/[proje
       </Card>
 
       <MembersSection projectId={projectId} role={role} timezone={project.timezone} />
+
+      {canManageProject(role) ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Архив</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ArchiveProjectSection projectId={projectId} />
+          </CardContent>
+        </Card>
+      ) : null}
     </main>
   );
 }

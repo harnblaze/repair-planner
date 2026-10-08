@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { projectRoleLabel } from "@/lib/business/project-roles";
 import { createClient } from "@/lib/supabase/server";
 
+import { ArchivedProjects } from "./archived-projects";
 import { CreateProjectForm } from "./create-project-form";
 
 export const metadata: Metadata = {
@@ -19,12 +20,21 @@ export default async function ProjectsPage() {
   } = await supabase.auth.getUser();
   // Встроенный фильтр ограничивает project_members строкой текущего пользователя —
   // так видна его роль в каждом проекте.
-  const { data: projects } = await supabase
-    .from("projects")
-    .select("id, name, timezone, project_members(role)")
-    .eq("project_members.user_id", user?.id ?? "")
-    .is("archived_at", null)
-    .order("created_at", { ascending: false });
+  const [{ data: projects }, { data: archived }] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id, name, timezone, project_members(role)")
+      .eq("project_members.user_id", user?.id ?? "")
+      .is("archived_at", null)
+      .order("created_at", { ascending: false }),
+    // Архив видит только владелец — и только свои проекты.
+    supabase
+      .from("projects")
+      .select("id, name")
+      .eq("owner_id", user?.id ?? "")
+      .not("archived_at", "is", null)
+      .order("archived_at", { ascending: false }),
+  ]);
 
   return (
     <main className="mx-auto flex max-w-sm w-full flex-col gap-6 px-5 pt-6 pb-7">
@@ -51,6 +61,7 @@ export default async function ProjectsPage() {
         ) : (
           <EmptyState>Пока нет ни одного проекта — создайте первый.</EmptyState>
         )}
+        <ArchivedProjects projects={archived ?? []} />
       </div>
 
       <Card>
