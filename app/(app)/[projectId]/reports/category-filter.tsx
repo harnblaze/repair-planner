@@ -8,10 +8,13 @@ import { ALL_CATEGORIES, NO_CATEGORY, NO_CATEGORY_LABEL } from "@/lib/business/m
 
 /** Фильтр по цеху: значение хранится в URL, отчёт строится на сервере. */
 export function CategoryFilter({
+  report,
   month,
   category,
   categories,
 }: {
+  /** Вкладка страницы отчётов (`works`); без неё — отчёт по расходу. */
+  report?: string;
   month: string;
   category: string;
   categories: { id: string; name: string }[];
@@ -21,7 +24,7 @@ export function CategoryFilter({
   const [pending, startTransition] = useTransition();
 
   const onChange = (next: string) => {
-    const params = new URLSearchParams({ month });
+    const params = new URLSearchParams(report ? { report, month } : { month });
     if (next !== ALL_CATEGORIES) params.set("category", next);
     startTransition(() => router.push(`${pathname}?${params.toString()}`));
   };

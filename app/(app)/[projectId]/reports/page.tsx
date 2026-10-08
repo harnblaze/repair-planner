@@ -10,19 +10,19 @@ import {
   formatMonthLabel,
   formatQuantity,
 } from "@/lib/business/material-report";
+import { WORKS_REPORT } from "@/lib/business/works-report";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 
 import { CategoryFilter } from "./category-filter";
 import { loadConsumptionReport, resolveCategoryFilter } from "./data";
+import { MONTH_SEGMENT_CLASS, TAB_ACTIVE_CLASS, TAB_CLASS } from "./styles";
+import { loadWorksReport } from "./works-data";
+import { WorksReport } from "./works-report";
 
 export const metadata: Metadata = {
-  title: "Отчёт по расходу — Repair Planner",
+  title: "Отчёты — Repair Planner",
 };
-
-// Сегментированная группа кнопок месяца — как навигация по неделям на доске.
-const MONTH_SEGMENT_CLASS =
-  "flex h-[30px] items-center px-[11px] text-[12.5px] font-medium text-ink-soft transition-colors duration-120 not-last:border-r not-last:border-control-line hover:bg-[#F4F6FA] hover:text-ink active:bg-[#EBEFF5]";
 
 function reportQuery(month: string, category: string): string {
   const params = new URLSearchParams({ month });
@@ -30,33 +30,69 @@ function reportQuery(month: string, category: string): string {
   return params.toString();
 }
 
+function ReportTabs({ base, isWorks }: { base: string; isWorks: boolean }) {
+  return (
+    <nav aria-label="Отчёты" className="flex self-start overflow-hidden rounded-[7px] border border-control bg-surface">
+      <Link href={base} aria-current={isWorks ? undefined : "page"} className={cn(TAB_CLASS, !isWorks && TAB_ACTIVE_CLASS)}>
+        Расход материалов
+      </Link>
+      <Link
+        href={`${base}?report=${WORKS_REPORT}`}
+        aria-current={isWorks ? "page" : undefined}
+        className={cn(TAB_CLASS, isWorks && TAB_ACTIVE_CLASS)}
+      >
+        Выполненные работы
+      </Link>
+    </nav>
+  );
+}
+
 export default async function ReportsPage({
   params,
   searchParams,
 }: PageProps<"/[projectId]/reports">) {
   const { projectId } = await params;
-  const { month: monthParam, category: categoryParam } = await searchParams;
+  const { month: monthParam, category: categoryParam, report: reportParam } = await searchParams;
   const category = resolveCategoryFilter(categoryParam);
+  const isWorks = reportParam === WORKS_REPORT;
+  const base = `/${projectId}/reports`;
 
   const supabase = await createClient();
+  // Архивные цеха остаются в фильтре: по ним могли быть работы и расход в прошлых месяцах.
+  const categoriesQuery = supabase
+    .from("categories")
+    .select("id, name, is_archived")
+    .eq("project_id", projectId)
+    .order("is_archived", { ascending: true })
+    .order("sort_order", { ascending: true });
+  const categoryOptions = (rows: { id: string; name: string; is_archived: boolean }[] | null) =>
+    (rows ?? []).map((c) => ({ id: c.id, name: c.is_archived ? `${c.name} (архив)` : c.name }));
+
+  if (isWorks) {
+    const [works, { data: categories }] = await Promise.all([
+      loadWorksReport(projectId, monthParam, category),
+      categoriesQuery,
+    ]);
+    return (
+      <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-5 pt-6 pb-7">
+        <ReportTabs base={base} isWorks />
+        <WorksReport projectId={projectId} category={category} categories={categoryOptions(categories)} report={works} />
+      </main>
+    );
+  }
+
   const [report, { data: categories }] = await Promise.all([
     loadConsumptionReport(projectId, monthParam, category),
-    // Архивные цеха остаются в фильтре: по ним мог быть расход в прошлых месяцах.
-    supabase
-      .from("categories")
-      .select("id, name, is_archived")
-      .eq("project_id", projectId)
-      .order("is_archived", { ascending: true })
-      .order("sort_order", { ascending: true }),
+    categoriesQuery,
   ]);
 
   const { month, today } = report;
   const monthLabel = formatMonthLabel(month);
   const isCurrentMonth = month === today.slice(0, 7);
-  const base = `/${projectId}/reports`;
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-5 pt-6 pb-7">
+      <ReportTabs base={base} isWorks={false} />
       <Card>
         <CardHeader className="flex flex-col gap-3">
           <CardTitle>Расход материалов по цехам</CardTitle>
@@ -78,10 +114,7 @@ export default async function ReportsPage({
             <CategoryFilter
               month={month}
               category={category}
-              categories={(categories ?? []).map((c) => ({
-                id: c.id,
-                name: c.is_archived ? `${c.name} (архив)` : c.name,
-              }))}
+              categories={categoryOptions(categories)}
             />
             {report.ok && report.groups.length > 0 ? (
               // Обычная ссылка, а не Link: ответ — файл, а не страница приложения.
