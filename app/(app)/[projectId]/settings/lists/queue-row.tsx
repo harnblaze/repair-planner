@@ -9,17 +9,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { taskQueueSchema, type TaskQueueInput } from "@/lib/validation/task-queue";
 
-import { deleteTaskQueueAction, renameTaskQueueAction } from "./actions";
+import { deleteTaskQueueAction, moveTaskQueueAction, renameTaskQueueAction } from "./actions";
 
 export type QueueRowData = { id: string; name: string };
 
 export function QueueRow({
   projectId,
   queue,
+  index,
+  total,
   canEdit,
 }: {
   projectId: string;
   queue: QueueRowData;
+  /** Место среди своих очередей: «Текущие заявки» всегда первые и в порядке не участвуют. */
+  index: number;
+  total: number;
   canEdit: boolean;
 }) {
   const [editing, setEditing] = useState(false);
@@ -45,6 +50,13 @@ export function QueueRow({
       }
     });
   });
+
+  const move = (position: number) => {
+    startTransition(async () => {
+      const result = await moveTaskQueueAction(projectId, { queueId: queue.id, position });
+      if (!result.ok) toast.error(result.error);
+    });
+  };
 
   const onDelete = () => {
     if (!window.confirm(`Удалить очередь «${queue.name}»? Её заявки перейдут в «Текущие заявки».`)) return;
@@ -78,6 +90,30 @@ export function QueueRow({
 
   return (
     <div className="flex items-center gap-2 py-1">
+      {canEdit ? (
+        <div className="flex flex-none items-center">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            disabled={pending || index === 0}
+            onClick={() => move(index - 1)}
+            aria-label={`Переместить «${queue.name}» выше`}
+          >
+            ↑
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            disabled={pending || index === total - 1}
+            onClick={() => move(index + 1)}
+            aria-label={`Переместить «${queue.name}» ниже`}
+          >
+            ↓
+          </Button>
+        </div>
+      ) : null}
       <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink" title={queue.name}>
         {queue.name}
       </span>

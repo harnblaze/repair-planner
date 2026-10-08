@@ -34,6 +34,7 @@ export default async function BoardListsPage({ params }: PageProps<"/[projectId]
       .select("id, name")
       .eq("project_id", projectId)
       // Тот же порядок, что на доске.
+      .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true })
       .order("id", { ascending: true }),
   ]);
@@ -76,8 +77,15 @@ export default async function BoardListsPage({ params }: PageProps<"/[projectId]
             {queuesError ? (
               <EmptyState>Не удалось загрузить очереди. Обновите страницу.</EmptyState>
             ) : (
-              (queues ?? []).map((queue) => (
-                <QueueRow key={queue.id} projectId={projectId} queue={queue} canEdit={canEdit} />
+              (queues ?? []).map((queue, index, all) => (
+                <QueueRow
+                  key={queue.id}
+                  projectId={projectId}
+                  queue={queue}
+                  index={index}
+                  total={all.length}
+                  canEdit={canEdit}
+                />
               ))
             )}
           </div>

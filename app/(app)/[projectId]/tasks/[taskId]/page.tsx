@@ -77,6 +77,7 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
       .from("task_queues")
       .select("id, name")
       .eq("project_id", projectId)
+      .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true })
       .order("id", { ascending: true }),
   ]);

@@ -713,6 +713,7 @@ export type Database = {
           id: string
           name: string
           project_id: string
+          sort_order: number
           updated_at: string
         }
         Insert: {
@@ -720,6 +721,7 @@ export type Database = {
           id?: string
           name: string
           project_id: string
+          sort_order?: number
           updated_at?: string
         }
         Update: {
@@ -727,6 +729,7 @@ export type Database = {
           id?: string
           name?: string
           project_id?: string
+          sort_order?: number
           updated_at?: string
         }
         Relationships: [
@@ -926,6 +929,10 @@ export type Database = {
       }
       move_board_list: {
         Args: { p_list_id: string; p_position: number }
+        Returns: undefined
+      }
+      move_task_queue: {
+        Args: { p_position: number; p_queue_id: string }
         Returns: undefined
       }
       move_task_schedule: {

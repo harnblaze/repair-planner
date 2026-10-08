@@ -8,7 +8,12 @@ import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
 import { boardListSchema, type BoardListInput } from "@/lib/validation/board-list";
 import { idSchema, moveBoardListSchema, type MoveBoardListInput } from "@/lib/validation/board-move";
-import { taskQueueSchema, type TaskQueueInput } from "@/lib/validation/task-queue";
+import {
+  moveTaskQueueSchema,
+  taskQueueSchema,
+  type MoveTaskQueueInput,
+  type TaskQueueInput,
+} from "@/lib/validation/task-queue";
 
 // Дополнительные списки доски (board_lists). Системные списки создаёт БД при
 // создании проекта; здесь создаются только пользовательские. Системный список
@@ -180,9 +185,19 @@ export async function createTaskQueueAction(
   }
 
   const supabase = await createClient();
+  // Новая очередь — в конец, как новый список; одинаковый sort_order при
+  // одновременном создании разрешится сортировкой по created_at.
+  const { data: last } = await supabase
+    .from("task_queues")
+    .select("sort_order")
+    .eq("project_id", projectId)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   const { error } = await supabase
     .from("task_queues")
-    .insert({ project_id: projectId, name: parsed.data.name });
+    .insert({ project_id: projectId, name: parsed.data.name, sort_order: (last?.sort_order ?? -1) + 1 });
 
   if (error) {
     console.error("createTaskQueueAction:", error);
@@ -224,6 +239,31 @@ export async function renameTaskQueueAction(
     return { ok: false, error: "Не удалось переименовать очередь. Попробуйте ещё раз." };
   }
   if (!data || data.length === 0) return QUEUE_NOT_FOUND;
+
+  revalidateLists(projectId);
+  return { ok: true };
+}
+
+export async function moveTaskQueueAction(
+  projectId: string,
+  input: MoveTaskQueueInput,
+): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const parsed = moveTaskQueueSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Не удалось переместить. Обновите страницу." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("move_task_queue", {
+    p_queue_id: parsed.data.queueId,
+    p_position: parsed.data.position,
+  });
+
+  if (error) {
+    console.error("moveTaskQueueAction:", error);
+    return { ok: false, error: mapBoardMoveError(error.message) };
+  }
 
   revalidateLists(projectId);
   return { ok: true };

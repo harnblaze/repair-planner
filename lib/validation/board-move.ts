@@ -12,7 +12,7 @@ export const idSchema = z.guid();
 
 const dateSchema = z.string().refine(isValidDateString);
 
-const positionSchema = z.number().int().min(0).max(10_000);
+export const positionSchema = z.number().int().min(0).max(10_000);
 
 export const planTaskOnDaySchema = z.object({
   taskId: idSchema,
