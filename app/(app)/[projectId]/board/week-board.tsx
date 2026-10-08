@@ -27,6 +27,7 @@ import {
 import { formatDateLong, formatDateShort } from "@/lib/business/dates";
 import {
   canCarryOverFromBoard,
+  canCompleteFromBoard,
   canPlanOnDate,
   canReturnToBacklog,
   keepsDayOnReturnToBacklog,
@@ -51,6 +52,7 @@ import {
 } from "./dnd";
 import { Panel, PanelEmpty, PanelHeader } from "./panel";
 import { CarryOverChipButton } from "./carry-over-chip-button";
+import { CompleteChipButton } from "./complete-chip-button";
 import { TaskChip, TaskRow, type BoardTask } from "./task-chip";
 
 // Неделя доски и панели очередей текущих заявок в одном DndContext: задачу
@@ -582,9 +584,10 @@ function SortableTaskChip({
   }
 
   const canCarryOver = canCarryOverFromBoard(task, canEdit);
+  const canComplete = canCompleteFromBoard(task, canEdit);
 
-  // Сдвиг при перетаскивании — на обёртке, чтобы кнопка переноса ехала вместе
-  // с карточкой; слушатели перетаскивания — только на ссылке, кнопку они не задевают.
+  // Сдвиг при перетаскивании — на обёртке, чтобы кнопки угла ехали вместе
+  // с карточкой; слушатели перетаскивания — только на ссылке, кнопки они не задевают.
   return (
     <div
       ref={setNodeRef}
@@ -594,12 +597,19 @@ function SortableTaskChip({
       <TaskChip
         projectId={projectId}
         task={task}
-        reserveCorner={canCarryOver}
+        reserveCorner={canCarryOver || canComplete}
         {...dragAttributes(attributes)}
         {...dragListeners(listeners)}
         className={DRAGGABLE_CLASS}
       />
-      {canCarryOver && !isDragging ? <CarryOverChipButton projectId={projectId} taskId={task.id} /> : null}
+      {(canCarryOver || canComplete) && !isDragging ? (
+        <div className="absolute right-1 bottom-1 flex">
+          {canComplete ? (
+            <CompleteChipButton projectId={projectId} taskId={task.id} previousStatus={task.status} />
+          ) : null}
+          {canCarryOver ? <CarryOverChipButton projectId={projectId} taskId={task.id} /> : null}
+        </div>
+      ) : null}
     </div>
   );
 }

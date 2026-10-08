@@ -25,6 +25,9 @@ export function canCarryOverFromBoard(
   return canEdit && !task.isHistory && canCarryOverTask(task.status);
 }
 
+/** Кнопка «Завершить» на карточке доски — там же, где кнопка переноса (product-requirements.md §2). */
+export const canCompleteFromBoard = canCarryOverFromBoard;
+
 /** Вернуть в «Текущие заявки» можно только незавершённую задачу — те же статусы, что и для переноса. */
 export const canReturnToBacklog = canCarryOverTask;
 

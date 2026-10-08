@@ -91,6 +91,14 @@ export function ArrowRightIcon({ size = 11, className, strokeWidth = 1.5 }: Icon
   );
 }
 
+export function CheckIcon({ size = 11, className, strokeWidth = 1.6 }: IconProps) {
+  return (
+    <svg {...base({ size, className, strokeWidth })}>
+      <path d="M3.5 8.5l3 3 6-7" />
+    </svg>
+  );
+}
+
 export function ChevronDownIcon({ size = 11, className, strokeWidth = 1.6 }: IconProps) {
   return (
     <svg {...base({ size, className, strokeWidth })}>

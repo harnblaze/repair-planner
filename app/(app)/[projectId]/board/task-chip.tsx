@@ -39,7 +39,7 @@ export function TaskChip({
   projectId: string;
   task: BoardTask;
   /**
-   * Место под кнопку в правом нижнем углу, в строке статуса: заголовок
+   * Место под кнопки в правом нижнем углу, в строке статуса: заголовок
    * сохраняет всю ширину колонки и не ломает слова.
    */
   reserveCorner?: boolean;
@@ -64,7 +64,7 @@ export function TaskChip({
       <span className="text-[13px] leading-snug font-semibold tracking-[-0.005em] break-words text-ink">
         {task.title}
       </span>
-      <span className={cn("flex flex-wrap items-center gap-1.5", reserveCorner && "pr-6")}>
+      <span className={cn("flex flex-wrap items-center gap-1.5", reserveCorner && "pr-14")}>
         <StatusBadge status={task.status} muted={isHistory} />
         {task.queueName ? (
           <span
