@@ -17,6 +17,7 @@ import {
 import { ATTACHMENT_MESSAGES, isUniqueViolation } from "@/lib/errors";
 import { NO_EDIT_ACCESS_MESSAGE, requireProjectEdit } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
+import { createTokenClient } from "@/lib/supabase/token-client";
 import type { ActionResult } from "@/lib/types/action-result";
 
 // Загрузка фото в три шага (docs/superpowers/specs/2026-10-07-task-attachments-design.md §4):
@@ -128,8 +129,13 @@ export async function confirmTaskAttachmentAction(
   }
 
   // Фоном после ответа: файлы-«сироты» проекта старше суток (0026). Сбой
-  // очистки только логируется и на загрузку не влияет.
-  after(() => cleanupAttachmentOrphans(supabase, projectId));
+  // очистки только логируется и на загрузку не влияет. Клиент — на токене,
+  // взятом сейчас: в after() клиент на cookies не сохранит обновлённую сессию.
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const accessToken = session?.access_token;
+  if (accessToken) after(() => cleanupAttachmentOrphans(createTokenClient(accessToken), projectId));
 
   revalidatePath(`/${projectId}/tasks/${taskId}`);
   return { ok: true };

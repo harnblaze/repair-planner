@@ -1,5 +1,7 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import { ATTACHMENTS_BUCKET } from "@/lib/business/attachments";
-import type { createClient } from "@/lib/supabase/server";
+import type { Database } from "@/lib/types/database";
 
 // Только сервер: удаление файлов-«сирот» проекта в bucket task-attachments
 // (docs/superpowers/specs/2026-10-08-attachment-orphan-cleanup-design.md).
@@ -7,7 +9,7 @@ import type { createClient } from "@/lib/supabase/server";
 // пользователя под RLS. Работает в фоне после загрузки фото: ошибки только
 // логируются, функция не бросает.
 
-type Supabase = Awaited<ReturnType<typeof createClient>>;
+type Supabase = SupabaseClient<Database>;
 
 /** Удаляет найденные «сироты» проекта; возвращает число удалённых файлов. */
 export async function cleanupAttachmentOrphans(supabase: Supabase, projectId: string): Promise<number> {

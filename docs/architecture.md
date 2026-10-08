@@ -62,7 +62,7 @@ PostgreSQL (Supabase)
 
 Просмотр — ссылки, подписанные на сервере на час (`createSignedUrls`). Удаление: сначала строка, затем файл (ошибка удаления файла только логируется). Server actions — `tasks/[taskId]/attachment-actions.ts`, UI — `tasks/[taskId]/task-attachments.tsx`.
 
-Файлы-«сироты» (оборванная загрузка, сбой удаления) удаляет `confirmTaskAttachmentAction` фоном через `after()`: `lib/attachments/cleanup.ts` → RPC `task_attachment_orphans` (0026) → один `storage.remove` сессией пользователя; только файлы старше суток, ошибки только логируются. Service role и планировщик не используются.
+Файлы-«сироты» (оборванная загрузка, сбой удаления) удаляет `confirmTaskAttachmentAction` фоном через `after()`: `lib/attachments/cleanup.ts` → RPC `task_attachment_orphans` (0026) → один `storage.remove` с правами пользователя; только файлы старше суток, ошибки только логируются. Service role и планировщик не используются. В `after()` работает клиент на access token, взятом в теле действия (`lib/supabase/token-client.ts`), а не клиент на cookies: тот мог бы обновить сессию, но не сохранить новые cookies, и браузер остался бы с уже использованным refresh token — сессию отозвали бы при следующем обновлении.
 
 Значок числа фото на доске — встроенный подсчёт PostgREST `task_attachments(count)` в запросах задач доски (`board/page.tsx`, `toPhotoCount` в `lib/business/attachments.ts`); файлы и ссылки при этом не загружаются, доступ ограничен той же RLS `task_attachments_select`.
 

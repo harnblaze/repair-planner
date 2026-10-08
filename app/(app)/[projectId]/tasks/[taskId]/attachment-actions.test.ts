@@ -12,12 +12,16 @@ vi.mock("@/lib/projects/access", () => ({
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn(async () => state.client) }));
 vi.mock("next/server", () => ({ after: vi.fn() }));
 vi.mock("@/lib/attachments/cleanup", () => ({ cleanupAttachmentOrphans: vi.fn(async () => 0) }));
+vi.mock("@/lib/supabase/token-client", () => ({
+  createTokenClient: vi.fn((token: string) => ({ tokenClient: token })),
+}));
 
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
 import { cleanupAttachmentOrphans } from "@/lib/attachments/cleanup";
 import { createClient } from "@/lib/supabase/server";
+import { createTokenClient } from "@/lib/supabase/token-client";
 
 import {
   confirmTaskAttachmentAction,
@@ -67,6 +71,9 @@ function fakeClient(results: Record<string, unknown[]>) {
       return b;
     }),
     storage: { from: vi.fn(() => storage) },
+    auth: {
+      getSession: vi.fn(async () => ({ data: { session: { access_token: "access-token" } }, error: null })),
+    },
   };
   return { client, builders, storage };
 }
@@ -259,7 +266,18 @@ describe("orphan cleanup after upload", () => {
 
     const task = (after as Mock).mock.calls[0][0] as () => Promise<unknown>;
     await task();
-    expect(cleanupAttachmentOrphans).toHaveBeenCalledWith(client, PROJECT);
+    // Не клиент на cookies: в after() он не может сохранить обновлённую сессию.
+    expect(createTokenClient).toHaveBeenCalledWith("access-token");
+    expect(cleanupAttachmentOrphans).toHaveBeenCalledWith({ tokenClient: "access-token" }, PROJECT);
+    expect(cleanupAttachmentOrphans).not.toHaveBeenCalledWith(client, PROJECT);
+  });
+
+  it("skips cleanup when there is no session token", async () => {
+    const { client } = fakeClient({ task_attachments: [{ error: null }] });
+    client.auth.getSession.mockResolvedValueOnce({ data: { session: null }, error: null } as never);
+    state.client = client;
+    expect(await confirmTaskAttachmentAction(PROJECT, TASK, PATH, 2000, 1500)).toEqual({ ok: true });
+    expect(after).not.toHaveBeenCalled();
   });
 
   it("schedules cleanup on a repeated confirm of the same path", async () => {
