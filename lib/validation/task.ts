@@ -3,6 +3,8 @@ import { z } from "zod";
 export const createTaskSchema = z.object({
   title: z.string().trim().min(1, "Введите название заявки").max(300, "Слишком длинно"),
   categoryId: z.string().trim().optional(),
+  // Очередь чужого проекта отвергает составной FK tasks_queue_fk (0018).
+  queueId: z.string().trim().optional(),
 });
 
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;

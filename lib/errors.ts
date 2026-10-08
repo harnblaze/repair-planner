@@ -44,6 +44,7 @@ const BOARD_MOVE_ERROR_MESSAGES: Record<string, string> = {
   schedule_not_found: "Заявка не найдена в этом дне. Обновите страницу.",
   item_not_found: "Запись не найдена. Обновите страницу.",
   list_not_found: "Список не найден. Обновите страницу.",
+  queue_not_found: "Очередь не найдена. Обновите страницу.",
   access_denied: "Недостаточно прав для изменения данных проекта.",
 };
 

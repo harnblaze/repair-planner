@@ -707,6 +707,38 @@ export type Database = {
           },
         ]
       }
+      task_queues: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          project_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          project_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          project_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_queues_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_schedule: {
         Row: {
           carried_over: boolean
@@ -770,6 +802,7 @@ export type Database = {
       }
       tasks: {
         Row: {
+          backlog_position: number | null
           category_id: string | null
           completed_at: string | null
           created_at: string
@@ -778,11 +811,13 @@ export type Database = {
           id: string
           planned_date: string | null
           project_id: string
+          queue_id: string | null
           status: Database["public"]["Enums"]["task_status"]
           title: string
           updated_at: string
         }
         Insert: {
+          backlog_position?: number | null
           category_id?: string | null
           completed_at?: string | null
           created_at?: string
@@ -791,11 +826,13 @@ export type Database = {
           id?: string
           planned_date?: string | null
           project_id: string
+          queue_id?: string | null
           status?: Database["public"]["Enums"]["task_status"]
           title: string
           updated_at?: string
         }
         Update: {
+          backlog_position?: number | null
           category_id?: string | null
           completed_at?: string | null
           created_at?: string
@@ -804,6 +841,7 @@ export type Database = {
           id?: string
           planned_date?: string | null
           project_id?: string
+          queue_id?: string | null
           status?: Database["public"]["Enums"]["task_status"]
           title?: string
           updated_at?: string
@@ -829,6 +867,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "projects"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_queue_fk"
+            columns: ["queue_id", "project_id"]
+            isOneToOne: false
+            referencedRelation: "task_queues"
+            referencedColumns: ["id", "project_id"]
           },
         ]
       }
@@ -870,6 +915,10 @@ export type Database = {
           quantity: number
           unit: string
         }[]
+      }
+      move_backlog_task: {
+        Args: { p_position: number; p_queue_id: string; p_task_id: string }
+        Returns: undefined
       }
       move_board_item: {
         Args: { p_item_id: string; p_position: number }

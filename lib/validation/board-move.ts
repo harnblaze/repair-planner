@@ -37,7 +37,15 @@ export const moveBoardListSchema = z.object({
   position: positionSchema,
 });
 
+// queueId: null — основная очередь «Текущие заявки» (supabase/migrations/0018).
+export const moveBacklogTaskSchema = z.object({
+  taskId: idSchema,
+  queueId: idSchema.nullable(),
+  position: positionSchema,
+});
+
 export type PlanTaskOnDayInput = z.infer<typeof planTaskOnDaySchema>;
 export type MoveTaskScheduleInput = z.infer<typeof moveTaskScheduleSchema>;
 export type MoveBoardItemInput = z.infer<typeof moveBoardItemSchema>;
 export type MoveBoardListInput = z.infer<typeof moveBoardListSchema>;
+export type MoveBacklogTaskInput = z.infer<typeof moveBacklogTaskSchema>;
