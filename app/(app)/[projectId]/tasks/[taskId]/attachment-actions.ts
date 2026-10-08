@@ -3,7 +3,9 @@
 import { randomUUID } from "node:crypto";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
+import { cleanupAttachmentOrphans } from "@/lib/attachments/cleanup";
 import {
   ATTACHMENTS_BUCKET,
   MAX_ATTACHMENTS_PER_TASK,
@@ -124,6 +126,10 @@ export async function confirmTaskAttachmentAction(
       return { ok: false, error: ATTACHMENT_MESSAGES.uploadFailed };
     }
   }
+
+  // Фоном после ответа: файлы-«сироты» проекта старше суток (0026). Сбой
+  // очистки только логируется и на загрузку не влияет.
+  after(() => cleanupAttachmentOrphans(supabase, projectId));
 
   revalidatePath(`/${projectId}/tasks/${taskId}`);
   return { ok: true };

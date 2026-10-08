@@ -10,9 +10,13 @@ vi.mock("@/lib/projects/access", () => ({
   requireProjectEdit: vi.fn(async () => state.denied),
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn(async () => state.client) }));
+vi.mock("next/server", () => ({ after: vi.fn() }));
+vi.mock("@/lib/attachments/cleanup", () => ({ cleanupAttachmentOrphans: vi.fn(async () => 0) }));
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
+import { cleanupAttachmentOrphans } from "@/lib/attachments/cleanup";
 import { createClient } from "@/lib/supabase/server";
 
 import {
@@ -242,5 +246,41 @@ describe("deleteTaskAttachmentAction", () => {
     expect(await deleteTaskAttachmentAction(PROJECT, TASK, "id-1")).toEqual({ ok: true });
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
+  });
+});
+
+describe("orphan cleanup after upload", () => {
+  it("schedules cleanup of the project after a successful confirm", async () => {
+    const { client } = fakeClient({ task_attachments: [{ error: null }] });
+    state.client = client;
+    expect(await confirmTaskAttachmentAction(PROJECT, TASK, PATH, 2000, 1500)).toEqual({ ok: true });
+    expect(after).toHaveBeenCalledTimes(1);
+    expect(cleanupAttachmentOrphans).not.toHaveBeenCalled();
+
+    const task = (after as Mock).mock.calls[0][0] as () => Promise<unknown>;
+    await task();
+    expect(cleanupAttachmentOrphans).toHaveBeenCalledWith(client, PROJECT);
+  });
+
+  it("schedules cleanup on a repeated confirm of the same path", async () => {
+    const { client } = fakeClient({
+      task_attachments: [{ error: { code: "23505", message: "duplicate key" } }],
+    });
+    state.client = client;
+    expect(await confirmTaskAttachmentAction(PROJECT, TASK, PATH, 2000, 1500)).toEqual({ ok: true });
+    expect(after).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not schedule cleanup when the confirm fails", async () => {
+    const { client, storage } = fakeClient({
+      task_attachments: [{ error: { code: "23503", message: "fk violation" } }],
+    });
+    state.client = client;
+    expect((await confirmTaskAttachmentAction(PROJECT, TASK, PATH, 2000, 1500)).ok).toBe(false);
+
+    storage.list.mockResolvedValueOnce({ data: [], error: null });
+    expect((await confirmTaskAttachmentAction(PROJECT, TASK, PATH, 2000, 1500)).ok).toBe(false);
+
+    expect(after).not.toHaveBeenCalled();
   });
 });
