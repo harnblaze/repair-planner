@@ -1060,6 +1060,10 @@ export type Database = {
         Args: { p_project_id: string; p_task_id: string; p_work_date?: string }
         Returns: undefined
       }
+      task_attachment_orphans: {
+        Args: { p_limit?: number; p_project_id: string }
+        Returns: string[]
+      }
       undo_carry_over: { Args: { p_task_id: string }; Returns: string }
     }
     Enums: {
