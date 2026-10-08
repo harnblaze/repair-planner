@@ -71,6 +71,10 @@ PostgreSQL (Supabase)
 * `/[projectId]/tasks` — вкладки «Открытые» и «Архив» (`?view=archive`). Архив — Server Component: GET-форма фильтров, разбор `searchParams` в `lib/validation/archive-filters.ts`, загрузка `tasks/archive-data.ts` → RPC `search_archive_tasks` (0020, период по дате выполнения или отмены — 0023, фильтр и расход материала — 0024). Клиентского JS у вкладки нет. «Открытые» — та же схема: `lib/validation/open-task-filters.ts`, цех фильтруется в запросе, текст — в памяти (`lib/business/task-search.ts`); общие хелперы разбора — `lib/validation/search-params.ts`.
 * `/[projectId]/reports` — вкладки «Расход материалов» и «Выполненные работы» (`?report=works`). Обе — Server Components: месяц и цех в адресе, загрузка общая для страницы и CSV (`reports/data.ts` → RPC `material_consumption_by_category`, `reports/works-data.ts` → RPC `completed_works_report`, 0025), выгрузка — `reports/export` и `reports/works/export`. Группировка и CSV отчёта работ — `lib/business/works-report.ts`; формат CSV общий — `lib/business/csv.ts`. Клиентский только фильтр цеха (`category-filter.tsx`, сохраняет `report` в адресе).
 
+### 3.3 Архив и удаление проекта
+
+Действия — `app/(app)/projects/actions.ts`: `archiveProjectAction` (карточка «Архив» в настройках), `restoreProjectAction` и `deleteProjectAction` (раздел «Архив» на `/projects`, только проекты владельца). Удаление навсегда: проверка архива и названия (`confirmsProjectName`, `lib/business/project-archive.ts`) → файлы пачками по 1000 (RPC `project_attachment_paths` → `storage.remove`; ошибка или неполное удаление — стоп, проект не трогается) → `delete from projects` под RLS, остальное — каскад. Файлы удаляются первыми: после удаления проекта RLS `storage.objects` их не отдаст. Service role не используется.
+
 ## 4. Маршрутизация и выбор проекта
 
 Активный проект — часть URL: `/(app)/[projectId]/...`. Это даёт:

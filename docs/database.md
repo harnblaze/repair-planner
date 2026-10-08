@@ -105,7 +105,7 @@ alter table task_materials
 
 Индексы: `(owner_id)`.
 
-**RLS:** SELECT — владельцу (`owner_id = auth.uid()`) или участнику (`project_access(id) is not null`). INSERT — любому аутентифицированному, с `owner_id = auth.uid()`. UPDATE/DELETE — только владельцу.
+**RLS:** SELECT — владельцу (`owner_id = auth.uid()`) или участнику (`project_access(id) is not null`). INSERT — любому аутентифицированному, с `owner_id = auth.uid()`. UPDATE — только владельцу. DELETE — только владельцу и только проекта в архиве (`archived_at is not null`, 0027).
 
 Прямая проверка `owner_id` в SELECT (миграция 0007) — не просто оптимизация: без неё `INSERT ... RETURNING` от лица владельца падал с ошибкой RLS. Политика `projects_select` изначально проверяла доступ только через `project_access()`, которая читает `project_members`; эта строка появляется лишь после `AFTER INSERT`-триггера `handle_new_project`, а RLS для `RETURNING` оценивается по снапшоту команды, ещё не видящему эффект триггера. INSERT без `RETURNING` проходил, INSERT с `RETURNING` (обычный способ получить `id` созданной записи) — нет.
 
@@ -269,6 +269,7 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 | `search_archive_tasks(p_project_id, p_status, p_query, p_category_id, p_executor_id, p_from, p_to, p_limit, p_material_id)` (0020, 0023, 0024) | архив: выполненные и отменённые заявки проекта с фильтрами по тексту (название, описание; буквально, без учёта регистра), цеху, исполнителю, материалу (заявки с его расходом в `task_materials`, расход — в `material_quantity`, без фильтра — `null`; с 0024) и периоду закрытия в timezone проекта (включительно): выполненные — по `completed_at`, отменённые — по `cancelled_at` (с 0023); сортировка `coalesce(completed_at, cancelled_at) desc`; в строке есть `cancelled_at`; security invoker, RLS; `invalid_filter` |
 | `completed_works_report(p_project_id, p_month)` (0025) | отчёт «Выполненные работы»: выполненные заявки календарного месяца в timezone проекта (полуинтервал по `completed_at`) с цехом (`category_id`, `category_name`, `category_sort_order`; без цеха — `null`), исполнителями (`executor_names text[]` по имени) и материалами (`materials jsonb` — `[{name, unit, quantity}]` по названию, `[]` без расхода; количество — текущее `task_materials.quantity`); порядок `categories.sort_order nulls last, name nulls last, completed_at, id`; `language sql stable`, security invoker, RLS — чужой проект даёт пустой результат |
 | `task_attachment_orphans(p_project_id, p_limit default 100)` (0026) | пути файлов-«сирот» bucket `task-attachments` проекта: объекты старше суток без строки `task_attachments` с тем же `storage_path`; порядок `created_at, name`, предел 1–1000; только при `project_can_edit`, иначе пусто; `language sql stable`, security invoker, RLS `storage.objects` действует. Удаляет файлы сервер через Storage API (§5.14) |
+| `project_attachment_paths(p_project_id, p_limit default 1000)` (0027) | пути всех файлов проекта в bucket `task-attachments` для удаления через Storage API перед удалением проекта; только владельцу и только для проекта в архиве, иначе пусто; порядок `name`, предел 1–1000; `language sql stable`, security invoker |
 | `move_board_list(p_list_id, p_position)` (0014) | порядок списков проекта: перенумеровывает `board_lists.sort_order` 0..n-1 под advisory-блокировкой проекта; `list_not_found` без доступа к проекту, `access_denied` без права записи |
 | `move_task_queue(p_queue_id, p_position)` (0022) | порядок своих очередей проекта, как `move_board_list`: перенумеровывает `task_queues.sort_order` 0..n-1; `queue_not_found` без доступа к проекту, `access_denied` без права записи |
 | `carry_over_task(p_task_id) returns date` (0013) | перенос на следующий рабочий день по календарю проекта: новый день с `carried_over = true` в конец дня; возвращает дату |
@@ -327,6 +328,8 @@ PK: `(task_id, executor_id)`. Составные FK на `tasks` и `executors`.
 Индексы: `(project_id, occurred_at)`, `(material_id, occurred_at)`, `(task_id)`.
 
 Таблица неизменяема: UPDATE и DELETE запрещены для всех, INSERT возможен **только** из `SECURITY DEFINER` функций. Это основа будущих месячных отчётов.
+
+Каскадное удаление проекта (0027): триггер `apply_task_material_change` при DELETE строки `task_materials` удалённого проекта не меняет остаток и не пишет движение — журнал и материалы удаляет тот же каскад. Удаление расхода в живом проекте пишет `adjustment`, как прежде.
 
 ### 5.12 `board_lists` и `board_items` — дополнительные списки
 
@@ -436,7 +439,7 @@ RPC доски (0008) и отчёт (0009) выполняются с права�
 
 | Таблица | Отличие |
 |---|---|
-| `projects` | UPDATE/DELETE только при `project_access(id) = 'owner'`; INSERT с `owner_id = auth.uid()` |
+| `projects` | UPDATE только при `project_access(id) = 'owner'`; DELETE — то же и только при `archived_at is not null` (0027); INSERT с `owner_id = auth.uid()` |
 | `project_members` | INSERT нет; UPDATE только `role` владельцем; DELETE владельцем или самим участником, кроме строки `owner` (§5.3) |
 | `project_invitations` | SELECT и DELETE непринятых — владельцу; создание и принятие — только через RPC (§5.3a) |
 | `material_movements` | только SELECT; INSERT/UPDATE/DELETE не имеют policy вовсе |
@@ -553,6 +556,7 @@ update materials set current_balance = current_balance + delta where id = p_mate
 24. `0024_archive_material_filter` — `search_archive_tasks` с `p_material_id` (последний, по умолчанию `null` — прежние вызовы работают) и `material_quantity` в результате.
 25. `0025_completed_works_report` — RPC `completed_works_report` для отчёта «Выполненные работы»; новых таблиц и политик нет.
 26. `0026_task_attachment_orphans` — RPC `task_attachment_orphans` для очистки файлов без строки `task_attachments`; новых таблиц и политик нет.
+27. `0027_project_archive_delete` — удаление проекта только из архива (политика `projects_delete`), ранний выход триггера расхода при каскаде, RPC `project_attachment_paths`.
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
