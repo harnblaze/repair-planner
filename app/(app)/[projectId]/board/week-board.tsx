@@ -323,8 +323,8 @@ export function WeekBoard({
       return;
     }
 
-    // Вставка в чужой список — перед карточкой под курсором или после неё,
-    // если перетаскиваемая карточка ниже её середины.
+    // Перетаскиваемая карточка ниже середины того, над чем её отпустили: строки
+    // (вставка после неё) или самой панели очереди (в конец, а не наверх).
     const translated = dragged.rect.current.translated;
     const below = translated !== null && translated.top > over.rect.top + over.rect.height / 2;
 

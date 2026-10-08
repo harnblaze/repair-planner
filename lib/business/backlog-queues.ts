@@ -36,10 +36,10 @@ export function moveTaskBetweenQueues<T extends { id: string; queueId: string | 
 }
 
 /**
- * Место броска в панели очереди. В своей панели — индекс строки под курсором
- * (как arrayMove), над самой панелью — последнее место. В чужой — перед строкой
- * под курсором или после неё, если перетаскиваемая карточка ниже её середины;
- * над самой панелью — в конец.
+ * Место броска в панели очереди. below — карточка ниже середины того, над чем
+ * её отпустили (строки или самой панели). Над строкой своей панели — индекс
+ * этой строки (как arrayMove), чужой — перед строкой или после неё. Над самой
+ * панелью: верхняя половина (заголовок, форма создания) — наверх, нижняя — в конец.
  */
 export function queueDropIndex(
   target: { id: string }[],
@@ -47,9 +47,10 @@ export function queueDropIndex(
   overTaskId: string | null,
   below: boolean,
 ): number {
+  const own = target.some((t) => t.id === taskId);
   const overIndex = overTaskId ? target.findIndex((t) => t.id === overTaskId) : -1;
-  if (target.some((t) => t.id === taskId)) {
-    return overIndex === -1 ? target.length - 1 : overIndex;
+  if (overIndex === -1) {
+    return below ? target.length - (own ? 1 : 0) : 0;
   }
-  return overIndex === -1 ? target.length : overIndex + (below ? 1 : 0);
+  return own ? overIndex : overIndex + (below ? 1 : 0);
 }

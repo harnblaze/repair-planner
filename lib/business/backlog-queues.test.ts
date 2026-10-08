@@ -69,8 +69,9 @@ describe("queueDropIndex", () => {
     expect(queueDropIndex(list, "c", "a", true)).toBe(0);
   });
 
-  it("своя панель, курсор над самой панелью — в конец", () => {
-    expect(queueDropIndex(list, "a", null, false)).toBe(2);
+  it("своя панель: верхняя половина панели (заголовок, форма) — наверх, нижняя — в конец", () => {
+    expect(queueDropIndex(list, "c", null, false)).toBe(0);
+    expect(queueDropIndex(list, "a", null, true)).toBe(2);
   });
 
   it("чужая панель — перед строкой или после неё", () => {
@@ -78,8 +79,9 @@ describe("queueDropIndex", () => {
     expect(queueDropIndex(list, "x", "b", true)).toBe(2);
   });
 
-  it("чужая панель, курсор над панелью — в конец; пустая панель — 0", () => {
-    expect(queueDropIndex(list, "x", null, false)).toBe(3);
-    expect(queueDropIndex([], "x", null, false)).toBe(0);
+  it("чужая панель: верхняя половина панели — наверх, нижняя — в конец; пустая — 0", () => {
+    expect(queueDropIndex(list, "x", null, false)).toBe(0);
+    expect(queueDropIndex(list, "x", null, true)).toBe(3);
+    expect(queueDropIndex([], "x", null, true)).toBe(0);
   });
 });
