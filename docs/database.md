@@ -17,6 +17,7 @@ auth.users 1─1 profiles
                   ├──* executors
                   ├──* materials ──* material_movements
                   ├──* board_lists ──* board_items
+                  ├──* task_queues ──* tasks (queue_id; null — основная очередь)
                   └──* tasks
                          ├──* task_schedule        (дни работы)
                          ├──* task_executors  *──1 executors
@@ -72,7 +73,7 @@ alter table task_materials
     foreign key (material_id, project_id) references materials (id, project_id) on delete restrict;
 ```
 
-Так PostgreSQL сам отвергает разнопроектные связи. Приём применяется ко всем связям: `task_schedule`, `task_executors`, `task_materials`, `material_movements`, `board_items`, `tasks.category_id`.
+Так PostgreSQL сам отвергает разнопроектные связи. Приём применяется ко всем связям: `task_schedule`, `task_executors`, `task_materials`, `material_movements`, `board_items`, `tasks.category_id`, `tasks.queue_id`.
 
 ## 5. Таблицы
 
@@ -206,6 +207,8 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 | `title` | text not null | `length between 1 and 300` |
 | `description` | text | |
 | `category_id` | uuid null | FK составной → `categories(id, project_id)`, on delete set null |
+| `queue_id` | uuid null | очередь текущих заявок (0018); null — основная «Текущие заявки» |
+| `backlog_position` | int null | место в панели очереди (0018); null — ещё не расставляли |
 | `status` | task_status not null default `'new'` | |
 | `planned_date` | date null | **кеш** — последняя дата из `task_schedule` (null, если последний день отложен), поддерживается триггером |
 | `completed_at` | timestamptz null | |
@@ -221,7 +224,9 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 
 Колонка `planned_date` **производная**: изменять её напрямую нельзя, она пересчитывается триггером от `task_schedule`. Она существует ради двух частых запросов — «текущие заявки» (`planned_date is null`) и «на какой день задача запланирована сейчас» — без подзапросов.
 
-Поля `position` в `tasks` нет: позиция задачи зависит от дня, поэтому живёт в `task_schedule`.
+Позиция задачи в дне зависит от дня, поэтому живёт в `task_schedule`. В `tasks` — только `backlog_position`, место в панели очереди, пока задача не запланирована.
+
+`queue_id uuid null` (0018) — очередь текущих заявок; `null` — основная «Текущие заявки». Составной FK `tasks_queue_fk (queue_id, project_id) → task_queues (id, project_id) on delete set null (queue_id)`: при удалении очереди заявки уходят в основную. `backlog_position int null` — место в панели очереди; порядок панели `backlog_position asc nulls first, created_at desc, id`. Триггер `tasks_reset_backlog_position` (`private.reset_task_backlog_position`) обнуляет позицию при вставке, смене `planned_date` или `queue_id` и переходе статуса между открытыми и закрытыми — заявка встаёт наверх своей очереди.
 
 ### 5.8 `task_schedule` — дни работы над задачей
 
@@ -259,6 +264,7 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 | `move_task_schedule(p_task_id, p_from_date, p_to_date, p_position)` | порядок внутри дня или смена дня (только для единственного неотложенного дня задачи) |
 | `return_task_to_backlog(p_task_id) returns boolean` | правило «Отложить» (product-requirements.md §4.4); `true` — история сохранена |
 | `move_board_item(p_item_id, p_position)` | порядок записи внутри списка |
+| `move_backlog_task(p_task_id, p_queue_id, p_position)` (0018) | перестановка в панели очереди и перенос между очередями: меняет `queue_id`, перенумеровывает `backlog_position` целевой очереди 0..n-1 под advisory-блокировкой обеих очередей (в порядке ключей); `task_not_found`, `access_denied`, `task_already_planned`, `task_closed`, `queue_not_found` |
 | `move_board_list(p_list_id, p_position)` (0014) | порядок списков проекта: перенумеровывает `board_lists.sort_order` 0..n-1 под advisory-блокировкой проекта; `list_not_found` без доступа к проекту, `access_denied` без права записи |
 | `carry_over_task(p_task_id) returns date` (0013) | перенос на следующий рабочий день по календарю проекта: новый день с `carried_over = true` в конец дня; возвращает дату |
 | `set_task_planned_date(p_project_id, p_task_id, p_work_date default null)` (0015) | поле даты в карточке задачи, одной транзакцией: `null` снимает весь план (статус не меняется); незапланированная задача планируется через `plan_task_on_day`; запланированная — весь план заменяется одним днём в конце дня (история переносов не сохраняется), `new` → `planned`; задача должна принадлежать `p_project_id`, иначе `task_not_found` |
@@ -362,6 +368,10 @@ RLS: SELECT — любой участник; INSERT/UPDATE/DELETE — `project_c
 * RLS таблицы: SELECT — любой участник; INSERT/DELETE — `project_can_edit`; UPDATE — никто.
 * RLS `storage.objects` для bucket: проект — первая папка пути через `private.attachment_project_id(name)` (null для не-uuid, поэтому некорректный путь даёт отказ, а не ошибку). SELECT — участник, INSERT/DELETE — `project_can_edit`, UPDATE — никто.
 * Удаление строки задачи каскадом удаляет строки фото, но не файлы — удаления задач в приложении нет; см. roadmap.
+
+### 5.15 `task_queues` — очереди текущих заявок (0018)
+
+`id`, `project_id`, `name` (1–60 символов после trim), timestamps, `unique (id, project_id)`. Основной очереди строки нет — это `tasks.queue_id is null`, поэтому её нельзя удалить или переименовать. RLS: SELECT — участник проекта, INSERT/UPDATE/DELETE — `project_can_edit`. Право UPDATE у `authenticated` — только на колонку `name`: `project_id` неизменяем.
 
 ## 6. RLS
 
@@ -524,7 +534,8 @@ update materials set current_balance = current_balance + delta where id = p_mate
 15. `0015_set_task_planned_date` — RPC `set_task_planned_date`: атомарная смена даты плана в карточке задачи вместо удаления и вставки отдельными запросами.
 16. `0016_revoke_function_execute` — отзыв `EXECUTE` у восьми триггерных функций `public` для API-ролей и у `project_access` для `anon`.
 17. `0017_task_attachments` — таблица `task_attachments`, приватный bucket `task-attachments`, RLS на таблице и `storage.objects`, helper `private.attachment_project_id`.
+18. `0018_task_queues` — таблица `task_queues`, колонки `tasks.queue_id` и `tasks.backlog_position`, триггер сброса позиции, RPC `move_backlog_task`.
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
-Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (142) и `supabase/tests/database/attachments.test.sql` (28) — `supabase test db`, 170/170 успешно. TypeScript-типы сгенерированы в `lib/types/database.ts`.
+Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (142), `supabase/tests/database/attachments.test.sql` (28) и `supabase/tests/database/task-queues.test.sql` (45) — `supabase test db`, 215/215 успешно. TypeScript-типы сгенерированы в `lib/types/database.ts`.
