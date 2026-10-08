@@ -5,7 +5,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(32);
+select plan(35);
 
 -- ================= Фикстуры (как postgres, минуя RLS) =================
 -- A — владелец проекта A (Europe/Moscow), B — владелец проекта B, C — viewer в A.
@@ -58,22 +58,43 @@ select has_function('public', 'search_archive_tasks',
   array['uuid', 'text', 'text', 'uuid', 'uuid', 'date', 'date', 'integer'],
   'search_archive_tasks exists');
 
--- 26-28. Дата отмены (0023): есть ровно у отменённых
+-- 26-28, 33-35. Дата отмены (0023): есть ровно у отменённых, ставит и снимает триггер
 select has_column('public', 'tasks', 'cancelled_at', 'tasks.cancelled_at exists');
 
-select throws_ok(
-  $$ insert into public.tasks (project_id, title, status)
-     values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Без даты отмены', 'cancelled') $$,
-  '23514', null,
-  'cancelled task requires cancelled_at'
+select ok(
+  exists (select 1 from pg_constraint
+            where conname = 'tasks_cancelled_at_matches_status' and conrelid = 'public.tasks'::regclass),
+  'CHECK keeps cancelled_at in sync with status'
 );
 
-select throws_ok(
-  $$ insert into public.tasks (project_id, title, status, cancelled_at)
-     values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Лишняя дата', 'new', now()) $$,
-  '23514', null,
-  'open task cannot have cancelled_at'
+-- Старый код ставит статус без даты — триггер проставляет её сам.
+insert into public.tasks (id, project_id, title, status) values
+  ('f2000000-0000-0000-0000-0000000000c1', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'Отмена без даты', 'cancelled');
+select ok(
+  (select cancelled_at is not null from public.tasks where id = 'f2000000-0000-0000-0000-0000000000c1'),
+  'insert as cancelled without a date gets cancelled_at'
 );
+
+update public.tasks set status = 'new' where id = 'f2000000-0000-0000-0000-0000000000c1';
+select ok(
+  (select cancelled_at is null from public.tasks where id = 'f2000000-0000-0000-0000-0000000000c1'),
+  'leaving cancelled clears cancelled_at'
+);
+
+update public.tasks set status = 'cancelled' where id = 'f2000000-0000-0000-0000-0000000000c1';
+select ok(
+  (select cancelled_at is not null from public.tasks where id = 'f2000000-0000-0000-0000-0000000000c1'),
+  'update to cancelled without a date sets cancelled_at'
+);
+
+-- Правка отменённой заявки дату отмены не трогает.
+update public.tasks set title = 'Отмена без даты (правка)' where id = 'f2000000-0000-0000-0000-000000000003';
+select is(
+  (select cancelled_at from public.tasks where id = 'f2000000-0000-0000-0000-000000000003'),
+  '2026-09-25 10:00+00'::timestamptz,
+  'editing a cancelled task keeps cancelled_at'
+);
+update public.tasks set title = 'Покраска_стен' where id = 'f2000000-0000-0000-0000-000000000003';
 
 -- ================= Владелец A =================
 

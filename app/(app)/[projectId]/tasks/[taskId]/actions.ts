@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { formatDateLong } from "@/lib/business/dates";
 import { canCarryOverTask } from "@/lib/business/task-planning";
-import { closedTimestamps, type TaskStatus } from "@/lib/business/task-status";
+import type { TaskStatus } from "@/lib/business/task-status";
 import { isValidDateString, isWorkingDay } from "@/lib/business/working-days";
 import { isUniqueViolation, mapBoardMoveError } from "@/lib/errors";
 import { requireProjectEdit } from "@/lib/projects/access";
@@ -170,7 +170,12 @@ export async function setTaskStatusAction(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("tasks")
-    .update({ status, ...closedTimestamps(status, new Date()) })
+    .update({
+      status,
+      // completed_at и status согласованы CHECK-ограничением в БД — обязаны
+      // выставлять оба поля вместе. cancelled_at ставит и снимает триггер (0023).
+      completed_at: status === "completed" ? new Date().toISOString() : null,
+    })
     .eq("id", taskId)
     .eq("project_id", projectId)
     .select("id");

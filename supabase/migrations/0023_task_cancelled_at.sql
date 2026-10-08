@@ -1,6 +1,7 @@
 -- Дата отмены заявки: отменённые попадают в фильтр периода архива наравне с
--- выполненными (completed_at). Выставляется вместе со статусом в
--- setTaskStatusAction; согласованность статуса и даты держит CHECK, как у completed_at.
+-- выполненными (completed_at). Дату ставит и снимает триггер при смене статуса —
+-- так и код, не знающий о колонке (пока новый деплой не приехал), отменяет заявки
+-- без ошибки. Согласованность статуса и даты держит CHECK, как у completed_at.
 
 alter table public.tasks add column if not exists cancelled_at timestamptz;
 
@@ -26,6 +27,31 @@ begin
   end if;
 end;
 $$;
+
+-- Отмена — дата ставится, если её не передали; выход из отмены — дата снимается.
+-- Правка отменённой заявки без смены статуса дату сохраняет (new = old).
+create or replace function private.sync_task_cancelled_at()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.status = 'cancelled' then
+    new.cancelled_at := coalesce(new.cancelled_at, now());
+  else
+    new.cancelled_at := null;
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function private.sync_task_cancelled_at() from public, anon;
+grant execute on function private.sync_task_cancelled_at() to authenticated;
+
+drop trigger if exists tasks_sync_cancelled_at on public.tasks;
+create trigger tasks_sync_cancelled_at
+  before insert or update of status, cancelled_at on public.tasks
+  for each row execute function private.sync_task_cancelled_at();
 
 -- В результате появляется cancelled_at — тип результата меняется, поэтому drop + create.
 drop function if exists public.search_archive_tasks(uuid, text, text, uuid, uuid, date, date, int);

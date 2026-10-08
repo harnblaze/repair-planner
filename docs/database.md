@@ -216,7 +216,7 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 | `created_by` | uuid | FK → `profiles(id)` |
 | `created_at`, `updated_at` | timestamptz | |
 
-Ограничения: `completed_at is not null` тогда и только тогда, когда `status = 'completed'`; `cancelled_at is not null` тогда и только тогда, когда `status = 'cancelled'` (`tasks_cancelled_at_matches_status`, 0023). Обе даты выставляет `setTaskStatusAction` вместе со статусом (`closedTimestamps` в `lib/business/task-status.ts`). Миграция 0023 заполнила `cancelled_at` у уже отменённых заявок значением `updated_at` — точной даты отмены у них нет.
+Ограничения: `completed_at is not null` тогда и только тогда, когда `status = 'completed'`; `cancelled_at is not null` тогда и только тогда, когда `status = 'cancelled'` (`tasks_cancelled_at_matches_status`, 0023). `completed_at` выставляет `setTaskStatusAction` вместе со статусом; `cancelled_at` ставит и снимает триггер `tasks_sync_cancelled_at` (`private.sync_task_cancelled_at`, 0023): при отмене — `coalesce(cancelled_at, now())`, при любом другом статусе — `null`; правка отменённой заявки дату сохраняет. Так старый код, не знающий о колонке, отменяет заявки без ошибки. Миграция 0023 заполнила `cancelled_at` у уже отменённых заявок значением `updated_at` — точной даты отмены у них нет.
 
 Индексы:
 * `(project_id, planned_date)` — доска и backlog;
@@ -545,7 +545,7 @@ update materials set current_balance = current_balance + delta where id = p_mate
 20. `0020_search_archive_tasks` — функция поиска по архиву выполненных работ.
 21. `0021_undo_carry_over` — RPC отмены переноса на следующий рабочий день.
 22. `0022_task_queue_order` — `task_queues.sort_order`, RPC `move_task_queue`.
-23. `0023_task_cancelled_at` — `tasks.cancelled_at` с CHECK и заполнением по `updated_at`; `search_archive_tasks` пересоздана: период и сортировка по дате выполнения или отмены.
+23. `0023_task_cancelled_at` — `tasks.cancelled_at` с CHECK, триггером `tasks_sync_cancelled_at` и заполнением по `updated_at`; `search_archive_tasks` пересоздана: период и сортировка по дате выполнения или отмены.
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
