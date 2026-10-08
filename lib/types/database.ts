@@ -1000,6 +1000,7 @@ export type Database = {
           p_executor_id?: string
           p_from?: string
           p_limit?: number
+          p_material_id?: string
           p_project_id: string
           p_query?: string
           p_status: string
@@ -1011,6 +1012,7 @@ export type Database = {
           completed_at: string
           executor_names: string[]
           id: string
+          material_quantity: number
           status: Database["public"]["Enums"]["task_status"]
           title: string
         }[]

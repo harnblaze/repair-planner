@@ -21,6 +21,8 @@ export type ArchiveFilters = {
   status: ArchiveStatus;
   category: string | null;
   executor: string | null;
+  /** Материал: только заявки, где он тратился, и расход в строке. */
+  material: string | null;
   from: string | null;
   to: string | null;
   page: number;
@@ -31,6 +33,7 @@ export const DEFAULT_ARCHIVE_FILTERS: ArchiveFilters = {
   status: "completed",
   category: null,
   executor: null,
+  material: null,
   from: null,
   to: null,
   page: 1,
@@ -50,6 +53,7 @@ export function parseArchiveFilters(params: SearchParams): ArchiveFilters {
     status: parseParam(statusSchema, firstParam(params.status), DEFAULT_ARCHIVE_FILTERS.status),
     category: parseParam(idSchema, firstParam(params.category), null),
     executor: parseParam(idSchema, firstParam(params.executor), null),
+    material: parseParam(idSchema, firstParam(params.material), null),
     from,
     to,
     page: parseParam(pageSchema, firstParam(params.page), 1),
@@ -64,6 +68,7 @@ export function archiveQuery(filters: ArchiveFilters, overrides: Partial<Archive
   if (f.status !== DEFAULT_ARCHIVE_FILTERS.status) params.set("status", f.status);
   if (f.category) params.set("category", f.category);
   if (f.executor) params.set("executor", f.executor);
+  if (f.material) params.set("material", f.material);
   if (f.from) params.set("from", f.from);
   if (f.to) params.set("to", f.to);
   if (f.page > 1) params.set("page", String(f.page));
@@ -77,6 +82,7 @@ export function hasArchiveFilters(f: ArchiveFilters): boolean {
     f.status !== DEFAULT_ARCHIVE_FILTERS.status ||
     f.category !== null ||
     f.executor !== null ||
+    f.material !== null ||
     f.from !== null ||
     f.to !== null
   );

@@ -2,7 +2,7 @@ import type { TaskStatus } from "@/lib/business/task-status";
 import { createClient } from "@/lib/supabase/server";
 import { ARCHIVE_PAGE_SIZE, type ArchiveFilters } from "@/lib/validation/archive-filters";
 
-// Загрузка вкладки «Архив» (public.search_archive_tasks, 0020; дата отмены — 0023). Только для серверного кода.
+// Загрузка вкладки «Архив» (public.search_archive_tasks, 0020; дата отмены — 0023; материал — 0024). Только для серверного кода.
 
 export type ArchiveTask = {
   id: string;
@@ -10,6 +10,8 @@ export type ArchiveTask = {
   status: TaskStatus;
   completedAt: string | null;
   cancelledAt: string | null;
+  /** Расход материала из фильтра; null — фильтра по материалу нет. */
+  materialQuantity: number | null;
   categoryName: string | null;
   executorNames: string[];
 };
@@ -30,6 +32,7 @@ export async function loadArchive(projectId: string, filters: ArchiveFilters): P
     p_from: filters.from ?? undefined,
     p_to: filters.to ?? undefined,
     p_limit: limit + 1,
+    p_material_id: filters.material ?? undefined,
   });
 
   if (error) {
@@ -48,6 +51,7 @@ export async function loadArchive(projectId: string, filters: ArchiveFilters): P
       // Сгенерированные типы не знают, что эти колонки nullable (left join, отменённые).
       completedAt: (r.completed_at as string | null) ?? null,
       cancelledAt: (r.cancelled_at as string | null) ?? null,
+      materialQuantity: (r.material_quantity as number | null) ?? null,
       categoryName: (r.category_name as string | null) ?? null,
       executorNames: r.executor_names ?? [],
     })),

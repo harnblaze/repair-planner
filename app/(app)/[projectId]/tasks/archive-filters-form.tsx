@@ -15,12 +15,14 @@ export function ArchiveFiltersForm({
   filters,
   categories,
   executors,
+  materials,
   today,
 }: {
   projectId: string;
   filters: ArchiveFilters;
   categories: { id: string; name: string; is_archived: boolean }[];
   executors: { id: string; name: string; is_active: boolean }[];
+  materials: { id: string; name: string; is_active: boolean }[];
   today: string;
 }) {
   const base = `/${projectId}/tasks`;
@@ -39,7 +41,7 @@ export function ArchiveFiltersForm({
         placeholder="Название или описание"
         aria-label="Поиск по названию или описанию"
       />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <NativeSelect name="status" aria-label="Статус" defaultValue={filters.status}>
           <option value="completed">Выполненные</option>
           <option value="cancelled">Отменённые</option>
@@ -58,6 +60,14 @@ export function ArchiveFiltersForm({
           {executors.map((e) => (
             <option key={e.id} value={e.id}>
               {e.is_active ? e.name : `${e.name} (архив)`}
+            </option>
+          ))}
+        </NativeSelect>
+        <NativeSelect name="material" aria-label="Материал" defaultValue={filters.material ?? ""}>
+          <option value="">Все материалы</option>
+          {materials.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.is_active ? m.name : `${m.name} (архив)`}
             </option>
           ))}
         </NativeSelect>

@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { EmptyState } from "@/components/common/empty-state";
 import { formatDateNumeric } from "@/lib/business/dates";
+import { formatQuantity } from "@/lib/business/material-report";
 import { cn } from "@/lib/utils";
 import { ARCHIVE_MAX_PAGE, archiveQuery, hasArchiveFilters, type ArchiveFilters } from "@/lib/validation/archive-filters";
 
@@ -12,11 +13,14 @@ export function ArchiveList({
   filters,
   result,
   timezone,
+  material,
 }: {
   projectId: string;
   filters: ArchiveFilters;
   result: ArchiveResult;
   timezone: string;
+  /** Материал фильтра: в строке показывается его расход. */
+  material: { name: string; unit: string } | null;
 }) {
   if (!result.ok) {
     return (
@@ -51,6 +55,11 @@ export function ArchiveList({
               <span className="flex min-w-0 flex-col gap-0.5">
                 <span className={cn("break-words", cancelled && "text-meta line-through")}>{task.title}</span>
                 {meta ? <span className="text-[12px] break-words text-meta">{meta}</span> : null}
+                {material && task.materialQuantity !== null ? (
+                  <span className="text-[12px] break-words text-ink">
+                    {material.name} — {formatQuantity(task.materialQuantity)} {material.unit}
+                  </span>
+                ) : null}
               </span>
               <span className="shrink-0 text-[12px] text-meta">
                 {task.completedAt

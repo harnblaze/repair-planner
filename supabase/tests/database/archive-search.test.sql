@@ -1,11 +1,11 @@
--- Архив выполненных работ и поиск (0020, дата отмены — 0023): public.search_archive_tasks.
+-- Архив выполненных работ и поиск (0020, дата отмены — 0023, материал — 0024): public.search_archive_tasks.
 -- Запуск: supabase test db
 
 create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(35);
+select plan(42);
 
 -- ================= Фикстуры (как postgres, минуя RLS) =================
 -- A — владелец проекта A (Europe/Moscow), B — владелец проекта B, C — viewer в A.
@@ -53,9 +53,21 @@ insert into public.task_executors (task_id, executor_id, project_id) values
   ('f2000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-000000000001', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
   ('f2000000-0000-0000-0000-000000000002', 'e1000000-0000-0000-0000-000000000002', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
 
+-- Расход: электрод — в «Ремонт насоса» 2.5 и в отменённой «Покраске», краска — в «Замене ворот».
+insert into public.materials (id, project_id, name, unit, current_balance) values
+  ('a1000000-0000-0000-0000-000000000001', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Электрод', 'кг', 100),
+  ('a1000000-0000-0000-0000-000000000002', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Краска', 'л', 100),
+  ('a1000000-0000-0000-0000-00000000000b', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'Электрод B', 'кг', 100);
+
+insert into public.task_materials (project_id, task_id, material_id, quantity) values
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'f2000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 2.5),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'f2000000-0000-0000-0000-000000000003', 'a1000000-0000-0000-0000-000000000001', 1),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'f2000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000002', 3),
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'f2000000-0000-0000-0000-0000000000b1', 'a1000000-0000-0000-0000-00000000000b', 4);
+
 -- 1
 select has_function('public', 'search_archive_tasks',
-  array['uuid', 'text', 'text', 'uuid', 'uuid', 'date', 'date', 'integer'],
+  array['uuid', 'text', 'text', 'uuid', 'uuid', 'date', 'date', 'integer', 'uuid'],
   'search_archive_tasks exists');
 
 -- 26-28, 33-35. Дата отмены (0023): есть ровно у отменённых, ставит и снимает триггер
@@ -289,6 +301,54 @@ select is(
   'punctuation in the query is plain text'
 );
 
+-- 36. Материал — только заявки с его расходом, расход в строке
+select results_eq(
+  $$ select title, material_quantity from public.search_archive_tasks('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'all',
+     p_material_id => 'a1000000-0000-0000-0000-000000000001') $$,
+  $$ values ('Ремонт насоса'::text, 2.5::numeric), ('Покраска_стен'::text, 1::numeric) $$,
+  'material filter keeps tasks that used it and carries the quantity'
+);
+
+-- 37. Со статусом
+select is(
+  array(select title from public.search_archive_tasks('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'completed',
+    p_material_id => 'a1000000-0000-0000-0000-000000000001')),
+  array['Ремонт насоса'],
+  'material filter combines with status'
+);
+
+-- 38. С периодом: «Ремонт насоса» закрыт 30.09 МСК, «Покраска» — 25.09
+select is(
+  array(select title from public.search_archive_tasks('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'all',
+    p_material_id => 'a1000000-0000-0000-0000-000000000001', p_from => '2026-09-26')),
+  array['Ремонт насоса'],
+  'material filter combines with the period'
+);
+
+-- 39. Без фильтра по материалу количество пустое
+select is(
+  (select count(*) from public.search_archive_tasks('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'all')
+    where material_quantity is not null),
+  0::bigint,
+  'no material filter gives null quantity'
+);
+
+-- 40. Материал без расхода в архиве — пусто
+select is(
+  array(select title from public.search_archive_tasks('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'all',
+    p_material_id => gen_random_uuid())),
+  array[]::text[],
+  'unknown material gives an empty result'
+);
+
+-- 41. Материал чужого проекта — пусто
+select is(
+  array(select title from public.search_archive_tasks('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'all',
+    p_material_id => 'a1000000-0000-0000-0000-00000000000b')),
+  array[]::text[],
+  'material of another project gives an empty result'
+);
+
 reset role;
 
 -- ================= Владелец B =================
@@ -312,6 +372,17 @@ select is(
 
 reset role;
 
+-- 42. Чужой проект и его материал — пусто, расход не раскрывается
+select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true) as _;
+set role authenticated;
+select is(
+  (select count(*) from public.search_archive_tasks('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'all',
+    p_material_id => 'a1000000-0000-0000-0000-00000000000b')),
+  0::bigint,
+  'foreign project with its material stays empty'
+);
+reset role;
+
 -- ================= Viewer C =================
 
 select set_config('request.jwt.claim.sub', '33333333-3333-3333-3333-333333333333', true) as _;
@@ -328,7 +399,7 @@ reset role;
 
 -- 23
 select ok(
-  not has_function_privilege('anon', 'public.search_archive_tasks(uuid, text, text, uuid, uuid, date, date, int)', 'execute'),
+  not has_function_privilege('anon', 'public.search_archive_tasks(uuid, text, text, uuid, uuid, date, date, int, uuid)', 'execute'),
   'anon cannot execute search_archive_tasks'
 );
 

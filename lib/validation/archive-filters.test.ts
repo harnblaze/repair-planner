@@ -10,6 +10,7 @@ import {
 
 const CAT = "3f0c8a52-7d4b-4e7a-9c1e-5b2d6f8a9e10";
 const EXE = "7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+const MAT = "5d6e7f80-1a2b-4c3d-8e4f-5a6b7c8d9e0f";
 
 describe("parseArchiveFilters", () => {
   it("без параметров — значения по умолчанию", () => {
@@ -24,16 +25,35 @@ describe("parseArchiveFilters", () => {
         status: "all",
         category: CAT,
         executor: EXE,
+        material: MAT,
         from: "2026-09-01",
         to: "2026-09-30",
         page: "3",
       }),
-    ).toEqual({ q: "насос", status: "all", category: CAT, executor: EXE, from: "2026-09-01", to: "2026-09-30", page: 3 });
+    ).toEqual({
+      q: "насос",
+      status: "all",
+      category: CAT,
+      executor: EXE,
+      material: MAT,
+      from: "2026-09-01",
+      to: "2026-09-30",
+      page: 3,
+    });
   });
 
   it("неверные значения заменяются значениями по умолчанию по отдельности", () => {
     expect(
-      parseArchiveFilters({ status: "open", category: "abc", executor: "", from: "2026-02-30", to: "вчера", page: "0", q: "ok" }),
+      parseArchiveFilters({
+        status: "open",
+        category: "abc",
+        executor: "",
+        material: "электрод",
+        from: "2026-02-30",
+        to: "вчера",
+        page: "0",
+        q: "ok",
+      }),
     ).toEqual({ ...DEFAULT_ARCHIVE_FILTERS, q: "ok" });
     expect(parseArchiveFilters({ page: "21" }).page).toBe(1);
     expect(parseArchiveFilters({ page: "2.5" }).page).toBe(1);
@@ -67,7 +87,16 @@ describe("archiveQuery", () => {
   });
 
   it("разбор собранной строки возвращает те же фильтры", () => {
-    const filters = { q: "ворота", status: "cancelled" as const, category: CAT, executor: EXE, from: null, to: "2026-09-30", page: 4 };
+    const filters = {
+      q: "ворота",
+      status: "cancelled" as const,
+      category: CAT,
+      executor: EXE,
+      material: MAT,
+      from: null,
+      to: "2026-09-30",
+      page: 4,
+    };
     const params = Object.fromEntries(new URLSearchParams(archiveQuery(filters)));
     expect(parseArchiveFilters(params)).toEqual(filters);
   });
@@ -83,5 +112,6 @@ describe("hasArchiveFilters", () => {
     expect(hasArchiveFilters({ ...DEFAULT_ARCHIVE_FILTERS, q: "насос" })).toBe(true);
     expect(hasArchiveFilters({ ...DEFAULT_ARCHIVE_FILTERS, status: "cancelled" })).toBe(true);
     expect(hasArchiveFilters({ ...DEFAULT_ARCHIVE_FILTERS, to: "2026-09-30" })).toBe(true);
+    expect(hasArchiveFilters({ ...DEFAULT_ARCHIVE_FILTERS, material: MAT })).toBe(true);
   });
 });
