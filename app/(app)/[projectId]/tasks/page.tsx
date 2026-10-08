@@ -9,7 +9,12 @@ import { taskStatusLabel } from "@/lib/business/task-status";
 import { getProjectRole } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
-import { hasOpenTaskFilters, parseOpenTaskFilters, type OpenTaskFilters } from "@/lib/validation/open-task-filters";
+import {
+  MAIN_QUEUE,
+  hasOpenTaskFilters,
+  parseOpenTaskFilters,
+  type OpenTaskFilters,
+} from "@/lib/validation/open-task-filters";
 
 import { ArchiveTab } from "./archive-tab";
 import { CreateTaskForm } from "./create-task-form";
@@ -77,8 +82,23 @@ async function OpenTasks({ projectId, filters }: { projectId: string; filters: O
     // Выполненные и отменённые — во вкладке «Архив».
     .not("status", "in", "(completed,cancelled)");
   if (filters.category) tasksQuery = tasksQuery.eq("category_id", filters.category);
+  if (filters.status) tasksQuery = tasksQuery.eq("status", filters.status);
+  if (filters.queue === MAIN_QUEUE) tasksQuery = tasksQuery.is("queue_id", null);
+  else if (filters.queue) tasksQuery = tasksQuery.eq("queue_id", filters.queue);
+  if (filters.executor) {
+    // Отдельный запрос id вместо !inner-join: встроенные данные заявки не меняются.
+    const { data: assigned } = await supabase
+      .from("task_executors")
+      .select("task_id")
+      .eq("project_id", projectId)
+      .eq("executor_id", filters.executor);
+    tasksQuery = tasksQuery.in(
+      "id",
+      (assigned ?? []).map((a) => a.task_id),
+    );
+  }
 
-  const [role, { data: tasks }, { data: categories }, { data: queues }] = await Promise.all([
+  const [role, { data: tasks }, { data: categories }, { data: executors }, { data: queues }] = await Promise.all([
     getProjectRole(projectId),
     tasksQuery.order("created_at", { ascending: false }),
     // Вместе с архивными: у открытой заявки может остаться архивный цех.
@@ -88,6 +108,13 @@ async function OpenTasks({ projectId, filters }: { projectId: string; filters: O
       .eq("project_id", projectId)
       .order("is_archived", { ascending: true })
       .order("sort_order", { ascending: true }),
+    // Вместе с неактивными: исполнитель мог уйти, а заявки за ним остались.
+    supabase
+      .from("executors")
+      .select("id, name, is_active")
+      .eq("project_id", projectId)
+      .order("is_active", { ascending: false })
+      .order("name", { ascending: true }),
     supabase
       .from("task_queues")
       .select("id, name")
@@ -110,7 +137,13 @@ async function OpenTasks({ projectId, filters }: { projectId: string; filters: O
         />
       ) : null}
 
-      <OpenTasksFiltersForm projectId={projectId} filters={filters} categories={allCategories} />
+      <OpenTasksFiltersForm
+        projectId={projectId}
+        filters={filters}
+        categories={allCategories}
+        executors={executors ?? []}
+        queues={queues ?? []}
+      />
 
       <div className="flex flex-col divide-y divide-line-subtle">
         {open.length === 0 ? (
