@@ -115,3 +115,14 @@ export function formatUploadErrors(errors: string[], total: number): string | nu
   const reason = errors.find((error) => error !== ATTACHMENT_MESSAGES.uploadFailed);
   return `Не удалось загрузить ${errors.length} фото из ${total}. ${reason ?? "Попробуйте ещё раз."}`;
 }
+
+// Архив и удаление проекта (docs/superpowers/specs/2026-10-08-project-archive-delete-design.md §5).
+export const PROJECT_MESSAGES = {
+  notFound: "Проект не найден. Обновите страницу.",
+  ownerOnly: "Отправить в архив, вернуть или удалить проект может только его владелец.",
+  archiveFailed: "Не удалось отправить проект в архив. Попробуйте ещё раз.",
+  restoreFailed: "Не удалось вернуть проект из архива. Попробуйте ещё раз.",
+  notArchived: "Удалить можно только проект в архиве.",
+  nameMismatch: "Название не совпадает.",
+  deleteFailed: "Не удалось удалить проект. Попробуйте ещё раз.",
+} as const;
