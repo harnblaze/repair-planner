@@ -102,6 +102,13 @@ export function filterGroups(groups: ConsumptionGroup[], category: string): Cons
   return groups.filter((g) => g.categoryId === category);
 }
 
+/** Query-строка отчёта по расходу: month и цех (кроме «все»). */
+export function consumptionReportQuery(month: string, category: string): string {
+  const params = new URLSearchParams({ month });
+  if (category !== ALL_CATEGORIES) params.set("category", category);
+  return params.toString();
+}
+
 const QUANTITY_FORMAT = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 3 });
 
 /** "1 234,5" — для экрана. */

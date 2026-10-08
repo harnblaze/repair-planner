@@ -5,6 +5,7 @@ import {
   NO_CATEGORY,
   addMonths,
   buildConsumptionCsv,
+  consumptionReportQuery,
   filterGroups,
   formatMonthLabel,
   formatQuantity,
@@ -80,5 +81,12 @@ describe("форматирование", () => {
       "Возврат;Кабель;м;-1,25",
       "",
     ]);
+  });
+});
+
+describe("consumptionReportQuery", () => {
+  it("месяц всегда, цех кроме «все»", () => {
+    expect(consumptionReportQuery("2026-09", ALL_CATEGORIES)).toBe("month=2026-09");
+    expect(consumptionReportQuery("2026-09", NO_CATEGORY)).toBe("month=2026-09&category=none");
   });
 });

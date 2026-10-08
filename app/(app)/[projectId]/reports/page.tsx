@@ -5,12 +5,12 @@ import { EmptyState } from "@/components/common/empty-state";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  ALL_CATEGORIES,
   addMonths,
+  consumptionReportQuery,
   formatMonthLabel,
   formatQuantity,
 } from "@/lib/business/material-report";
-import { WORKS_REPORT } from "@/lib/business/works-report";
+import { WORKS_REPORT, worksReportQuery } from "@/lib/business/works-report";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 
@@ -24,20 +24,29 @@ export const metadata: Metadata = {
   title: "Отчёты — Repair Planner",
 };
 
-function reportQuery(month: string, category: string): string {
-  const params = new URLSearchParams({ month });
-  if (category !== ALL_CATEGORIES) params.set("category", category);
-  return params.toString();
-}
-
-function ReportTabs({ base, isWorks }: { base: string; isWorks: boolean }) {
+/** Вкладки отчётов: при переключении сохраняются месяц и цех текущего отчёта. */
+function ReportTabs({
+  base,
+  isWorks,
+  month,
+  category,
+}: {
+  base: string;
+  isWorks: boolean;
+  month: string;
+  category: string;
+}) {
   return (
     <nav aria-label="Отчёты" className="flex self-start overflow-hidden rounded-[7px] border border-control bg-surface">
-      <Link href={base} aria-current={isWorks ? undefined : "page"} className={cn(TAB_CLASS, !isWorks && TAB_ACTIVE_CLASS)}>
+      <Link
+        href={`${base}?${consumptionReportQuery(month, category)}`}
+        aria-current={isWorks ? undefined : "page"}
+        className={cn(TAB_CLASS, !isWorks && TAB_ACTIVE_CLASS)}
+      >
         Расход материалов
       </Link>
       <Link
-        href={`${base}?report=${WORKS_REPORT}`}
+        href={`${base}?${worksReportQuery(month, category)}`}
         aria-current={isWorks ? "page" : undefined}
         className={cn(TAB_CLASS, isWorks && TAB_ACTIVE_CLASS)}
       >
@@ -75,7 +84,7 @@ export default async function ReportsPage({
     ]);
     return (
       <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-5 pt-6 pb-7">
-        <ReportTabs base={base} isWorks />
+        <ReportTabs base={base} isWorks month={works.month} category={category} />
         <WorksReport projectId={projectId} category={category} categories={categoryOptions(categories)} report={works} />
       </main>
     );
@@ -92,21 +101,21 @@ export default async function ReportsPage({
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-5 pt-6 pb-7">
-      <ReportTabs base={base} isWorks={false} />
+      <ReportTabs base={base} isWorks={false} month={month} category={category} />
       <Card>
         <CardHeader className="flex flex-col gap-3">
           <CardTitle>Расход материалов по цехам</CardTitle>
           <div className="flex w-full flex-wrap items-center gap-2.5">
             <div className="flex items-center overflow-hidden rounded-[7px] border border-control bg-surface">
-              <Link href={`${base}?${reportQuery(addMonths(month, -1), category)}`} className={MONTH_SEGMENT_CLASS}>
+              <Link href={`${base}?${consumptionReportQuery(addMonths(month, -1), category)}`} className={MONTH_SEGMENT_CLASS}>
                 ← Пред.
               </Link>
               {!isCurrentMonth ? (
-                <Link href={`${base}?${reportQuery(today.slice(0, 7), category)}`} className={MONTH_SEGMENT_CLASS}>
+                <Link href={`${base}?${consumptionReportQuery(today.slice(0, 7), category)}`} className={MONTH_SEGMENT_CLASS}>
                   Текущий
                 </Link>
               ) : null}
-              <Link href={`${base}?${reportQuery(addMonths(month, 1), category)}`} className={MONTH_SEGMENT_CLASS}>
+              <Link href={`${base}?${consumptionReportQuery(addMonths(month, 1), category)}`} className={MONTH_SEGMENT_CLASS}>
                 След. →
               </Link>
             </div>
@@ -119,7 +128,7 @@ export default async function ReportsPage({
             {report.ok && report.groups.length > 0 ? (
               // Обычная ссылка, а не Link: ответ — файл, а не страница приложения.
               <a
-                href={`${base}/export?${reportQuery(month, category)}`}
+                href={`${base}/export?${consumptionReportQuery(month, category)}`}
                 className={cn(buttonVariants({ variant: "outline" }), "sm:ml-auto")}
               >
                 Скачать CSV
