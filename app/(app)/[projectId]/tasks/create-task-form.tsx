@@ -14,6 +14,8 @@ import { createTaskAction } from "./actions";
 
 type Category = { id: string; name: string };
 
+const SELECT_WRAPPER_CLASS = "min-w-0 flex-1 sm:flex-initial";
+
 export function CreateTaskForm({
   projectId,
   categories,
@@ -42,12 +44,14 @@ export function CreateTaskForm({
   });
 
   return (
-    <form onSubmit={onSubmit} className="flex items-start gap-2" noValidate>
-      <div className="flex flex-1 flex-col gap-1">
+    // На телефоне название — отдельной строкой, селекты и кнопка — под ним:
+    // в одну строку селекты не сжимаются уже текста варианта и съедают поле.
+    <form onSubmit={onSubmit} className="flex flex-wrap items-start gap-2" noValidate>
+      <div className="flex min-w-0 basis-full flex-col gap-1 sm:basis-0 sm:flex-1">
         <Input placeholder="Название заявки" {...register("title")} />
         {errors.title ? <p className="text-[11.5px] text-status-alert-fg">{errors.title.message}</p> : null}
       </div>
-      <NativeSelect {...register("categoryId")} defaultValue="">
+      <NativeSelect wrapperClassName={SELECT_WRAPPER_CLASS} {...register("categoryId")} defaultValue="">
         <option value="">Без категории</option>
         {categories.map((category) => (
           <option key={category.id} value={category.id}>
@@ -56,7 +60,7 @@ export function CreateTaskForm({
         ))}
       </NativeSelect>
       {queues.length > 0 ? (
-        <NativeSelect aria-label="Очередь" {...register("queueId")} defaultValue="">
+        <NativeSelect wrapperClassName={SELECT_WRAPPER_CLASS} aria-label="Очередь" {...register("queueId")} defaultValue="">
           <option value="">Текущие заявки</option>
           {queues.map((queue) => (
             <option key={queue.id} value={queue.id}>
