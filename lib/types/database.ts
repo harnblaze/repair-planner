@@ -968,6 +968,10 @@ export type Database = {
         Args: { p_project_id: string }
         Returns: Database["public"]["Enums"]["project_role"]
       }
+      project_attachment_paths: {
+        Args: { p_limit?: number; p_project_id: string }
+        Returns: string[]
+      }
       project_can_edit: { Args: { p_project_id: string }; Returns: boolean }
       project_member_list: {
         Args: { p_project_id: string }
