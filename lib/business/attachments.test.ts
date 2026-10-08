@@ -8,6 +8,7 @@ import {
   isValidDimension,
   MAX_SIDE,
   rememberSignedUrls,
+  toPhotoCount,
   urlAfterLoadError,
 } from "./attachments";
 
@@ -124,5 +125,17 @@ describe("upper-case ids in the URL", () => {
 
   it("accepts a lower-case path for upper-case ids", () => {
     expect(isValidAttachmentPath(`${PROJECT}/${TASK}/${FILE}.jpg`, UPPER_PROJECT, UPPER_TASK)).toBe(true);
+  });
+});
+
+describe("toPhotoCount", () => {
+  it("встроенный подсчёт Supabase — число фото", () => {
+    expect(toPhotoCount([{ count: 3 }])).toBe(3);
+  });
+
+  it("нет данных — ноль", () => {
+    expect(toPhotoCount([])).toBe(0);
+    expect(toPhotoCount(null)).toBe(0);
+    expect(toPhotoCount(undefined)).toBe(0);
   });
 });

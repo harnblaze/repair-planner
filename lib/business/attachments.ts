@@ -69,3 +69,8 @@ export function rememberSignedUrls(
 export function urlAfterLoadError(failedUrl: string, freshUrl: string | null): string | null {
   return freshUrl && freshUrl !== failedUrl ? freshUrl : null;
 }
+
+/** Число фото из встроенного подсчёта Supabase `task_attachments(count)` — значок на карточке доски. */
+export function toPhotoCount(rows: { count: number }[] | null | undefined): number {
+  return rows?.[0]?.count ?? 0;
+}

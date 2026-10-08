@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { ArrowRightIcon, BookmarkIcon } from "@/components/common/icons";
+import { ArrowRightIcon, BookmarkIcon, CameraIcon } from "@/components/common/icons";
 import { BADGE_BASE, StatusBadge } from "@/components/common/status-badge";
 import type { TaskStatus } from "@/lib/business/task-status";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,8 @@ export type BoardTask = {
   queueName?: string | null;
   /** Последний день появился переносом, и его ещё можно отменить (task-planning.ts:isUndoableCarryOver). */
   undoableCarryOver?: boolean;
+  /** Сколько фото у заявки (task_attachments); 0 — значок не показывается. */
+  photoCount?: number;
 };
 
 // Пропсы перетаскивания (ref, listeners, style) передаются прямо на ссылку:
@@ -80,6 +82,15 @@ export function TaskChip({
             <span className="truncate">{task.queueName}</span>
           </span>
         ) : null}
+        {task.photoCount ? (
+          <span
+            className={cn(BADGE_BASE, "inline-flex items-center gap-1 border border-line-card bg-surface py-[3px] text-meta-alt")}
+            title={`Фото: ${task.photoCount}`}
+          >
+            <CameraIcon size={10} className="shrink-0" />
+            {task.photoCount}
+          </span>
+        ) : null}
         {meta ? <span className="text-[11.5px] break-words text-meta">{meta}</span> : null}
       </span>
       {task.transferNote ? (
@@ -115,6 +126,12 @@ export function TaskRow({
         <span className="truncate text-[12.5px] font-semibold text-ink">{task.title}</span>
         {meta ? <span className="truncate text-[11px] text-meta-alt">{meta}</span> : null}
       </span>
+      {task.photoCount ? (
+        <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-meta-alt" title={`Фото: ${task.photoCount}`}>
+          <CameraIcon size={11} className="shrink-0" />
+          {task.photoCount}
+        </span>
+      ) : null}
       <StatusBadge status={task.status} />
     </Link>
   );

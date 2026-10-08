@@ -40,6 +40,15 @@ export function BookmarkIcon(props: IconProps) {
   );
 }
 
+export function CameraIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M2 5.2a1.2 1.2 0 0 1 1.2-1.2h1.9l1.1-1.6h3.6l1.1 1.6h1.9A1.2 1.2 0 0 1 14 5.2v6.6a1.2 1.2 0 0 1-1.2 1.2H3.2A1.2 1.2 0 0 1 2 11.8z" />
+      <circle cx="8" cy="8.4" r="2.4" />
+    </svg>
+  );
+}
+
 export function BoxIcon(props: IconProps) {
   return (
     <svg {...base(props)}>

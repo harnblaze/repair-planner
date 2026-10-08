@@ -62,6 +62,8 @@ PostgreSQL (Supabase)
 
 Просмотр — ссылки, подписанные на сервере на час (`createSignedUrls`). Удаление: сначала строка, затем файл (ошибка удаления файла только логируется). Server actions — `tasks/[taskId]/attachment-actions.ts`, UI — `tasks/[taskId]/task-attachments.tsx`.
 
+Значок числа фото на доске — встроенный подсчёт PostgREST `task_attachments(count)` в запросах задач доски (`board/page.tsx`, `toPhotoCount` в `lib/business/attachments.ts`); файлы и ссылки при этом не загружаются, доступ ограничен той же RLS `task_attachments_select`.
+
 ### 3.2 Страница «Заявки»: вкладки и архив
 
 * `/[projectId]/tasks` — вкладки «Открытые» и «Архив» (`?view=archive`). Архив — Server Component: GET-форма фильтров, разбор `searchParams` в `lib/validation/archive-filters.ts`, загрузка `tasks/archive-data.ts` → RPC `search_archive_tasks` (0020). Клиентского JS у вкладки нет. «Открытые» — та же схема: `lib/validation/open-task-filters.ts`, цех фильтруется в запросе, текст — в памяти (`lib/business/task-search.ts`); общие хелперы разбора — `lib/validation/search-params.ts`.

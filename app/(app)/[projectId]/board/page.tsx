@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { CalendarIcon } from "@/components/common/icons";
+import { toPhotoCount } from "@/lib/business/attachments";
 import { formatDateShort, todayInTimezone } from "@/lib/business/dates";
 import { describeOccurrence, isUndoableCarryOver, lastWorkDate, type ScheduleDay } from "@/lib/business/task-planning";
 import { canEditProject } from "@/lib/business/project-roles";
@@ -86,7 +87,7 @@ export default async function BoardPage({
       .from("tasks")
       // task_schedule — дни истории отложенной задачи: новый день не может быть раньше последнего.
       .select(
-        "id, title, status, queue_id, categories(name), task_executors(executors(name)), task_schedule(work_date, postponed)",
+        "id, title, status, queue_id, categories(name), task_executors(executors(name)), task_schedule(work_date, postponed), task_attachments(count)",
       )
       .eq("project_id", projectId)
       .is("planned_date", null)
@@ -99,7 +100,7 @@ export default async function BoardPage({
     supabase
       .from("task_schedule")
       .select(
-        "work_date, position, tasks(id, title, status, planned_date, queue_id, categories(name), task_executors(executors(name)), task_schedule(work_date, postponed))",
+        "work_date, position, tasks(id, title, status, planned_date, queue_id, categories(name), task_executors(executors(name)), task_schedule(work_date, postponed), task_attachments(count))",
       )
       .eq("project_id", projectId)
       // Пн–Сб: какие колонки показать, зависит от календаря и от задач на субботу.
@@ -167,6 +168,7 @@ export default async function BoardPage({
       status: t.status,
       categoryName: t.categories?.name ?? null,
       executorNames: toExecutorNames(t.task_executors),
+      photoCount: toPhotoCount(t.task_attachments),
       lastWorkDate: lastWorkDate(toScheduleDays(t.task_schedule)),
       queueId: queue.id,
     });
@@ -192,6 +194,7 @@ export default async function BoardPage({
       status: row.tasks.status,
       categoryName: row.tasks.categories?.name ?? null,
       executorNames: toExecutorNames(row.tasks.task_executors),
+      photoCount: toPhotoCount(row.tasks.task_attachments),
       isHistory: occurrence.isHistory,
       transferNote: occurrence.note,
       canChangeDay: occurrence.canChangeDay,
