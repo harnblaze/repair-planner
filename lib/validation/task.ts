@@ -1,10 +1,13 @@
 import { z } from "zod";
 
+import { idSchema } from "./board-move";
+
 export const createTaskSchema = z.object({
   title: z.string().trim().min(1, "Введите название заявки").max(300, "Слишком длинно"),
   categoryId: z.string().trim().optional(),
-  // Очередь чужого проекта отвергает составной FK tasks_queue_fk (0018).
-  queueId: z.string().trim().optional(),
+  // Пусто — основная очередь «Текущие заявки». Очередь чужого проекта
+  // отвергает составной FK tasks_queue_fk (0018).
+  queueId: z.union([idSchema, z.literal("")]).optional(),
 });
 
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
