@@ -984,6 +984,26 @@ export type Database = {
         }
       }
       return_task_to_backlog: { Args: { p_task_id: string }; Returns: boolean }
+      search_archive_tasks: {
+        Args: {
+          p_category_id?: string
+          p_executor_id?: string
+          p_from?: string
+          p_limit?: number
+          p_project_id: string
+          p_query?: string
+          p_status: string
+          p_to?: string
+        }
+        Returns: {
+          category_name: string
+          completed_at: string
+          executor_names: string[]
+          id: string
+          status: Database["public"]["Enums"]["task_status"]
+          title: string
+        }[]
+      }
       set_material_balance: {
         Args: {
           p_actual_balance: number
