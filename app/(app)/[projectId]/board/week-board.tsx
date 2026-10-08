@@ -32,6 +32,7 @@ import {
   canPlanOnDate,
   canReturnToBacklog,
   keepsDayOnReturnToBacklog,
+  statusAfterReturnToBacklog,
 } from "@/lib/business/task-planning";
 import { weekdayLabel } from "@/lib/business/working-days";
 import type { ActionResult } from "@/lib/types/action-result";
@@ -157,7 +158,13 @@ function applyMove(state: BoardState, move: Move): BoardState {
         queues: {
           ...state.queues,
           [key]: [
-            { ...task, isHistory: false, transferNote: null, lastWorkDate: lastKept },
+            {
+              ...task,
+              status: statusAfterReturnToBacklog(task.status),
+              isHistory: false,
+              transferNote: null,
+              lastWorkDate: lastKept,
+            },
             ...(state.queues[key] ?? []),
           ],
         },

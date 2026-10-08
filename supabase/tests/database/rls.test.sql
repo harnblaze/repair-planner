@@ -562,7 +562,7 @@ select throws_ok(
   'set_task_planned_date rejects a task from another project'
 );
 
--- 29e. Очистка даты снимает план, статус не меняется
+-- 29e. Очистка даты снимает план, planned → new (0028)
 select set_task_planned_date('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'e0000000-0000-0000-0000-0000000000d4', null);
 
 select is(
@@ -574,8 +574,8 @@ select is(
 
 select is(
   (select status::text from public.tasks where id = 'e0000000-0000-0000-0000-0000000000d4'),
-  'planned',
-  'clearing the plan date keeps the task status'
+  'new',
+  'clearing the plan date moves a planned task back to new'
 );
 
 -- ================= Отчёт по расходу материалов (0009) =================

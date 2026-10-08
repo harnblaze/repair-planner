@@ -124,7 +124,11 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Заявка</CardTitle>
+          {/* key пересоздаёт список при смене статуса на сервере: дата плана
+              меняет new ↔ planned (0015, 0028), а локальное состояние списка
+              иначе не подхватит новый статус после router.refresh(). */}
           <StatusSelect
+            key={task.status}
             projectId={projectId}
             taskId={taskId}
             status={task.status}

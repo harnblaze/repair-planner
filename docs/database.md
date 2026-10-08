@@ -263,7 +263,7 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 |---|---|
 | `plan_task_on_day(p_task_id, p_work_date, p_position default null)` | задача из «Текущих заявок» → день; дата не раньше последнего дня истории; тот же день снимает `postponed`; `new` → `planned` |
 | `move_task_schedule(p_task_id, p_from_date, p_to_date, p_position)` | порядок внутри дня или смена дня (только для единственного неотложенного дня задачи) |
-| `return_task_to_backlog(p_task_id) returns boolean` | правило «Отложить» (product-requirements.md §4.4); `true` — история сохранена |
+| `return_task_to_backlog(p_task_id) returns boolean` | правило «Отложить» (product-requirements.md §4.4); `true` — история сохранена; не начатая задача: `planned` → `new` (0028) |
 | `move_board_item(p_item_id, p_position)` | порядок записи внутри списка |
 | `move_backlog_task(p_task_id, p_queue_id, p_position)` (0018, 0019) | перестановка в панели очереди и перенос между очередями: меняет `queue_id`, перенумеровывает `backlog_position` целевой очереди 0..n-1 под advisory-блокировкой обеих очередей (в порядке ключей); после блокировок перечитывает заявку `for update` и повторяет проверки (0019); `task_not_found`, `access_denied`, `task_already_planned`, `task_closed`, `queue_not_found`, `task_moved` (пока ждали блокировку, заявку увели в другую очередь) |
 | `search_archive_tasks(p_project_id, p_status, p_query, p_category_id, p_executor_id, p_from, p_to, p_limit, p_material_id)` (0020, 0023, 0024) | архив: выполненные и отменённые заявки проекта с фильтрами по тексту (название, описание; буквально, без учёта регистра), цеху, исполнителю, материалу (заявки с его расходом в `task_materials`, расход — в `material_quantity`, без фильтра — `null`; с 0024) и периоду закрытия в timezone проекта (включительно): выполненные — по `completed_at`, отменённые — по `cancelled_at` (с 0023); сортировка `coalesce(completed_at, cancelled_at) desc`; в строке есть `cancelled_at`; security invoker, RLS; `invalid_filter` |
@@ -274,7 +274,7 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 | `move_task_queue(p_queue_id, p_position)` (0022) | порядок своих очередей проекта, как `move_board_list`: перенумеровывает `task_queues.sort_order` 0..n-1; `queue_not_found` без доступа к проекту, `access_denied` без права записи |
 | `carry_over_task(p_task_id) returns date` (0013) | перенос на следующий рабочий день по календарю проекта: новый день с `carried_over = true` в конец дня; возвращает дату |
 | `undo_carry_over(p_task_id) returns date` (0021) | отмена переноса: удаляет последний день, если он `carried_over`, не отложен, перед ним неотложенный день и он не раньше сегодня в timezone проекта; возвращает предыдущий день; security invoker (`for update` на tasks — только редактор); `task_not_found`, `task_closed`, `nothing_to_undo`, `carry_over_too_old` |
-| `set_task_planned_date(p_project_id, p_task_id, p_work_date default null)` (0015) | поле даты в карточке задачи, одной транзакцией: `null` снимает весь план (статус не меняется); незапланированная задача планируется через `plan_task_on_day`; запланированная — весь план заменяется одним днём в конце дня (история переносов не сохраняется), `new` → `planned`; задача должна принадлежать `p_project_id`, иначе `task_not_found` |
+| `set_task_planned_date(p_project_id, p_task_id, p_work_date default null)` (0015) | поле даты в карточке задачи, одной транзакцией: `null` снимает весь план (`planned` → `new`, остальные статусы не меняются, 0028); незапланированная задача планируется через `plan_task_on_day`; запланированная — весь план заменяется одним днём в конце дня (история переносов не сохраняется), `new` → `planned`; задача должна принадлежать `p_project_id`, иначе `task_not_found` |
 
 С 0013 `plan_task_on_day` и смена дня в `move_task_schedule` проверяют рабочий день через `private.is_working_day` вместо `isodow`. Порядок внутри дня меняется и в нерабочий день.
 
@@ -557,6 +557,7 @@ update materials set current_balance = current_balance + delta where id = p_mate
 25. `0025_completed_works_report` — RPC `completed_works_report` для отчёта «Выполненные работы»; новых таблиц и политик нет.
 26. `0026_task_attachment_orphans` — RPC `task_attachment_orphans` для очистки файлов без строки `task_attachments`; новых таблиц и политик нет.
 27. `0027_project_archive_delete` — удаление проекта только из архива (политика `projects_delete`), ранний выход триггера расхода при каскаде, RPC `project_attachment_paths`.
+28. `0028_unplan_status_new` — снятие с плана (`return_task_to_backlog`, `set_task_planned_date(null)`) возвращает `planned` → `new`; разовая чистка задач `planned` без даты.
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 

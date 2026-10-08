@@ -10,6 +10,7 @@ import {
   isUndoableCarryOver,
   keepsDayOnReturnToBacklog,
   lastWorkDate,
+  statusAfterReturnToBacklog,
 } from "./task-planning";
 
 describe("canCarryOverTask", () => {
@@ -194,5 +195,17 @@ describe("canPlanOnDate / lastWorkDate", () => {
 
   it("lastWorkDate пустого расписания — null", () => {
     expect(lastWorkDate([])).toBeNull();
+  });
+});
+
+describe("statusAfterReturnToBacklog", () => {
+  it("moves a planned task back to new", () => {
+    expect(statusAfterReturnToBacklog("planned")).toBe("new");
+  });
+
+  it("keeps other statuses", () => {
+    expect(statusAfterReturnToBacklog("new")).toBe("new");
+    expect(statusAfterReturnToBacklog("in_progress")).toBe("in_progress");
+    expect(statusAfterReturnToBacklog("paused")).toBe("paused");
   });
 });

@@ -45,6 +45,15 @@ export function keepsDayOnReturnToBacklog(
   return (status === "in_progress" || status === "paused") && workDate <= today;
 }
 
+/**
+ * Статус после снятия с плана (public.return_task_to_backlog и
+ * set_task_planned_date(null), 0028): работа не начиналась — planned → new;
+ * остальные статусы не меняются.
+ */
+export function statusAfterReturnToBacklog(status: TaskStatus): TaskStatus {
+  return status === "planned" ? "new" : status;
+}
+
 /** Можно ли запланировать задачу из «Текущих заявок» на день: не раньше последнего дня истории. */
 export function canPlanOnDate(lastWorkDate: string | null, workDate: string): boolean {
   return lastWorkDate === null || workDate >= lastWorkDate;
