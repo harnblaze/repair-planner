@@ -37,12 +37,12 @@
 public.search_archive_tasks(
   p_project_id  uuid,
   p_status      text,   -- 'completed' | 'cancelled' | 'all'
-  p_query       text,   -- null или пусто — без текста
-  p_category_id uuid,   -- null — все цеха
-  p_executor_id uuid,   -- null — все исполнители
-  p_from        date,   -- null — без нижней границы
-  p_to          date,   -- null — без верхней границы, включительно
-  p_limit       int
+  p_query       text default null,  -- null или пусто — без текста
+  p_category_id uuid default null,  -- null — все цеха
+  p_executor_id uuid default null,  -- null — все исполнители
+  p_from        date default null,  -- null — без нижней границы
+  p_to          date default null,  -- null — без верхней границы, включительно
+  p_limit       int  default 50
 ) returns table (
   id             uuid,
   title          text,
@@ -51,8 +51,11 @@ public.search_archive_tasks(
   category_name  text,
   executor_names text[]
 )
-language sql stable security invoker set search_path = ''
+language plpgsql stable security invoker set search_path = ''
 ```
+
+`plpgsql` — ради `raise exception 'invalid_filter'`. Значения по умолчанию у
+необязательных параметров делают их необязательными и в сгенерированных TS-типах.
 
 **Права.** Функция работает с правами вызывающего (`security invoker`), RLS
 `tasks`, `categories`, `executors` и `task_executors` действует как обычно.
