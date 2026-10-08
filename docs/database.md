@@ -268,6 +268,7 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 | `move_backlog_task(p_task_id, p_queue_id, p_position)` (0018, 0019) | перестановка в панели очереди и перенос между очередями: меняет `queue_id`, перенумеровывает `backlog_position` целевой очереди 0..n-1 под advisory-блокировкой обеих очередей (в порядке ключей); после блокировок перечитывает заявку `for update` и повторяет проверки (0019); `task_not_found`, `access_denied`, `task_already_planned`, `task_closed`, `queue_not_found`, `task_moved` (пока ждали блокировку, заявку увели в другую очередь) |
 | `search_archive_tasks(p_project_id, p_status, p_query, p_category_id, p_executor_id, p_from, p_to, p_limit, p_material_id)` (0020, 0023, 0024) | архив: выполненные и отменённые заявки проекта с фильтрами по тексту (название, описание; буквально, без учёта регистра), цеху, исполнителю, материалу (заявки с его расходом в `task_materials`, расход — в `material_quantity`, без фильтра — `null`; с 0024) и периоду закрытия в timezone проекта (включительно): выполненные — по `completed_at`, отменённые — по `cancelled_at` (с 0023); сортировка `coalesce(completed_at, cancelled_at) desc`; в строке есть `cancelled_at`; security invoker, RLS; `invalid_filter` |
 | `completed_works_report(p_project_id, p_month)` (0025) | отчёт «Выполненные работы»: выполненные заявки календарного месяца в timezone проекта (полуинтервал по `completed_at`) с цехом (`category_id`, `category_name`, `category_sort_order`; без цеха — `null`), исполнителями (`executor_names text[]` по имени) и материалами (`materials jsonb` — `[{name, unit, quantity}]` по названию, `[]` без расхода; количество — текущее `task_materials.quantity`); порядок `categories.sort_order nulls last, name nulls last, completed_at, id`; `language sql stable`, security invoker, RLS — чужой проект даёт пустой результат |
+| `task_attachment_orphans(p_project_id, p_limit default 100)` (0026) | пути файлов-«сирот» bucket `task-attachments` проекта: объекты старше суток без строки `task_attachments` с тем же `storage_path`; порядок `created_at, name`, предел 1–1000; только при `project_can_edit`, иначе пусто; `language sql stable`, security invoker, RLS `storage.objects` действует. Удаляет файлы сервер через Storage API (§5.14) |
 | `move_board_list(p_list_id, p_position)` (0014) | порядок списков проекта: перенумеровывает `board_lists.sort_order` 0..n-1 под advisory-блокировкой проекта; `list_not_found` без доступа к проекту, `access_denied` без права записи |
 | `move_task_queue(p_queue_id, p_position)` (0022) | порядок своих очередей проекта, как `move_board_list`: перенумеровывает `task_queues.sort_order` 0..n-1; `queue_not_found` без доступа к проекту, `access_denied` без права записи |
 | `carry_over_task(p_task_id) returns date` (0013) | перенос на следующий рабочий день по календарю проекта: новый день с `carried_over = true` в конец дня; возвращает дату |
@@ -373,6 +374,8 @@ RLS: SELECT — любой участник; INSERT/UPDATE/DELETE — `project_c
 * RLS таблицы: SELECT — любой участник; INSERT/DELETE — `project_can_edit`; UPDATE — никто.
 * RLS `storage.objects` для bucket: проект — первая папка пути через `private.attachment_project_id(name)` (null для не-uuid, поэтому некорректный путь даёт отказ, а не ошибку). SELECT — участник, INSERT/DELETE — `project_can_edit`, UPDATE — никто.
 * Удаление строки задачи каскадом удаляет строки фото, но не файлы — удаления задач в приложении нет; см. roadmap.
+
+Файлы-«сироты» (объект есть, строки нет: оборванная загрузка, сбой удаления файла) ищет RPC `task_attachment_orphans` (0026) — только старше суток, чтобы не задеть загрузку в процессе. Прямой `delete from storage.objects` запрещён платформой (`protect_objects_delete`), поэтому удаляет их сервер одним `storage.remove` сессией пользователя после каждой успешной загрузки фото в проекте (`docs/architecture.md` §3.1).
 
 ### 5.15 `task_queues` — очереди текущих заявок (0018)
 
@@ -549,6 +552,7 @@ update materials set current_balance = current_balance + delta where id = p_mate
 23. `0023_task_cancelled_at` — `tasks.cancelled_at` с CHECK, триггером `tasks_sync_cancelled_at` и заполнением по `updated_at`; `search_archive_tasks` пересоздана: период и сортировка по дате выполнения или отмены.
 24. `0024_archive_material_filter` — `search_archive_tasks` с `p_material_id` (последний, по умолчанию `null` — прежние вызовы работают) и `material_quantity` в результате.
 25. `0025_completed_works_report` — RPC `completed_works_report` для отчёта «Выполненные работы»; новых таблиц и политик нет.
+26. `0026_task_attachment_orphans` — RPC `task_attachment_orphans` для очистки файлов без строки `task_attachments`; новых таблиц и политик нет.
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
