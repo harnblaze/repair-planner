@@ -2,13 +2,14 @@ import type { TaskStatus } from "@/lib/business/task-status";
 import { createClient } from "@/lib/supabase/server";
 import { ARCHIVE_PAGE_SIZE, type ArchiveFilters } from "@/lib/validation/archive-filters";
 
-// Загрузка вкладки «Архив» (public.search_archive_tasks, 0020). Только для серверного кода.
+// Загрузка вкладки «Архив» (public.search_archive_tasks, 0020; дата отмены — 0023). Только для серверного кода.
 
 export type ArchiveTask = {
   id: string;
   title: string;
   status: TaskStatus;
   completedAt: string | null;
+  cancelledAt: string | null;
   categoryName: string | null;
   executorNames: string[];
 };
@@ -46,6 +47,7 @@ export async function loadArchive(projectId: string, filters: ArchiveFilters): P
       status: r.status,
       // Сгенерированные типы не знают, что эти колонки nullable (left join, отменённые).
       completedAt: (r.completed_at as string | null) ?? null,
+      cancelledAt: (r.cancelled_at as string | null) ?? null,
       categoryName: (r.category_name as string | null) ?? null,
       executorNames: r.executor_names ?? [],
     })),

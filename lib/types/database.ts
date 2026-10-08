@@ -806,6 +806,7 @@ export type Database = {
       tasks: {
         Row: {
           backlog_position: number | null
+          cancelled_at: string | null
           category_id: string | null
           completed_at: string | null
           created_at: string
@@ -821,6 +822,7 @@ export type Database = {
         }
         Insert: {
           backlog_position?: number | null
+          cancelled_at?: string | null
           category_id?: string | null
           completed_at?: string | null
           created_at?: string
@@ -836,6 +838,7 @@ export type Database = {
         }
         Update: {
           backlog_position?: number | null
+          cancelled_at?: string | null
           category_id?: string | null
           completed_at?: string | null
           created_at?: string
@@ -1003,6 +1006,7 @@ export type Database = {
           p_to?: string
         }
         Returns: {
+          cancelled_at: string
           category_name: string
           completed_at: string
           executor_names: string[]

@@ -18,3 +18,17 @@ const LABEL_BY_STATUS = new Map(TASK_STATUSES.map((s) => [s.value, s.label]));
 export function taskStatusLabel(status: TaskStatus): string {
   return LABEL_BY_STATUS.get(status) ?? status;
 }
+
+/**
+ * Даты закрытия для нового статуса. Статус и даты согласованы CHECK-ограничениями
+ * в БД (0004, 0023) — обновлять их нужно вместе.
+ */
+export function closedTimestamps(
+  status: TaskStatus,
+  now: Date,
+): { completed_at: string | null; cancelled_at: string | null } {
+  return {
+    completed_at: status === "completed" ? now.toISOString() : null,
+    cancelled_at: status === "cancelled" ? now.toISOString() : null,
+  };
+}

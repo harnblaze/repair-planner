@@ -53,7 +53,11 @@ export function ArchiveList({
                 {meta ? <span className="text-[12px] break-words text-meta">{meta}</span> : null}
               </span>
               <span className="shrink-0 text-[12px] text-meta">
-                {task.completedAt ? formatDateNumeric(task.completedAt, timezone) : "Отменена"}
+                {task.completedAt
+                  ? formatDateNumeric(task.completedAt, timezone)
+                  : task.cancelledAt
+                    ? `Отменена ${formatDateNumeric(task.cancelledAt, timezone)}`
+                    : "Отменена"}
               </span>
             </Link>
           );

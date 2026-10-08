@@ -64,7 +64,7 @@ export function ArchiveFiltersForm({
       </div>
       <div className="grid grid-cols-2 gap-3 sm:flex sm:items-end">
         <Label className="flex flex-col items-start gap-1 text-[12px] text-meta">
-          Выполнена с
+          Закрыта с
           <Input type="date" name="from" defaultValue={filters.from ?? ""} />
         </Label>
         <Label className="flex flex-col items-start gap-1 text-[12px] text-meta">
@@ -80,7 +80,7 @@ export function ArchiveFiltersForm({
           Прошлый месяц
         </Link>
         {hasPeriod ? (
-          <span className="text-[12px] text-meta-dim">Период — по дате выполнения, показаны только выполненные</span>
+          <span className="text-[12px] text-meta-dim">Период — по дате выполнения или отмены</span>
         ) : null}
       </div>
       <div className="flex items-center gap-4">

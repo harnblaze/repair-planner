@@ -1,11 +1,11 @@
--- Архив выполненных работ и поиск (0020): public.search_archive_tasks.
+-- Архив выполненных работ и поиск (0020, дата отмены — 0023): public.search_archive_tasks.
 -- Запуск: supabase test db
 
 create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(25);
+select plan(32);
 
 -- ================= Фикстуры (как postgres, минуя RLS) =================
 -- A — владелец проекта A (Europe/Moscow), B — владелец проекта B, C — viewer в A.
@@ -41,8 +41,12 @@ insert into public.tasks (id, project_id, title, description, status, completed_
   ('f2000000-0000-0000-0000-0000000000b1', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'Ремонт насоса B', null,
    'completed', '2026-09-20 10:00+00', null);
 
+-- Отменена 25.09 (13:00 МСК) — между «Сваркой рамы» и выполненными 30.09.
+insert into public.tasks (id, project_id, title, status, cancelled_at) values
+  ('f2000000-0000-0000-0000-000000000003', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Покраска_стен', 'cancelled',
+   '2026-09-25 10:00+00');
+
 insert into public.tasks (id, project_id, title, status) values
-  ('f2000000-0000-0000-0000-000000000003', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Покраска_стен', 'cancelled'),
   ('f2000000-0000-0000-0000-000000000004', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Насосная станция', 'new');
 
 insert into public.task_executors (task_id, executor_id, project_id) values
@@ -53,6 +57,23 @@ insert into public.task_executors (task_id, executor_id, project_id) values
 select has_function('public', 'search_archive_tasks',
   array['uuid', 'text', 'text', 'uuid', 'uuid', 'date', 'date', 'integer'],
   'search_archive_tasks exists');
+
+-- 26-28. Дата отмены (0023): есть ровно у отменённых
+select has_column('public', 'tasks', 'cancelled_at', 'tasks.cancelled_at exists');
+
+select throws_ok(
+  $$ insert into public.tasks (project_id, title, status)
+     values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Без даты отмены', 'cancelled') $$,
+  '23514', null,
+  'cancelled task requires cancelled_at'
+);
+
+select throws_ok(
+  $$ insert into public.tasks (project_id, title, status, cancelled_at)
+     values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Лишняя дата', 'new', now()) $$,
+  '23514', null,
+  'open task cannot have cancelled_at'
+);
 
 -- ================= Владелец A =================
 
@@ -73,19 +94,51 @@ select is(
   'cancelled only'
 );
 
--- 4. Отменённая изменена сейчас — она свежее всех выполненных
+-- 4. Все — по дате закрытия: выполненные по completed_at, отменённые по cancelled_at
 select is(
   array(select title from public.search_archive_tasks('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'all')),
-  array['Покраска_стен', 'Замена ворот', 'Ремонт насоса', 'Сварка рамы'],
-  'all: cancelled by updated_at, completed by completed_at'
+  array['Замена ворот', 'Ремонт насоса', 'Покраска_стен', 'Сварка рамы'],
+  'all: ordered by completion or cancellation date'
 );
 
--- 5. Заданный период исключает отменённые даже при 'all'
+-- 5. Период при 'all' включает и отменённые — по дате отмены
 select is(
   array(select title from public.search_archive_tasks('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'all',
     p_from => '2026-08-01', p_to => '2026-10-31')),
+  array['Замена ворот', 'Ремонт насоса', 'Покраска_стен', 'Сварка рамы'],
+  'period with all includes cancelled by cancelled_at'
+);
+
+-- 29. Отменённые за период — по дате отмены
+select is(
+  array(select title from public.search_archive_tasks('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'cancelled',
+    p_from => '2026-09-01', p_to => '2026-09-30')),
+  array['Покраска_стен'],
+  'cancelled within the period'
+);
+
+-- 30
+select is(
+  array(select title from public.search_archive_tasks('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'cancelled',
+    p_from => '2026-10-01')),
+  array[]::text[],
+  'cancelled outside the period is excluded'
+);
+
+-- 31. «Выполненные» с периодом отменённые не включают
+select is(
+  array(select title from public.search_archive_tasks('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'completed',
+    p_from => '2026-08-01', p_to => '2026-10-31')),
   array['Замена ворот', 'Ремонт насоса', 'Сварка рамы'],
-  'period excludes cancelled even for all'
+  'completed with a period excludes cancelled'
+);
+
+-- 32. Строка отменённой несёт дату отмены
+select row_eq(
+  $$ select completed_at, cancelled_at from public.search_archive_tasks('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+     'cancelled') $$,
+  row(null::timestamptz, '2026-09-25 10:00+00'::timestamptz),
+  'cancelled row carries cancelled_at'
 );
 
 -- 6. «по 30.09» включает 23:30 МСК 30.09 и не включает 01:00 МСК 01.10

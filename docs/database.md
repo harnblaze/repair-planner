@@ -31,7 +31,7 @@ auth.users 1─1 profiles
 * Первичные ключи — `uuid` с `gen_random_uuid()`.
 * Все таблицы содержат `created_at timestamptz not null default now()`; изменяемые — `updated_at`, поддерживаемый общим триггером.
 * Денежных величин нет; количества материалов — `numeric(14,3)`.
-* Плановые даты — тип `date`. `timestamptz` используется только для моментов времени (`created_at`, `completed_at`).
+* Плановые даты — тип `date`. `timestamptz` используется только для моментов времени (`created_at`, `completed_at`, `cancelled_at`).
 * Каждая дочерняя таблица хранит денормализованный `project_id` — это делает RLS одной проверкой без JOIN.
 * Согласованность `project_id` гарантируется **составными внешними ключами**, а не кодом приложения (см. §4).
 * На каждый внешний ключ создаётся индекс.
@@ -212,10 +212,11 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 | `status` | task_status not null default `'new'` | |
 | `planned_date` | date null | **кеш** — последняя дата из `task_schedule` (null, если последний день отложен), поддерживается триггером |
 | `completed_at` | timestamptz null | |
+| `cancelled_at` | timestamptz null | дата отмены (0023) |
 | `created_by` | uuid | FK → `profiles(id)` |
 | `created_at`, `updated_at` | timestamptz | |
 
-Ограничения: `completed_at is not null` тогда и только тогда, когда `status = 'completed'`.
+Ограничения: `completed_at is not null` тогда и только тогда, когда `status = 'completed'`; `cancelled_at is not null` тогда и только тогда, когда `status = 'cancelled'` (`tasks_cancelled_at_matches_status`, 0023). Обе даты выставляет `setTaskStatusAction` вместе со статусом (`closedTimestamps` в `lib/business/task-status.ts`). Миграция 0023 заполнила `cancelled_at` у уже отменённых заявок значением `updated_at` — точной даты отмены у них нет.
 
 Индексы:
 * `(project_id, planned_date)` — доска и backlog;
@@ -265,7 +266,7 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 | `return_task_to_backlog(p_task_id) returns boolean` | правило «Отложить» (product-requirements.md §4.4); `true` — история сохранена |
 | `move_board_item(p_item_id, p_position)` | порядок записи внутри списка |
 | `move_backlog_task(p_task_id, p_queue_id, p_position)` (0018, 0019) | перестановка в панели очереди и перенос между очередями: меняет `queue_id`, перенумеровывает `backlog_position` целевой очереди 0..n-1 под advisory-блокировкой обеих очередей (в порядке ключей); после блокировок перечитывает заявку `for update` и повторяет проверки (0019); `task_not_found`, `access_denied`, `task_already_planned`, `task_closed`, `queue_not_found`, `task_moved` (пока ждали блокировку, заявку увели в другую очередь) |
-| `search_archive_tasks(p_project_id, p_status, p_query, p_category_id, p_executor_id, p_from, p_to, p_limit)` (0020) | архив: выполненные и отменённые заявки проекта с фильтрами по тексту (название, описание; буквально, без учёта регистра), цеху, исполнителю и периоду выполнения в timezone проекта (включительно); при заданном периоде — только выполненные; сортировка `coalesce(completed_at, updated_at) desc`; security invoker, RLS; `invalid_filter` |
+| `search_archive_tasks(p_project_id, p_status, p_query, p_category_id, p_executor_id, p_from, p_to, p_limit)` (0020) | архив: выполненные и отменённые заявки проекта с фильтрами по тексту (название, описание; буквально, без учёта регистра), цеху, исполнителю и периоду закрытия в timezone проекта (включительно): выполненные — по `completed_at`, отменённые — по `cancelled_at` (с 0023); сортировка `coalesce(completed_at, cancelled_at) desc`; в строке есть `cancelled_at`; security invoker, RLS; `invalid_filter` |
 | `move_board_list(p_list_id, p_position)` (0014) | порядок списков проекта: перенумеровывает `board_lists.sort_order` 0..n-1 под advisory-блокировкой проекта; `list_not_found` без доступа к проекту, `access_denied` без права записи |
 | `move_task_queue(p_queue_id, p_position)` (0022) | порядок своих очередей проекта, как `move_board_list`: перенумеровывает `task_queues.sort_order` 0..n-1; `queue_not_found` без доступа к проекту, `access_denied` без права записи |
 | `carry_over_task(p_task_id) returns date` (0013) | перенос на следующий рабочий день по календарю проекта: новый день с `carried_over = true` в конец дня; возвращает дату |
@@ -544,6 +545,7 @@ update materials set current_balance = current_balance + delta where id = p_mate
 20. `0020_search_archive_tasks` — функция поиска по архиву выполненных работ.
 21. `0021_undo_carry_over` — RPC отмены переноса на следующий рабочий день.
 22. `0022_task_queue_order` — `task_queues.sort_order`, RPC `move_task_queue`.
+23. `0023_task_cancelled_at` — `tasks.cancelled_at` с CHECK и заполнением по `updated_at`; `search_archive_tasks` пересоздана: период и сортировка по дате выполнения или отмены.
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
