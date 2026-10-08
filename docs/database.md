@@ -264,7 +264,7 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 | `move_task_schedule(p_task_id, p_from_date, p_to_date, p_position)` | порядок внутри дня или смена дня (только для единственного неотложенного дня задачи) |
 | `return_task_to_backlog(p_task_id) returns boolean` | правило «Отложить» (product-requirements.md §4.4); `true` — история сохранена |
 | `move_board_item(p_item_id, p_position)` | порядок записи внутри списка |
-| `move_backlog_task(p_task_id, p_queue_id, p_position)` (0018) | перестановка в панели очереди и перенос между очередями: меняет `queue_id`, перенумеровывает `backlog_position` целевой очереди 0..n-1 под advisory-блокировкой обеих очередей (в порядке ключей); `task_not_found`, `access_denied`, `task_already_planned`, `task_closed`, `queue_not_found` |
+| `move_backlog_task(p_task_id, p_queue_id, p_position)` (0018, 0019) | перестановка в панели очереди и перенос между очередями: меняет `queue_id`, перенумеровывает `backlog_position` целевой очереди 0..n-1 под advisory-блокировкой обеих очередей (в порядке ключей); после блокировок перечитывает заявку `for update` и повторяет проверки (0019); `task_not_found`, `access_denied`, `task_already_planned`, `task_closed`, `queue_not_found`, `task_moved` (пока ждали блокировку, заявку увели в другую очередь) |
 | `move_board_list(p_list_id, p_position)` (0014) | порядок списков проекта: перенумеровывает `board_lists.sort_order` 0..n-1 под advisory-блокировкой проекта; `list_not_found` без доступа к проекту, `access_denied` без права записи |
 | `carry_over_task(p_task_id) returns date` (0013) | перенос на следующий рабочий день по календарю проекта: новый день с `carried_over = true` в конец дня; возвращает дату |
 | `set_task_planned_date(p_project_id, p_task_id, p_work_date default null)` (0015) | поле даты в карточке задачи, одной транзакцией: `null` снимает весь план (статус не меняется); незапланированная задача планируется через `plan_task_on_day`; запланированная — весь план заменяется одним днём в конце дня (история переносов не сохраняется), `new` → `planned`; задача должна принадлежать `p_project_id`, иначе `task_not_found` |
@@ -535,6 +535,7 @@ update materials set current_balance = current_balance + delta where id = p_mate
 16. `0016_revoke_function_execute` — отзыв `EXECUTE` у восьми триггерных функций `public` для API-ролей и у `project_access` для `anon`.
 17. `0017_task_attachments` — таблица `task_attachments`, приватный bucket `task-attachments`, RLS на таблице и `storage.objects`, helper `private.attachment_project_id`.
 18. `0018_task_queues` — таблица `task_queues`, колонки `tasks.queue_id` и `tasks.backlog_position`, триггер сброса позиции, RPC `move_backlog_task`.
+19. `0019_move_backlog_task_recheck` — `move_backlog_task` проверяет заявку по строке, перечитанной `for update` после блокировок очередей; новая ошибка `task_moved` при одновременном переносе.
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 

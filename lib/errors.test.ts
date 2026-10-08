@@ -6,6 +6,10 @@ describe("mapBoardMoveError", () => {
     expect(mapBoardMoveError("not_working_day")).toBe(NOT_WORKING_DAY_MESSAGE);
   });
 
+  it("maps task_moved from move_backlog_task (0019)", () => {
+    expect(mapBoardMoveError("task_moved")).toBe("Заявку только что переместили. Обновите страницу.");
+  });
+
   it("uses the generic fallback for an unknown error", () => {
     expect(mapBoardMoveError("duplicate key value")).toBe("Не удалось переместить. Попробуйте ещё раз.");
   });
