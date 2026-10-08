@@ -18,9 +18,12 @@ type Category = { id: string; name: string };
 
 export function CreateTaskForm({
   projectId,
+  queueId,
   categories,
 }: {
   projectId: string;
+  /** Очередь панели; null — «Текущие заявки». */
+  queueId: string | null;
   categories: Category[];
 }) {
   const [pending, startTransition] = useTransition();
@@ -34,7 +37,7 @@ export function CreateTaskForm({
 
   const onSubmit = handleSubmit((data) => {
     startTransition(async () => {
-      const result = await createTaskFromBoardAction(projectId, data);
+      const result = await createTaskFromBoardAction(projectId, { ...data, queueId: queueId ?? undefined });
       if (!result.ok) {
         toast.error(result.error);
       } else {

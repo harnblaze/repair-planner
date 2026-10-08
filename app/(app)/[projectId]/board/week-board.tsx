@@ -5,7 +5,6 @@ import {
   DragOverlay,
   closestCorners,
   pointerWithin,
-  useDraggable,
   useDroppable,
   type CollisionDetection,
   type DragEndEvent,
@@ -18,6 +17,12 @@ import { useId, useMemo, useOptimistic, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { BookmarkIcon } from "@/components/common/icons";
+import {
+  moveTaskBetweenQueues,
+  queueDropIndex,
+  queueIdOf,
+  queueKey,
+} from "@/lib/business/backlog-queues";
 import { formatDateLong, formatDateShort } from "@/lib/business/dates";
 import {
   canCarryOverFromBoard,
@@ -30,6 +35,7 @@ import type { ActionResult } from "@/lib/types/action-result";
 import { cn } from "@/lib/utils";
 
 import {
+  moveBacklogTaskAction,
   moveTaskScheduleAction,
   planTaskOnDayAction,
   returnTaskToBacklogAction,
@@ -46,27 +52,35 @@ import { Panel, PanelEmpty, PanelHeader } from "./panel";
 import { CarryOverChipButton } from "./carry-over-chip-button";
 import { TaskChip, TaskRow, type BoardTask } from "./task-chip";
 
-// Неделя доски и «Текущие заявки» в одном DndContext: задачу можно
-// запланировать, сменить ей день, упорядочить внутри дня и вернуть обратно.
-// Правила — lib/business/task-planning.ts, окончательная проверка — RPC
-// supabase/migrations/0008. Интерфейс обновляется сразу (useOptimistic);
-// при ошибке сервера состояние само возвращается к данным сервера.
+// Неделя доски и панели очередей текущих заявок в одном DndContext: задачу
+// можно запланировать, сменить ей день, упорядочить внутри дня или очереди,
+// перенести в другую очередь и вернуть с доски. Правила —
+// lib/business/task-planning.ts и lib/business/backlog-queues.ts, окончательная
+// проверка — RPC supabase/migrations/0008, 0018. Интерфейс обновляется сразу
+// (useOptimistic); при ошибке сервера состояние само возвращается к данным сервера.
 
-export type DayTask = BoardTask & { canChangeDay: boolean };
-export type BacklogTask = BoardTask & { lastWorkDate: string | null };
+export type DayTask = BoardTask & { canChangeDay: boolean; queueId: string | null };
+export type BacklogTask = BoardTask & { lastWorkDate: string | null; queueId: string | null };
+/** Панель очереди: id null — «Текущие заявки». */
+export type BoardQueue = { id: string | null; name: string; tasks: BacklogTask[] };
 
-const BACKLOG = "backlog";
+const QUEUE_PREFIX = "queue:";
+const queueContainer = (key: string) => `${QUEUE_PREFIX}${key}`;
+const isQueueContainer = (container: string) => container.startsWith(QUEUE_PREFIX);
+const queueKeyOfContainer = (container: string) => container.slice(QUEUE_PREFIX.length);
 
-type BoardState = { days: Record<string, DayTask[]>; backlog: BacklogTask[] };
+/** queues — заявки панелей по ключу очереди (lib/business/backlog-queues.ts::queueKey). */
+type BoardState = { days: Record<string, DayTask[]>; queues: Record<string, BacklogTask[]> };
 
-/** container — дата "YYYY-MM-DD" или BACKLOG; taskId отсутствует у самой колонки. */
+/** container — дата "YYYY-MM-DD" или "queue:<ключ>"; taskId отсутствует у самой колонки. */
 type DragData = { container: string; taskId?: string; title?: string };
 
 type Move =
   | { type: "reorder"; date: string; from: number; to: number }
   | { type: "changeDay"; taskId: string; fromDate: string; toDate: string; index: number }
-  | { type: "plan"; taskId: string; toDate: string; index: number }
-  | { type: "toBacklog"; taskId: string; today: string };
+  | { type: "plan"; taskId: string; fromQueue: string; toDate: string; index: number }
+  | { type: "toBacklog"; taskId: string; today: string }
+  | { type: "moveInQueues"; taskId: string; fromQueue: string; toQueue: string; index: number };
 
 function applyMove(state: BoardState, move: Move): BoardState {
   switch (move.type) {
@@ -92,7 +106,8 @@ function applyMove(state: BoardState, move: Move): BoardState {
     }
 
     case "plan": {
-      const task = state.backlog.find((t) => t.id === move.taskId);
+      const source = state.queues[move.fromQueue] ?? [];
+      const task = source.find((t) => t.id === move.taskId);
       if (!task) return state;
       // Возврат отложенной задачи в тот же день заменяет её историческую карточку.
       const target = state.days[move.toDate].filter((t) => t.id !== move.taskId);
@@ -104,7 +119,7 @@ function applyMove(state: BoardState, move: Move): BoardState {
         canChangeDay: task.lastWorkDate === null,
       });
       return {
-        backlog: state.backlog.filter((t) => t.id !== move.taskId),
+        queues: { ...state.queues, [move.fromQueue]: source.filter((t) => t.id !== move.taskId) },
         days: { ...state.days, [move.toDate]: target },
       };
     }
@@ -130,14 +145,25 @@ function applyMove(state: BoardState, move: Move): BoardState {
         );
       }
 
+      // Заявка возвращается наверх своей очереди.
+      const key = queueKey(task.queueId);
       return {
         days,
-        backlog: [
-          { ...task, isHistory: false, transferNote: null, lastWorkDate: lastKept },
-          ...state.backlog,
-        ],
+        queues: {
+          ...state.queues,
+          [key]: [
+            { ...task, isHistory: false, transferNote: null, lastWorkDate: lastKept },
+            ...(state.queues[key] ?? []),
+          ],
+        },
       };
     }
+
+    case "moveInQueues":
+      return {
+        ...state,
+        queues: moveTaskBetweenQueues(state.queues, move.taskId, move.fromQueue, move.toQueue, move.index),
+      };
   }
 }
 
@@ -158,10 +184,11 @@ function checkDrop(
   target: string,
   daysOff: Record<string, string>,
 ): DropVerdict {
-  if (from.container === BACKLOG) {
-    if (target === BACKLOG) return null;
-    const task = state.backlog.find((t) => t.id === from.taskId);
+  if (isQueueContainer(from.container)) {
+    const task = state.queues[queueKeyOfContainer(from.container)]?.find((t) => t.id === from.taskId);
     if (!task) return null;
+    // Внутри очереди и между очередями; «ничего не изменилось» решает onDragEnd.
+    if (isQueueContainer(target)) return { ok: true };
     if (target in daysOff) return { ok: false, reason: dayOffReason(target) };
     return canPlanOnDate(task.lastWorkDate, target)
       ? { ok: true }
@@ -174,10 +201,16 @@ function checkDrop(
   const task = state.days[from.container]?.find((t) => t.id === from.taskId);
   if (!task) return null;
 
-  if (target === BACKLOG) {
+  if (isQueueContainer(target)) {
     if (task.isHistory) return { ok: false, reason: HISTORY_REASON };
     if (!canReturnToBacklog(task.status)) {
       return { ok: false, reason: "Завершённую или отменённую заявку нельзя вернуть в текущие заявки." };
+    }
+    if (queueKeyOfContainer(target) !== queueKey(task.queueId)) {
+      return {
+        ok: false,
+        reason: "Заявка возвращается в свою очередь. Перенести её в другую можно из панели очереди.",
+      };
     }
     return { ok: true };
   }
@@ -214,7 +247,7 @@ export function WeekBoard({
   weekDates,
   daysOff,
   days,
-  backlog,
+  queues,
   categories,
   canEdit,
   children,
@@ -226,7 +259,8 @@ export function WeekBoard({
   /** Нерабочие дни недели: дата → подпись («Новогодние каникулы», «Выходной»). */
   daysOff: Record<string, string>;
   days: Record<string, DayTask[]>;
-  backlog: BacklogTask[];
+  /** Панели очередей в порядке показа: первая — «Текущие заявки». */
+  queues: BoardQueue[];
   categories: { id: string; name: string }[];
   /** false — только просмотр: без перетаскивания и формы создания. */
   canEdit: boolean;
@@ -238,7 +272,10 @@ export function WeekBoard({
   const clicks = useSuppressClickAfterDrag();
   const [, startTransition] = useTransition();
 
-  const serverState = useMemo<BoardState>(() => ({ days, backlog }), [days, backlog]);
+  const serverState = useMemo<BoardState>(
+    () => ({ days, queues: Object.fromEntries(queues.map((q) => [queueKey(q.id), q.tasks])) }),
+    [days, queues],
+  );
   const [board, applyOptimistic] = useOptimistic(serverState, applyMove);
 
   const [active, setActive] = useState<DragData | null>(null);
@@ -286,8 +323,24 @@ export function WeekBoard({
       return;
     }
 
-    if (to.container === BACKLOG) {
-      run({ type: "toBacklog", taskId, today }, () => returnTaskToBacklogAction(projectId, taskId));
+    // Вставка в чужой список — перед карточкой под курсором или после неё,
+    // если перетаскиваемая карточка ниже её середины.
+    const translated = dragged.rect.current.translated;
+    const below = translated !== null && translated.top > over.rect.top + over.rect.height / 2;
+
+    if (isQueueContainer(to.container)) {
+      if (!isQueueContainer(from.container)) {
+        run({ type: "toBacklog", taskId, today }, () => returnTaskToBacklogAction(projectId, taskId));
+        return;
+      }
+      const fromQueue = queueKeyOfContainer(from.container);
+      const toQueue = queueKeyOfContainer(to.container);
+      const target = board.queues[toQueue] ?? [];
+      const index = queueDropIndex(target, taskId, to.taskId ?? null, below);
+      if (fromQueue === toQueue && target.findIndex((t) => t.id === taskId) === index) return;
+      run({ type: "moveInQueues", taskId, fromQueue, toQueue, index }, () =>
+        moveBacklogTaskAction(projectId, { taskId, queueId: queueIdOf(toQueue), position: index }),
+      );
       return;
     }
 
@@ -305,14 +358,10 @@ export function WeekBoard({
       return;
     }
 
-    // В чужом списке вставляем перед карточкой под курсором или после неё,
-    // если перетаскиваемая карточка ниже её середины.
-    const translated = dragged.rect.current.translated;
-    const below = translated !== null && translated.top > over.rect.top + over.rect.height / 2;
     const index = overIndex === -1 ? list.length : overIndex + (below ? 1 : 0);
 
-    if (from.container === BACKLOG) {
-      run({ type: "plan", taskId, toDate, index }, () =>
+    if (isQueueContainer(from.container)) {
+      run({ type: "plan", taskId, fromQueue: queueKeyOfContainer(from.container), toDate, index }, () =>
         planTaskOnDayAction(projectId, { taskId, workDate: toDate, position: index }),
       );
     } else {
@@ -325,8 +374,8 @@ export function WeekBoard({
   const activeTask =
     active === null
       ? null
-      : active.container === BACKLOG
-        ? board.backlog.find((t) => t.id === active.taskId)
+      : isQueueContainer(active.container)
+        ? board.queues[queueKeyOfContainer(active.container)]?.find((t) => t.id === active.taskId)
         : board.days[active.container]?.find((t) => t.id === active.taskId);
 
   return (
@@ -370,25 +419,33 @@ export function WeekBoard({
           </div>
         </section>
 
-        {/* Дополнительные списки: «Текущие заявки» (задачи) и board_lists
-            (стандартные и пользовательские) — по четыре панели в ряду под
+        {/* Панели очередей текущих заявок (основная и дополнительные), затем
+            board_lists (стандартные и пользовательские) — по четыре панели в ряду под
             неделей (до lg — по две, до sm — по одной); списки сверх ряда
             переносятся на следующий. */}
         <section className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))] xl:gap-3.5">
-          <BacklogPanel
-            projectId={projectId}
-            tasks={board.backlog}
-            categories={categories}
-            highlighted={dropAllowed(BACKLOG)}
-            canEdit={canEdit}
-          />
+          {queues.map((queue) => {
+            const key = queueKey(queue.id);
+            return (
+              <QueuePanel
+                key={key}
+                projectId={projectId}
+                queueId={queue.id}
+                name={queue.name}
+                tasks={board.queues[key] ?? []}
+                categories={categories}
+                highlighted={dropAllowed(queueContainer(key))}
+                canEdit={canEdit}
+              />
+            );
+          })}
           {children}
         </section>
       </div>
 
       <DragOverlay dropAnimation={null}>
         {activeTask && active ? (
-          active.container === BACKLOG ? (
+          isQueueContainer(active.container) ? (
             <TaskRow
               projectId={projectId}
               task={activeTask}
@@ -541,54 +598,73 @@ function SortableTaskChip({
   );
 }
 
-function BacklogPanel({
+function QueuePanel({
   projectId,
+  queueId,
+  name,
   tasks,
   categories,
   highlighted,
   canEdit,
 }: {
   projectId: string;
+  /** null — «Текущие заявки». */
+  queueId: string | null;
+  name: string;
   tasks: BacklogTask[];
   categories: { id: string; name: string }[];
   highlighted: boolean;
   canEdit: boolean;
 }) {
-  const { setNodeRef } = useDroppable({ id: BACKLOG, data: { container: BACKLOG } satisfies DragData });
+  const container = queueContainer(queueKey(queueId));
+  const { setNodeRef } = useDroppable({ id: container, data: { container } satisfies DragData });
 
   return (
     <div ref={setNodeRef} className="flex min-w-0">
       <Panel className={cn("flex-1 transition-shadow duration-120", highlighted && DROP_HIGHLIGHT)}>
-        <PanelHeader icon={<BookmarkIcon />} title="Текущие заявки" count={tasks.length} />
-        {canEdit ? <CreateTaskForm projectId={projectId} categories={categories} /> : null}
+        <PanelHeader icon={<BookmarkIcon />} title={name} count={tasks.length} />
+        {canEdit ? <CreateTaskForm projectId={projectId} queueId={queueId} categories={categories} /> : null}
         {tasks.length === 0 ? (
-          <PanelEmpty>Нет текущих заявок</PanelEmpty>
+          <PanelEmpty>{queueId === null ? "Нет текущих заявок" : "Нет заявок"}</PanelEmpty>
         ) : (
-          <div className="flex flex-col p-1.5">
-            {tasks.map((task) => (
-              <DraggableTaskRow key={task.id} projectId={projectId} task={task} canEdit={canEdit} />
-            ))}
-          </div>
+          <SortableContext
+            items={tasks.map((t) => `${container}|${t.id}`)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="flex flex-col p-1.5">
+              {tasks.map((task) => (
+                <SortableTaskRow
+                  key={task.id}
+                  projectId={projectId}
+                  container={container}
+                  task={task}
+                  canEdit={canEdit}
+                />
+              ))}
+            </div>
+          </SortableContext>
         )}
       </Panel>
     </div>
   );
 }
 
-// «Текущие заявки» упорядочены по дате создания, позиции у них нет — строки
-// только перетаскиваются в дни, а не сортируются внутри панели.
-function DraggableTaskRow({
+// Порядок в очереди ручной (tasks.backlog_position, 0018): строки сортируются
+// внутри панели, переносятся в другие очереди и в дни.
+function SortableTaskRow({
   projectId,
+  container,
   task,
   canEdit,
 }: {
   projectId: string;
+  container: string;
   task: BacklogTask;
   canEdit: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `${BACKLOG}|${task.id}`,
-    data: { container: BACKLOG, taskId: task.id, title: task.title } satisfies DragData,
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: `${container}|${task.id}`,
+    data: { container, taskId: task.id, title: task.title } satisfies DragData,
     disabled: !canEdit,
   });
 
@@ -601,6 +677,7 @@ function DraggableTaskRow({
       ref={setNodeRef}
       projectId={projectId}
       task={task}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
       {...dragAttributes(attributes)}
       {...dragListeners(listeners)}
       className={cn(DRAGGABLE_CLASS, isDragging && "opacity-40")}

@@ -18,7 +18,7 @@ import { createClient } from "@/lib/supabase/server";
 
 import type { BoardItem } from "./board-item-row";
 import { BoardList } from "./board-list";
-import { WeekBoard, type BacklogTask, type DayTask } from "./week-board";
+import { WeekBoard, type BacklogTask, type BoardQueue, type DayTask } from "./week-board";
 
 export const metadata: Metadata = {
   title: "Доска — Repair Planner",
@@ -73,6 +73,7 @@ export default async function BoardPage({
     { data: categories },
     { data: boardLists },
     { data: boardItems },
+    { data: taskQueues },
   ] = await Promise.all([
     getProjectRole(projectId),
     supabase
@@ -85,17 +86,20 @@ export default async function BoardPage({
       .from("tasks")
       // task_schedule — дни истории отложенной задачи: новый день не может быть раньше последнего.
       .select(
-        "id, title, status, categories(name), task_executors(executors(name)), task_schedule(work_date, postponed)",
+        "id, title, status, queue_id, categories(name), task_executors(executors(name)), task_schedule(work_date, postponed)",
       )
       .eq("project_id", projectId)
       .is("planned_date", null)
       .neq("status", "completed")
       .neq("status", "cancelled")
-      .order("created_at", { ascending: false }),
+      // Ручной порядок; нерасставленные (null) — первыми, новые сверху (0018).
+      .order("backlog_position", { ascending: true, nullsFirst: true })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true }),
     supabase
       .from("task_schedule")
       .select(
-        "work_date, position, tasks(id, title, status, planned_date, categories(name), task_executors(executors(name)), task_schedule(work_date, postponed))",
+        "work_date, position, tasks(id, title, status, planned_date, queue_id, categories(name), task_executors(executors(name)), task_schedule(work_date, postponed))",
       )
       .eq("project_id", projectId)
       // Пн–Сб: какие колонки показать, зависит от календаря и от задач на субботу.
@@ -122,6 +126,12 @@ export default async function BoardPage({
       .eq("project_id", projectId)
       .order("position", { ascending: true })
       .order("created_at", { ascending: true }),
+    supabase
+      .from("task_queues")
+      .select("id, name")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true }),
   ]);
 
   const calendar = buildWorkCalendar(calendarDays ?? []);
@@ -141,14 +151,25 @@ export default async function BoardPage({
       }),
   );
 
-  const backlog: BacklogTask[] = (backlogTasks ?? []).map((t) => ({
-    id: t.id,
-    title: t.title,
-    status: t.status,
-    categoryName: t.categories?.name ?? null,
-    executorNames: toExecutorNames(t.task_executors),
-    lastWorkDate: lastWorkDate(toScheduleDays(t.task_schedule)),
-  }));
+  // Панели очередей: «Текущие заявки» (queue_id null), затем очереди проекта.
+  const queues: BoardQueue[] = [
+    { id: null, name: "Текущие заявки", tasks: [] },
+    ...(taskQueues ?? []).map((q) => ({ id: q.id, name: q.name, tasks: [] as BacklogTask[] })),
+  ];
+  const queueById = new Map(queues.map((q) => [q.id, q]));
+  for (const t of backlogTasks ?? []) {
+    // Очередь могли удалить между запросами — тогда заявка в основной.
+    const queue = queueById.get(t.queue_id) ?? queues[0];
+    queue.tasks.push({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      categoryName: t.categories?.name ?? null,
+      executorNames: toExecutorNames(t.task_executors),
+      lastWorkDate: lastWorkDate(toScheduleDays(t.task_schedule)),
+      queueId: queue.id,
+    });
+  }
 
   const itemsByList = new Map<string, BoardItem[]>();
   for (const item of boardItems ?? []) {
@@ -176,6 +197,7 @@ export default async function BoardPage({
       isHistory: occurrence.isHistory,
       transferNote: occurrence.note,
       canChangeDay: occurrence.canChangeDay,
+      queueId: row.tasks.queue_id,
     });
   }
 
@@ -229,7 +251,7 @@ export default async function BoardPage({
         weekDates={weekDates}
         daysOff={daysOff}
         days={days}
-        backlog={backlog}
+        queues={queues}
         categories={categories ?? []}
         canEdit={canEdit}
       >
