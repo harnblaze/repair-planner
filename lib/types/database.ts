@@ -890,6 +890,19 @@ export type Database = {
     Functions: {
       accept_project_invitation: { Args: { p_token: string }; Returns: string }
       carry_over_task: { Args: { p_task_id: string }; Returns: string }
+      completed_works_report: {
+        Args: { p_month: string; p_project_id: string }
+        Returns: {
+          category_id: string
+          category_name: string
+          category_sort_order: number
+          completed_at: string
+          executor_names: string[]
+          materials: Json
+          task_id: string
+          title: string
+        }[]
+      }
       create_project_invitation: {
         Args: {
           p_project_id: string
