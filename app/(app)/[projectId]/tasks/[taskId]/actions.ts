@@ -338,6 +338,46 @@ export async function carryOverTaskAction(
   return { ok: true, message: `Перенесено на ${formatDateLong(nextDate)}.` };
 }
 
+const UNDO_CARRY_OVER_ERROR_MESSAGES: Record<string, string> = {
+  task_not_found: "Заявка не найдена.",
+  task_closed: "Завершённую или отменённую заявку нельзя изменить.",
+  nothing_to_undo: "Отменять нечего: последний день заявки не был переносом.",
+  carry_over_too_old: "Перенесённый день уже прошёл — перенос нельзя отменить.",
+};
+
+/** Отмена переноса: удаляет последний перенесённый день (RPC undo_carry_over, 0021). */
+export async function undoCarryOverTaskAction(projectId: string, taskId: string): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const supabase = await createClient();
+  const { data: task } = await supabase
+    .from("tasks")
+    .select("id")
+    .eq("id", taskId)
+    .eq("project_id", projectId)
+    .maybeSingle();
+
+  if (!task) {
+    return { ok: false, error: "Заявка не найдена." };
+  }
+
+  const { data: previousDate, error } = await supabase.rpc("undo_carry_over", { p_task_id: taskId });
+
+  if (error || !previousDate) {
+    console.error("undoCarryOverTaskAction:", error);
+    return {
+      ok: false,
+      error:
+        (error?.message && UNDO_CARRY_OVER_ERROR_MESSAGES[error.message]) ||
+        "Не удалось отменить перенос. Попробуйте ещё раз.",
+    };
+  }
+
+  revalidateTask(projectId, taskId);
+  return { ok: true, message: `Перенос отменён: заявка снова на ${formatDateLong(previousDate)}.` };
+}
+
 export async function addTaskMaterialAction(
   projectId: string,
   taskId: string,

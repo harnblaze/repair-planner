@@ -4,8 +4,10 @@ import {
   canCarryOverFromBoard,
   canCarryOverTask,
   canCompleteFromBoard,
+  canUndoCarryOverFromBoard,
   canPlanOnDate,
   describeOccurrence,
+  isUndoableCarryOver,
   keepsDayOnReturnToBacklog,
   lastWorkDate,
 } from "./task-planning";
@@ -58,6 +60,47 @@ describe("canCompleteFromBoard", () => {
     expect(canCompleteFromBoard({ ...live, status: "completed" }, true)).toBe(false);
     expect(canCompleteFromBoard({ ...live, status: "cancelled" }, true)).toBe(false);
     expect(canCompleteFromBoard(live, false)).toBe(false);
+  });
+});
+
+describe("isUndoableCarryOver", () => {
+  const carried = [
+    { workDate: "2026-10-07", postponed: false },
+    { workDate: "2026-10-08", postponed: false },
+  ];
+
+  it("разрешает отмену в сам день переноса и раньше него", () => {
+    expect(isUndoableCarryOver("2026-10-08", "2026-10-08", carried, "2026-10-08")).toBe(true);
+    expect(isUndoableCarryOver("2026-10-08", "2026-10-08", carried, "2026-10-07")).toBe(true);
+  });
+
+  it("запрещает отмену, когда перенесённый день прошёл", () => {
+    expect(isUndoableCarryOver("2026-10-08", "2026-10-08", carried, "2026-10-09")).toBe(false);
+  });
+
+  it("не предлагает отмену на дне из истории", () => {
+    expect(isUndoableCarryOver("2026-10-07", "2026-10-08", carried, "2026-10-07")).toBe(false);
+  });
+
+  it("не считает переносом единственный день и день после отложенного", () => {
+    expect(isUndoableCarryOver("2026-10-08", "2026-10-08", [carried[1]], "2026-10-08")).toBe(false);
+    const afterPostponed = [{ workDate: "2026-10-05", postponed: true }, carried[1]];
+    expect(isUndoableCarryOver("2026-10-08", "2026-10-08", afterPostponed, "2026-10-08")).toBe(false);
+  });
+});
+
+describe("canUndoCarryOverFromBoard", () => {
+  const live = { status: "in_progress" as const, undoableCarryOver: true };
+
+  it("показывает «↩», когда перенос можно отменить", () => {
+    expect(canUndoCarryOverFromBoard(live, true)).toBe(true);
+  });
+
+  it("не показывает «↩» без отменяемого переноса, у закрытой задачи и без права редактирования", () => {
+    expect(canUndoCarryOverFromBoard({ ...live, undoableCarryOver: false }, true)).toBe(false);
+    expect(canUndoCarryOverFromBoard({ ...live, isHistory: true }, true)).toBe(false);
+    expect(canUndoCarryOverFromBoard({ ...live, status: "completed" }, true)).toBe(false);
+    expect(canUndoCarryOverFromBoard(live, false)).toBe(false);
   });
 });
 

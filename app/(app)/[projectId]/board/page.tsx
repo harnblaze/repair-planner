@@ -3,7 +3,7 @@ import Link from "next/link";
 
 import { CalendarIcon } from "@/components/common/icons";
 import { formatDateShort, todayInTimezone } from "@/lib/business/dates";
-import { describeOccurrence, lastWorkDate, type ScheduleDay } from "@/lib/business/task-planning";
+import { describeOccurrence, isUndoableCarryOver, lastWorkDate, type ScheduleDay } from "@/lib/business/task-planning";
 import { canEditProject } from "@/lib/business/project-roles";
 import {
   addWeeks,
@@ -183,11 +183,8 @@ export default async function BoardPage({
     if (!row.tasks) continue;
     const list = days[row.work_date];
     if (!list) continue;
-    const occurrence = describeOccurrence(
-      row.work_date,
-      row.tasks.planned_date,
-      toScheduleDays(row.tasks.task_schedule),
-    );
+    const scheduleDays = toScheduleDays(row.tasks.task_schedule);
+    const occurrence = describeOccurrence(row.work_date, row.tasks.planned_date, scheduleDays);
     list.push({
       id: row.tasks.id,
       title: row.tasks.title,
@@ -197,6 +194,7 @@ export default async function BoardPage({
       isHistory: occurrence.isHistory,
       transferNote: occurrence.note,
       canChangeDay: occurrence.canChangeDay,
+      undoableCarryOver: isUndoableCarryOver(row.work_date, row.tasks.planned_date, scheduleDays, today),
       queueId: row.tasks.queue_id,
     });
   }

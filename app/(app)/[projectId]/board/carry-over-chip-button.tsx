@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { ArrowRightIcon } from "@/components/common/icons";
 
 import { carryOverTaskAction } from "../tasks/[taskId]/actions";
+import { toastCarriedOver } from "../tasks/[taskId]/undo-carry-over";
 import { chipCornerButtonClass } from "./chip-corner-button";
 
 const LABEL = "Перенести на следующий рабочий день";
@@ -24,7 +25,7 @@ export function CarryOverChipButton({ projectId, taskId }: { projectId: string; 
       if (!result.ok) {
         toast.error(result.error);
       } else {
-        toast.success(result.message ?? "Перенесено.");
+        toastCarriedOver(result.message ?? "Перенесено.", projectId, taskId);
       }
     });
   };

@@ -17,11 +17,16 @@ export type BoardTask = {
   transferNote?: string | null;
   /** Дополнительная очередь заявки — метка на карточке в дне (lib/business/backlog-queues.ts:queueLabel). */
   queueName?: string | null;
+  /** Последний день появился переносом, и его ещё можно отменить (task-planning.ts:isUndoableCarryOver). */
+  undoableCarryOver?: boolean;
 };
 
 // Пропсы перетаскивания (ref, listeners, style) передаются прямо на ссылку:
 // у карточки одна точка фокуса и для перехода, и для перетаскивания с клавиатуры.
 type LinkRestProps = Omit<React.ComponentProps<typeof Link>, "href" | "children">;
+
+// Кнопки угла по 28px (size-7) + отступ right-1.
+const CORNER_PADDING: Record<number, string> = { 1: "pr-6", 2: "pr-14", 3: "pr-21" };
 
 // Статус вынесен в бейдж, поэтому в текстовые метаданные он больше не входит.
 function metaOf(task: BoardTask): string {
@@ -32,17 +37,17 @@ function metaOf(task: BoardTask): string {
 export function TaskChip({
   projectId,
   task,
-  reserveCorner = false,
+  cornerButtons = 0,
   className,
   ...rest
 }: {
   projectId: string;
   task: BoardTask;
   /**
-   * Место под кнопки в правом нижнем углу, в строке статуса: заголовок
-   * сохраняет всю ширину колонки и не ломает слова.
+   * Сколько кнопок в правом нижнем углу: под них резервируется место в строке
+   * статуса, заголовок сохраняет всю ширину колонки и не ломает слова.
    */
-  reserveCorner?: boolean;
+  cornerButtons?: number;
 } & LinkRestProps) {
   const meta = metaOf(task);
   const isHistory = Boolean(task.isHistory);
@@ -64,7 +69,7 @@ export function TaskChip({
       <span className="text-[13px] leading-snug font-semibold tracking-[-0.005em] break-words text-ink">
         {task.title}
       </span>
-      <span className={cn("flex flex-wrap items-center gap-1.5", reserveCorner && "pr-14")}>
+      <span className={cn("flex flex-wrap items-center gap-1.5", CORNER_PADDING[cornerButtons])}>
         <StatusBadge status={task.status} muted={isHistory} />
         {task.queueName ? (
           <span

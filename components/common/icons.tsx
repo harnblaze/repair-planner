@@ -99,6 +99,14 @@ export function CheckIcon({ size = 11, className, strokeWidth = 1.6 }: IconProps
   );
 }
 
+export function UndoIcon({ size = 11, className, strokeWidth = 1.5 }: IconProps) {
+  return (
+    <svg {...base({ size, className, strokeWidth })}>
+      <path d="M6 4L3 7l3 3M3 7h6.5a3.5 3.5 0 010 7H8" />
+    </svg>
+  );
+}
+
 export function ChevronDownIcon({ size = 11, className, strokeWidth = 1.6 }: IconProps) {
   return (
     <svg {...base({ size, className, strokeWidth })}>

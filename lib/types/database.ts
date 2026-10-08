@@ -1034,6 +1034,7 @@ export type Database = {
         Args: { p_project_id: string; p_task_id: string; p_work_date?: string }
         Returns: undefined
       }
+      undo_carry_over: { Args: { p_task_id: string }; Returns: string }
     }
     Enums: {
       calendar_day_kind: "holiday" | "working_day"

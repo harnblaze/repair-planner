@@ -10,6 +10,7 @@ import { canCarryOverTask } from "@/lib/business/task-planning";
 import type { TaskStatus } from "@/lib/business/task-status";
 
 import { carryOverTaskAction } from "./actions";
+import { toastCarriedOver } from "./undo-carry-over";
 
 export function CarryOverButton({
   projectId,
@@ -38,7 +39,7 @@ export function CarryOverButton({
       if (!result.ok) {
         toast.error(result.error);
       } else {
-        toast.success(result.message ?? "Перенесено.");
+        toastCarriedOver(result.message ?? "Перенесено.", projectId, taskId, () => router.refresh());
         router.refresh();
       }
     });

@@ -93,6 +93,34 @@ export function describeOccurrence(
   return { isHistory, note, canChangeDay: false };
 }
 
+/**
+ * Можно ли отменить перенос (public.undo_carry_over, 0021): день — последний,
+ * перед ним есть неотложенный день (значит, этот появился переносом), и он
+ * ещё не прошёл. Даты — строки YYYY-MM-DD в timezone проекта.
+ */
+export function isUndoableCarryOver(
+  workDate: string,
+  plannedDate: string | null,
+  days: ScheduleDay[],
+  today: string,
+): boolean {
+  if (workDate !== plannedDate || workDate < today) return false;
+  const previous = days
+    .filter((d) => d.workDate < workDate)
+    .reduce<ScheduleDay | null>((max, d) => (max === null || d.workDate > max.workDate ? d : max), null);
+  return previous !== null && !previous.postponed;
+}
+
+/** Кнопка «↩» на карточке доски: отменяемый перенос открытой задачи, право редактирования. */
+export function canUndoCarryOverFromBoard(
+  task: { status: TaskStatus; isHistory?: boolean; undoableCarryOver?: boolean },
+  canEdit: boolean,
+): boolean {
+  // isHistory — страховка для оптимистичного состояния доски: копия дня-истории
+  // сохраняет флаг исходной карточки до обновления данных с сервера.
+  return canEdit && !task.isHistory && Boolean(task.undoableCarryOver) && canCarryOverTask(task.status);
+}
+
 /** Последний день расписания задачи или null, если дней нет. */
 export function lastWorkDate(days: ScheduleDay[]): string | null {
   return days.reduce<string | null>((max, d) => (max === null || d.workDate > max ? d.workDate : max), null);

@@ -268,6 +268,7 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 | `search_archive_tasks(p_project_id, p_status, p_query, p_category_id, p_executor_id, p_from, p_to, p_limit)` (0020) | архив: выполненные и отменённые заявки проекта с фильтрами по тексту (название, описание; буквально, без учёта регистра), цеху, исполнителю и периоду выполнения в timezone проекта (включительно); при заданном периоде — только выполненные; сортировка `coalesce(completed_at, updated_at) desc`; security invoker, RLS; `invalid_filter` |
 | `move_board_list(p_list_id, p_position)` (0014) | порядок списков проекта: перенумеровывает `board_lists.sort_order` 0..n-1 под advisory-блокировкой проекта; `list_not_found` без доступа к проекту, `access_denied` без права записи |
 | `carry_over_task(p_task_id) returns date` (0013) | перенос на следующий рабочий день по календарю проекта: новый день с `carried_over = true` в конец дня; возвращает дату |
+| `undo_carry_over(p_task_id) returns date` (0021) | отмена переноса: удаляет последний день, если он `carried_over`, не отложен, перед ним неотложенный день и он не раньше сегодня в timezone проекта; возвращает предыдущий день; security invoker (`for update` на tasks — только редактор); `task_not_found`, `task_closed`, `nothing_to_undo`, `carry_over_too_old` |
 | `set_task_planned_date(p_project_id, p_task_id, p_work_date default null)` (0015) | поле даты в карточке задачи, одной транзакцией: `null` снимает весь план (статус не меняется); незапланированная задача планируется через `plan_task_on_day`; запланированная — весь план заменяется одним днём в конце дня (история переносов не сохраняется), `new` → `planned`; задача должна принадлежать `p_project_id`, иначе `task_not_found` |
 
 С 0013 `plan_task_on_day` и смена дня в `move_task_schedule` проверяют рабочий день через `private.is_working_day` вместо `isodow`. Порядок внутри дня меняется и в нерабочий день.
@@ -538,6 +539,7 @@ update materials set current_balance = current_balance + delta where id = p_mate
 18. `0018_task_queues` — таблица `task_queues`, колонки `tasks.queue_id` и `tasks.backlog_position`, триггер сброса позиции, RPC `move_backlog_task`.
 19. `0019_move_backlog_task_recheck` — `move_backlog_task` проверяет заявку по строке, перечитанной `for update` после блокировок очередей; новая ошибка `task_moved` при одновременном переносе.
 20. `0020_search_archive_tasks` — функция поиска по архиву выполненных работ.
+21. `0021_undo_carry_over` — RPC отмены переноса на следующий рабочий день.
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 

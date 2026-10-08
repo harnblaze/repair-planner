@@ -28,6 +28,7 @@ import { formatDateLong, formatDateShort } from "@/lib/business/dates";
 import {
   canCarryOverFromBoard,
   canCompleteFromBoard,
+  canUndoCarryOverFromBoard,
   canPlanOnDate,
   canReturnToBacklog,
   keepsDayOnReturnToBacklog,
@@ -54,6 +55,7 @@ import { Panel, PanelEmpty, PanelHeader } from "./panel";
 import { CarryOverChipButton } from "./carry-over-chip-button";
 import { CompleteChipButton } from "./complete-chip-button";
 import { TaskChip, TaskRow, type BoardTask } from "./task-chip";
+import { UndoCarryOverChipButton } from "./undo-carry-over-chip-button";
 
 // Неделя доски и панели очередей текущих заявок в одном DndContext: задачу
 // можно запланировать, сменить ей день, упорядочить внутри дня или очереди,
@@ -585,6 +587,8 @@ function SortableTaskChip({
 
   const canCarryOver = canCarryOverFromBoard(task, canEdit);
   const canComplete = canCompleteFromBoard(task, canEdit);
+  const canUndo = canUndoCarryOverFromBoard(task, canEdit);
+  const cornerButtons = [canUndo, canComplete, canCarryOver].filter(Boolean).length;
 
   // Сдвиг при перетаскивании — на обёртке, чтобы кнопки угла ехали вместе
   // с карточкой; слушатели перетаскивания — только на ссылке, кнопки они не задевают.
@@ -597,13 +601,14 @@ function SortableTaskChip({
       <TaskChip
         projectId={projectId}
         task={task}
-        reserveCorner={canCarryOver || canComplete}
+        cornerButtons={cornerButtons}
         {...dragAttributes(attributes)}
         {...dragListeners(listeners)}
         className={DRAGGABLE_CLASS}
       />
-      {(canCarryOver || canComplete) && !isDragging ? (
+      {cornerButtons > 0 && !isDragging ? (
         <div className="absolute right-1 bottom-1 flex">
+          {canUndo ? <UndoCarryOverChipButton projectId={projectId} taskId={task.id} /> : null}
           {canComplete ? (
             <CompleteChipButton projectId={projectId} taskId={task.id} previousStatus={task.status} />
           ) : null}

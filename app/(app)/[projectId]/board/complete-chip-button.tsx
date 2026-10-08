@@ -7,10 +7,10 @@ import { CheckIcon } from "@/components/common/icons";
 import type { TaskStatus } from "@/lib/business/task-status";
 
 import { setTaskStatusAction } from "../tasks/[taskId]/actions";
+import { UNDO_TOAST_MS } from "../tasks/[taskId]/undo-carry-over";
 import { chipCornerButtonClass } from "./chip-corner-button";
 
 const LABEL = "Завершить заявку";
-const UNDO_TOAST_MS = 6000;
 
 /**
  * Завершение с карточки доски — то же действие, что выбор статуса на странице
