@@ -1,7 +1,7 @@
 import Link from "next/link";
 
-import { ArrowRightIcon } from "@/components/common/icons";
-import { StatusBadge } from "@/components/common/status-badge";
+import { ArrowRightIcon, BookmarkIcon } from "@/components/common/icons";
+import { BADGE_BASE, StatusBadge } from "@/components/common/status-badge";
 import type { TaskStatus } from "@/lib/business/task-status";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +15,8 @@ export type BoardTask = {
   // (product-requirements.md §4.3, §4.4). Карточка приглушается.
   isHistory?: boolean;
   transferNote?: string | null;
+  /** Дополнительная очередь заявки — метка на карточке в дне (lib/business/backlog-queues.ts:queueLabel). */
+  queueName?: string | null;
 };
 
 // Пропсы перетаскивания (ref, listeners, style) передаются прямо на ссылку:
@@ -64,6 +66,15 @@ export function TaskChip({
       </span>
       <span className={cn("flex flex-wrap items-center gap-1.5", reserveCorner && "pr-6")}>
         <StatusBadge status={task.status} muted={isHistory} />
+        {task.queueName ? (
+          <span
+            className={cn(BADGE_BASE, "inline-flex items-center gap-1 border border-line-card bg-surface py-[3px] text-meta-alt")}
+            title={`Очередь: ${task.queueName}`}
+          >
+            <BookmarkIcon size={10} className="shrink-0" />
+            <span className="truncate">{task.queueName}</span>
+          </span>
+        ) : null}
         {meta ? <span className="text-[11.5px] break-words text-meta">{meta}</span> : null}
       </span>
       {task.transferNote ? (

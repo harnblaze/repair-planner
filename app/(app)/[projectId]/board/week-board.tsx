@@ -22,6 +22,7 @@ import {
   queueDropIndex,
   queueIdOf,
   queueKey,
+  queueLabel,
 } from "@/lib/business/backlog-queues";
 import { formatDateLong, formatDateShort } from "@/lib/business/dates";
 import {
@@ -277,6 +278,11 @@ export function WeekBoard({
     [days, queues],
   );
   const [board, applyOptimistic] = useOptimistic(serverState, applyMove);
+  // Метка очереди на карточке в дне — по queueId, поэтому верна и после оптимистичных переносов.
+  const withQueueLabel = <T extends DayTask | BacklogTask>(task: T): T => ({
+    ...task,
+    queueName: queueLabel(task.queueId, queues),
+  });
 
   const [active, setActive] = useState<DragData | null>(null);
   const [overContainer, setOverContainer] = useState<string | null>(null);
@@ -411,7 +417,7 @@ export function WeekBoard({
                 label={weekdayLabel(date)}
                 dayOff={daysOff[date] ?? null}
                 isToday={date === today}
-                tasks={board.days[date] ?? []}
+                tasks={(board.days[date] ?? []).map(withQueueLabel)}
                 highlighted={dropAllowed(date)}
                 canEdit={canEdit}
               />
@@ -454,7 +460,7 @@ export function WeekBoard({
           ) : (
             <TaskChip
               projectId={projectId}
-              task={activeTask}
+              task={withQueueLabel(activeTask)}
               className="cursor-grabbing shadow-[0_6px_16px_rgba(20,30,50,0.14)]"
             />
           )

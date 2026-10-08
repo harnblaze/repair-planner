@@ -6,6 +6,7 @@ import {
   queueDropIndex,
   queueIdOf,
   queueKey,
+  queueLabel,
 } from "./backlog-queues";
 
 type T = { id: string; queueId: string | null };
@@ -83,5 +84,21 @@ describe("queueDropIndex", () => {
     expect(queueDropIndex(list, "x", null, false)).toBe(0);
     expect(queueDropIndex(list, "x", null, true)).toBe(3);
     expect(queueDropIndex([], "x", null, true)).toBe(0);
+  });
+});
+
+describe("queueLabel", () => {
+  const queues = [
+    { id: null, name: "Текущие заявки" },
+    { id: "q1", name: "Столярные дела" },
+  ];
+
+  it("название дополнительной очереди", () => {
+    expect(queueLabel("q1", queues)).toBe("Столярные дела");
+  });
+
+  it("основная очередь и удалённая очередь — без метки", () => {
+    expect(queueLabel(null, queues)).toBeNull();
+    expect(queueLabel("gone", queues)).toBeNull();
   });
 });

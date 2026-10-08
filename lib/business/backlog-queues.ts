@@ -54,3 +54,15 @@ export function queueDropIndex(
   }
   return own ? overIndex : overIndex + (below ? 1 : 0);
 }
+
+/**
+ * Метка очереди на карточке в дне: название дополнительной очереди. У основной
+ * «Текущие заявки» метки нет — это очередь по умолчанию; у удалённой — тоже.
+ */
+export function queueLabel(
+  queueId: string | null,
+  queues: { id: string | null; name: string }[],
+): string | null {
+  if (queueId === null) return null;
+  return queues.find((q) => q.id === queueId)?.name ?? null;
+}
