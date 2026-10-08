@@ -7,7 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 
-import { updateTaskCategoryAction, updateTaskDescriptionAction, updateTaskTitleAction } from "./actions";
+import {
+  updateTaskCategoryAction,
+  updateTaskDescriptionAction,
+  updateTaskQueueAction,
+  updateTaskTitleAction,
+} from "./actions";
 
 type Category = { id: string; name: string };
 
@@ -16,12 +21,15 @@ export function TaskDetailsForm({
   taskId,
   task,
   categories,
+  queues,
   disabled = false,
 }: {
   projectId: string;
   taskId: string;
-  task: { title: string; description: string; categoryId: string };
+  task: { title: string; description: string; categoryId: string; queueId: string };
   categories: Category[];
+  /** Дополнительные очереди проекта; «Текущие заявки» — пустое значение. */
+  queues: Category[];
   disabled?: boolean;
 }) {
   // fieldset disabled выключает все вложенные поля разом (режим только просмотра).
@@ -35,6 +43,10 @@ export function TaskDetailsForm({
         initialValue={task.categoryId}
         categories={categories}
       />
+      {/* Поле нужно, только когда кроме «Текущих заявок» есть другие очереди. */}
+      {queues.length > 0 ? (
+        <QueueField projectId={projectId} taskId={taskId} initialValue={task.queueId} queues={queues} />
+      ) : null}
     </fieldset>
   );
 }
@@ -161,6 +173,47 @@ function CategoryField({
         {categories.map((category) => (
           <option key={category.id} value={category.id}>
             {category.name}
+          </option>
+        ))}
+      </NativeSelect>
+    </div>
+  );
+}
+
+function QueueField({
+  projectId,
+  taskId,
+  initialValue,
+  queues,
+}: {
+  projectId: string;
+  taskId: string;
+  initialValue: string;
+  queues: Category[];
+}) {
+  const [value, setValue] = useState(initialValue);
+  const [pending, startTransition] = useTransition();
+
+  const onChange = (next: string) => {
+    const previous = value;
+    setValue(next);
+    startTransition(async () => {
+      const result = await updateTaskQueueAction(projectId, taskId, next || null);
+      if (!result.ok) {
+        setValue(previous);
+        toast.error(result.error);
+      }
+    });
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor="queueId">Очередь</Label>
+      <NativeSelect id="queueId" value={value} disabled={pending} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Текущие заявки</option>
+        {queues.map((queue) => (
+          <option key={queue.id} value={queue.id}>
+            {queue.name}
           </option>
         ))}
       </NativeSelect>

@@ -35,11 +35,12 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
     { data: materials },
     { data: taskMaterials },
     { data: attachments },
+    { data: queues },
   ] = await Promise.all([
     getProjectRole(projectId),
     supabase
       .from("tasks")
-      .select("id, title, description, category_id, status, planned_date")
+      .select("id, title, description, category_id, queue_id, status, planned_date")
       .eq("id", taskId)
       .eq("project_id", projectId)
       .maybeSingle(),
@@ -69,6 +70,12 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
       .from("task_attachments")
       .select("id, storage_path, width, height")
       .eq("task_id", taskId)
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true }),
+    supabase
+      .from("task_queues")
+      .select("id, name")
       .eq("project_id", projectId)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true }),
@@ -131,8 +138,10 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
               title: task.title,
               description: task.description ?? "",
               categoryId: task.category_id ?? "",
+              queueId: task.queue_id ?? "",
             }}
             categories={categories ?? []}
+            queues={queues ?? []}
             disabled={!canEdit}
           />
 

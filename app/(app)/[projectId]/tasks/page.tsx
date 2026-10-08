@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 export default async function TasksPage({ params }: PageProps<"/[projectId]/tasks">) {
   const { projectId } = await params;
   const supabase = await createClient();
-  const [role, { data: tasks }, { data: categories }] = await Promise.all([
+  const [role, { data: tasks }, { data: categories }, { data: queues }] = await Promise.all([
     getProjectRole(projectId),
     supabase
       .from("tasks")
@@ -30,6 +30,12 @@ export default async function TasksPage({ params }: PageProps<"/[projectId]/task
       .eq("project_id", projectId)
       .eq("is_archived", false)
       .order("sort_order", { ascending: true }),
+    supabase
+      .from("task_queues")
+      .select("id, name")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true }),
   ]);
 
   const open = tasks?.filter((t) => t.status !== "completed" && t.status !== "cancelled") ?? [];
@@ -43,7 +49,7 @@ export default async function TasksPage({ params }: PageProps<"/[projectId]/task
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {canEditProject(role) ? (
-            <CreateTaskForm projectId={projectId} categories={categories ?? []} />
+            <CreateTaskForm projectId={projectId} categories={categories ?? []} queues={queues ?? []} />
           ) : null}
 
           <div className="flex flex-col divide-y divide-line-subtle">

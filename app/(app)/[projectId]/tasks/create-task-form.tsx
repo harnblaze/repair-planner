@@ -17,9 +17,12 @@ type Category = { id: string; name: string };
 export function CreateTaskForm({
   projectId,
   categories,
+  queues,
 }: {
   projectId: string;
   categories: Category[];
+  /** Дополнительные очереди; без них поле не показывается. */
+  queues: Category[];
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -52,6 +55,16 @@ export function CreateTaskForm({
           </option>
         ))}
       </NativeSelect>
+      {queues.length > 0 ? (
+        <NativeSelect aria-label="Очередь" {...register("queueId")} defaultValue="">
+          <option value="">Текущие заявки</option>
+          {queues.map((queue) => (
+            <option key={queue.id} value={queue.id}>
+              {queue.name}
+            </option>
+          ))}
+        </NativeSelect>
+      ) : null}
       <Button type="submit" disabled={pending}>
         {pending ? "Создание…" : "Создать"}
       </Button>
