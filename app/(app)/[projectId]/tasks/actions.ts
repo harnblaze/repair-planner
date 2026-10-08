@@ -39,6 +39,7 @@ export async function createTaskAction(
       project_id: projectId,
       title: parsed.data.title,
       category_id: parsed.data.categoryId || null,
+      queue_id: parsed.data.queueId || null,
       created_by: user.id,
     })
     .select("id")

@@ -8,15 +8,20 @@ import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
 import { boardListSchema, type BoardListInput } from "@/lib/validation/board-list";
 import { idSchema, moveBoardListSchema, type MoveBoardListInput } from "@/lib/validation/board-move";
+import { taskQueueSchema, type TaskQueueInput } from "@/lib/validation/task-queue";
 
 // Дополнительные списки доски (board_lists). Системные списки создаёт БД при
 // создании проекта; здесь создаются только пользовательские. Системный список
 // нельзя удалить и нельзя сделать пользовательским — это закреплено в RLS и
 // триггере (supabase/migrations/0006, 0014), проверки здесь — только UX.
+//
+// Очереди текущих заявок (task_queues, 0018) — здесь же: основная очередь
+// строки не имеет, удаляются и переименовываются только дополнительные.
 
 function revalidateLists(projectId: string) {
   revalidatePath(`/${projectId}/board`);
   revalidatePath(`/${projectId}/settings/lists`);
+  revalidatePath(`/${projectId}/tasks`);
 }
 
 const LIST_NOT_FOUND: ActionResult = { ok: false, error: "Список не найден. Обновите страницу." };
@@ -151,6 +156,102 @@ export async function moveBoardListAction(
     console.error("moveBoardListAction:", error);
     return { ok: false, error: mapBoardMoveError(error.message) };
   }
+
+  revalidateLists(projectId);
+  return { ok: true };
+}
+
+const QUEUE_NOT_FOUND: ActionResult = { ok: false, error: "Очередь не найдена. Обновите страницу." };
+
+export async function createTaskQueueAction(
+  projectId: string,
+  input: TaskQueueInput,
+): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const parsed = taskQueueSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Проверьте правильность заполнения формы.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("task_queues")
+    .insert({ project_id: projectId, name: parsed.data.name });
+
+  if (error) {
+    console.error("createTaskQueueAction:", error);
+    return { ok: false, error: "Не удалось создать очередь. Попробуйте ещё раз." };
+  }
+
+  revalidateLists(projectId);
+  return { ok: true };
+}
+
+export async function renameTaskQueueAction(
+  projectId: string,
+  queueId: string,
+  input: TaskQueueInput,
+): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const parsed = taskQueueSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Проверьте правильность заполнения формы.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+  if (!idSchema.safeParse(queueId).success) return QUEUE_NOT_FOUND;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("task_queues")
+    .update({ name: parsed.data.name })
+    .eq("id", queueId)
+    .eq("project_id", projectId)
+    .select("id");
+
+  if (error) {
+    console.error("renameTaskQueueAction:", error);
+    return { ok: false, error: "Не удалось переименовать очередь. Попробуйте ещё раз." };
+  }
+  if (!data || data.length === 0) return QUEUE_NOT_FOUND;
+
+  revalidateLists(projectId);
+  return { ok: true };
+}
+
+export async function deleteTaskQueueAction(
+  projectId: string,
+  queueId: string,
+): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  if (!idSchema.safeParse(queueId).success) return QUEUE_NOT_FOUND;
+
+  const supabase = await createClient();
+  // Заявки очереди переходят в основную (tasks_queue_fk on delete set null).
+  const { data, error } = await supabase
+    .from("task_queues")
+    .delete()
+    .eq("id", queueId)
+    .eq("project_id", projectId)
+    .select("id");
+
+  if (error) {
+    console.error("deleteTaskQueueAction:", error);
+    return { ok: false, error: "Не удалось удалить очередь. Попробуйте ещё раз." };
+  }
+  if (!data || data.length === 0) return QUEUE_NOT_FOUND;
 
   revalidateLists(projectId);
   return { ok: true };

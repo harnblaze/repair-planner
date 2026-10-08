@@ -9,9 +9,11 @@ import type { ActionResult } from "@/lib/types/action-result";
 import { boardItemSchema, type BoardItemInput } from "@/lib/validation/board-item";
 import {
   idSchema,
+  moveBacklogTaskSchema,
   moveBoardItemSchema,
   moveTaskScheduleSchema,
   planTaskOnDaySchema,
+  type MoveBacklogTaskInput,
   type MoveBoardItemInput,
   type MoveTaskScheduleInput,
   type PlanTaskOnDayInput,
@@ -64,6 +66,7 @@ export async function createTaskFromBoardAction(
     project_id: projectId,
     title: parsed.data.title,
     category_id: parsed.data.categoryId || null,
+    queue_id: parsed.data.queueId || null,
     created_by: user.id,
   });
 
@@ -332,6 +335,34 @@ export async function moveBoardItemAction(
 
   if (error) {
     console.error("moveBoardItemAction:", error);
+    return { ok: false, error: mapBoardMoveError(error.message) };
+  }
+
+  revalidateBoard(projectId);
+  return { ok: true };
+}
+
+// Перестановка в панели очереди и перенос между очередями (supabase/migrations/0018).
+export async function moveBacklogTaskAction(
+  projectId: string,
+  input: MoveBacklogTaskInput,
+): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const parsed = moveBacklogTaskSchema.safeParse(input);
+  if (!parsed.success) return INVALID_MOVE;
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("move_backlog_task", {
+    p_task_id: parsed.data.taskId,
+    // Сгенерированный тип RPC не допускает null, хотя функция его принимает.
+    p_queue_id: parsed.data.queueId as string,
+    p_position: parsed.data.position,
+  });
+
+  if (error) {
+    console.error("moveBacklogTaskAction:", error);
     return { ok: false, error: mapBoardMoveError(error.message) };
   }
 

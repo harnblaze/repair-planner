@@ -129,6 +129,36 @@ export async function updateTaskCategoryAction(
   return { ok: true };
 }
 
+// Смена очереди — обычный UPDATE под RLS: очередь чужого проекта отвергает
+// составной FK tasks_queue_fk, позицию в очереди сбрасывает триггер (0018).
+export async function updateTaskQueueAction(
+  projectId: string,
+  taskId: string,
+  queueId: string | null,
+): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("tasks")
+    .update({ queue_id: queueId || null })
+    .eq("id", taskId)
+    .eq("project_id", projectId)
+    .select("id");
+
+  if (error) {
+    console.error("updateTaskQueueAction:", error);
+    return { ok: false, error: "Не удалось сменить очередь. Обновите страницу и попробуйте ещё раз." };
+  }
+  if (!data || data.length === 0) {
+    return { ok: false, error: "Заявка не найдена." };
+  }
+
+  revalidateTask(projectId, taskId);
+  return { ok: true };
+}
+
 export async function setTaskStatusAction(
   projectId: string,
   taskId: string,
