@@ -1,5 +1,5 @@
 import { ListPageSkeleton } from "@/components/common/list-page-skeleton";
 
 export default function Loading() {
-  return <ListPageSkeleton maxWidth="max-w-lg" rows={5} />;
+  return <ListPageSkeleton maxWidth="max-w-3xl" rows={5} />;
 }
