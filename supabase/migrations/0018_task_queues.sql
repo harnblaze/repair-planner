@@ -52,7 +52,7 @@ alter table public.tasks add column if not exists backlog_position int;
 comment on column public.tasks.queue_id is
   'Очередь текущих заявок; null — основная («Текущие заявки»)';
 comment on column public.tasks.backlog_position is
-  'Место в панели очереди; null — ещё не расставляли: такие идут первыми, новые сверху';
+  'Место в панели очереди (меньше — выше); null — заявка не в панели (запланирована или закрыта)';
 
 -- Составной FK, как у category_id (docs/database.md §4): очередь чужого проекта
 -- отвергает сам PostgreSQL. При удалении очереди заявки уходят в основную.
@@ -66,19 +66,34 @@ alter table public.tasks
 create index if not exists tasks_queue_idx on public.tasks (queue_id) where queue_id is not null;
 
 -- Заявка встаёт наверх своей очереди, когда появляется в панели заново: новая,
--- вернулась с доски, очищена дата, переоткрыта, сменила очередь.
+-- вернулась с доски, очищена дата, переоткрыта, сменила очередь. «Наверх» —
+-- позиция на единицу меньше самой верхней в очереди: null с порядком по дате
+-- создания поставил бы старую вернувшуюся заявку ниже более новых. Ушедшая из
+-- панели (запланирована, закрыта) теряет позицию.
 create or replace function private.reset_task_backlog_position()
 returns trigger
 language plpgsql
 set search_path = ''
 as $$
 begin
-  if tg_op = 'INSERT' then
+  if tg_op = 'UPDATE'
+     and new.planned_date is not distinct from old.planned_date
+     and new.queue_id is not distinct from old.queue_id
+     and (new.status in ('completed', 'cancelled')) = (old.status in ('completed', 'cancelled')) then
+    return new;
+  end if;
+
+  if new.planned_date is not null or new.status in ('completed', 'cancelled') then
     new.backlog_position := null;
-  elsif new.planned_date is distinct from old.planned_date
-     or new.queue_id is distinct from old.queue_id
-     or (new.status in ('completed', 'cancelled')) <> (old.status in ('completed', 'cancelled')) then
-    new.backlog_position := null;
+  else
+    select coalesce(min(t.backlog_position), 0) - 1
+      into new.backlog_position
+      from public.tasks t
+      where t.project_id = new.project_id
+        and t.queue_id is not distinct from new.queue_id
+        and t.planned_date is null
+        and t.status not in ('completed', 'cancelled')
+        and t.id <> new.id;
   end if;
   return new;
 end;
@@ -88,6 +103,22 @@ drop trigger if exists tasks_reset_backlog_position on public.tasks;
 create trigger tasks_reset_backlog_position
   before insert or update of planned_date, status, queue_id on public.tasks
   for each row execute function private.reset_task_backlog_position();
+
+-- Заявки, уже лежащие в панелях, получают позиции в прежнем видимом порядке
+-- (новые сверху) — выше любых уже расставленных. Повторный запуск ничего не меняет.
+with unranked as (
+  select t.id,
+         (row_number() over w - count(*) over (partition by t.project_id, t.queue_id))::int as pos
+    from public.tasks t
+    where t.backlog_position is null
+      and t.planned_date is null
+      and t.status not in ('completed', 'cancelled')
+    window w as (partition by t.project_id, t.queue_id order by t.created_at desc, t.id)
+)
+update public.tasks t
+  set backlog_position = unranked.pos
+  from unranked
+  where t.id = unranked.id;
 
 -- ================= RPC: порядок и перенос между очередями =================
 
@@ -141,7 +172,7 @@ begin
   perform private.lock_board_container('queue', v_task.project_id, least(v_from_key, v_to_key));
   if v_from_key <> v_to_key then
     perform private.lock_board_container('queue', v_task.project_id, greatest(v_from_key, v_to_key));
-    -- Триггер tasks_reset_backlog_position обнулит позицию; её задаёт перенумерация ниже.
+    -- Триггер tasks_reset_backlog_position поставит заявку наверх; её место задаёт перенумерация ниже.
     update public.tasks set queue_id = p_queue_id where id = p_task_id;
   end if;
 

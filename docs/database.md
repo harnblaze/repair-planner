@@ -208,7 +208,7 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 | `description` | text | |
 | `category_id` | uuid null | FK составной → `categories(id, project_id)`, on delete set null |
 | `queue_id` | uuid null | очередь текущих заявок (0018); null — основная «Текущие заявки» |
-| `backlog_position` | int null | место в панели очереди (0018); null — ещё не расставляли |
+| `backlog_position` | int null | место в панели очереди (0018), меньше — выше; null — заявка не в панели |
 | `status` | task_status not null default `'new'` | |
 | `planned_date` | date null | **кеш** — последняя дата из `task_schedule` (null, если последний день отложен), поддерживается триггером |
 | `completed_at` | timestamptz null | |
@@ -226,7 +226,7 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 
 Позиция задачи в дне зависит от дня, поэтому живёт в `task_schedule`. В `tasks` — только `backlog_position`, место в панели очереди, пока задача не запланирована.
 
-`queue_id uuid null` (0018) — очередь текущих заявок; `null` — основная «Текущие заявки». Составной FK `tasks_queue_fk (queue_id, project_id) → task_queues (id, project_id) on delete set null (queue_id)`: при удалении очереди заявки уходят в основную. `backlog_position int null` — место в панели очереди; порядок панели `backlog_position asc nulls first, created_at desc, id`. Триггер `tasks_reset_backlog_position` (`private.reset_task_backlog_position`) обнуляет позицию при вставке, смене `planned_date` или `queue_id` и переходе статуса между открытыми и закрытыми — заявка встаёт наверх своей очереди.
+`queue_id uuid null` (0018) — очередь текущих заявок; `null` — основная «Текущие заявки». Составной FK `tasks_queue_fk (queue_id, project_id) → task_queues (id, project_id) on delete set null (queue_id)`: при удалении очереди заявки уходят в основную. `backlog_position int null` — место в панели очереди; порядок панели `backlog_position asc nulls first, created_at desc, id`. Триггер `tasks_reset_backlog_position` (`private.reset_task_backlog_position`) срабатывает при вставке, смене `planned_date` или `queue_id` и переходе статуса между открытыми и закрытыми: заявка, оказавшаяся в панели, получает `min(backlog_position) - 1` своей очереди (встаёт наверх), ушедшая из панели — `null`. Миграция расставила позиции уже лежавшим в панелях заявкам в прежнем порядке (новые сверху).
 
 ### 5.8 `task_schedule` — дни работы над задачей
 

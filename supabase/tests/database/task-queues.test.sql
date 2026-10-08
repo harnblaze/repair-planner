@@ -277,12 +277,12 @@ select throws_ok(
 );
 reset role;
 
--- 37. Возврат с доски (последний день отложен) обнуляет позицию
+-- 37. Возврат с доски (последний день отложен) — наверх своей очереди
 update public.task_schedule set postponed = true where task_id = 'f1000000-0000-0000-0000-000000000002';
-select ok(
-  (select planned_date is null and backlog_position is null
-     from public.tasks where id = 'f1000000-0000-0000-0000-000000000002'),
-  'returning a task to the backlog resets its position'
+select is(
+  (public._test_backlog('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', null))[1],
+  'T2',
+  'a task returned to the backlog is first in its queue'
 );
 
 -- 38. Новая заявка — первой в своей очереди
@@ -302,21 +302,21 @@ select isnt(
   'changing status between open statuses keeps the position'
 );
 
--- 40. Завершение и переоткрытие обнуляют позицию
+-- 40. Переоткрытая заявка — наверх, даже выше более новой T7
 update public.tasks set status = 'completed', completed_at = now() where id = 'f1000000-0000-0000-0000-000000000003';
 update public.tasks set status = 'new', completed_at = null where id = 'f1000000-0000-0000-0000-000000000003';
 select is(
-  (select backlog_position from public.tasks where id = 'f1000000-0000-0000-0000-000000000003'),
-  null::int,
-  'reopening a closed task resets its position'
+  (public._test_backlog('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', null))[1],
+  'T3',
+  'a reopened older task is first in its queue'
 );
 
--- 41. Смена очереди обнуляет позицию
+-- 41. Смена очереди — наверх новой очереди
 update public.tasks set queue_id = 'd1000000-0000-0000-0000-0000000000e1' where id = 'f1000000-0000-0000-0000-000000000006';
 select is(
-  (select backlog_position from public.tasks where id = 'f1000000-0000-0000-0000-000000000006'),
-  null::int,
-  'changing the queue resets the position'
+  public._test_backlog('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'd1000000-0000-0000-0000-0000000000e1'),
+  array['Q1'],
+  'a task that changed its queue is in the new queue'
 );
 
 -- 42-43. Удаление очереди переводит её заявки в основную
@@ -328,9 +328,10 @@ select lives_ok(
 );
 reset role;
 select ok(
-  (select queue_id is null and backlog_position is null and project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
-     from public.tasks where id = 'f1000000-0000-0000-0000-000000000001'),
-  'tasks of a deleted queue move to the main queue'
+  (select queue_id is null and project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+     from public.tasks where id = 'f1000000-0000-0000-0000-000000000001')
+  and (public._test_backlog('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', null))[1] = 'T1',
+  'tasks of a deleted queue move to the top of the main queue'
 );
 
 -- 44-45. Права на функцию
