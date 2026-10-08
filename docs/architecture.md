@@ -67,6 +67,7 @@ PostgreSQL (Supabase)
 ### 3.2 Страница «Заявки»: вкладки и архив
 
 * `/[projectId]/tasks` — вкладки «Открытые» и «Архив» (`?view=archive`). Архив — Server Component: GET-форма фильтров, разбор `searchParams` в `lib/validation/archive-filters.ts`, загрузка `tasks/archive-data.ts` → RPC `search_archive_tasks` (0020, период по дате выполнения или отмены — 0023, фильтр и расход материала — 0024). Клиентского JS у вкладки нет. «Открытые» — та же схема: `lib/validation/open-task-filters.ts`, цех фильтруется в запросе, текст — в памяти (`lib/business/task-search.ts`); общие хелперы разбора — `lib/validation/search-params.ts`.
+* `/[projectId]/reports` — вкладки «Расход материалов» и «Выполненные работы» (`?report=works`). Обе — Server Components: месяц и цех в адресе, загрузка общая для страницы и CSV (`reports/data.ts` → RPC `material_consumption_by_category`, `reports/works-data.ts` → RPC `completed_works_report`, 0025), выгрузка — `reports/export` и `reports/works/export`. Группировка и CSV отчёта работ — `lib/business/works-report.ts`; формат CSV общий — `lib/business/csv.ts`. Клиентский только фильтр цеха (`category-filter.tsx`, сохраняет `report` в адресе).
 
 ## 4. Маршрутизация и выбор проекта
 
@@ -202,7 +203,9 @@ app/
       tasks/[taskId]/               карточка задачи; фото: attachment-actions.ts, task-attachments.tsx
       materials/                    справочник и остатки, быстрый приход в строке
       materials/[materialId]/       приход, корректировка по пересчёту, история движений
-      reports/                      отчёт по расходу материалов (page, data.ts, export/route.ts — CSV)
+      reports/                      отчёты, вкладки «Расход материалов» и «Выполненные работы» (?report=works):
+                                    page, data.ts + export/route.ts — расход; works-data.ts (RPC completed_works_report, 0025),
+                                    works-report.tsx, works/export/route.ts — работы; CSV-формат общий — lib/business/csv.ts
       executors/
       categories/
       settings/                     название проекта, timezone; участники, приглашения (members-*.tsx)
