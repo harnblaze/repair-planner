@@ -48,7 +48,7 @@ export function PlanTaskForm({
     if (next === savedRef.current || !isSubmittablePlanDate(next)) return;
 
     const request = ++requestRef.current;
-    void setTaskPlannedDateAction(projectId, taskId, next || null).then((result) => {
+    void setTaskPlannedDateAction(projectId, taskId, next).then((result) => {
       if (result.ok) {
         savedRef.current = next;
       } else if (request === requestRef.current) {
@@ -66,7 +66,8 @@ export function PlanTaskForm({
     }
   };
 
-  // Уход из поля: полную дату сохраняем сразу, недописанную — откатываем.
+  // Уход из поля: полную дату сохраняем сразу, недописанную или пустую — откатываем
+  // (пустое значение Chrome отдаёт и при стирании одного сегмента даты).
   const commit = () => {
     if (isSubmittablePlanDate(value)) {
       save(value);
@@ -90,11 +91,6 @@ export function PlanTaskForm({
           if (e.key === "Enter") commit();
         }}
       />
-      {disabled ? null : (
-        <p className="text-[11px] text-meta-alt">
-          Очистите дату, чтобы вернуть заявку в «Текущие заявки».
-        </p>
-      )}
     </div>
   );
 }

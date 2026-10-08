@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { isSubmittablePlanDate } from "./plan-date-input";
 
 describe("isSubmittablePlanDate", () => {
-  it("accepts an empty value — clearing the plan", () => {
-    expect(isSubmittablePlanDate("")).toBe(true);
+  it("rejects an empty value — Chrome also gives it when one segment is erased", () => {
+    expect(isSubmittablePlanDate("")).toBe(false);
   });
 
   it("accepts a complete date", () => {

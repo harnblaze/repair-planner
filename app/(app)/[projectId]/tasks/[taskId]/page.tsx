@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { BackLink } from "@/components/common/back-link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { canEditProject } from "@/lib/business/project-roles";
+import { canReturnToBacklog } from "@/lib/business/task-planning";
 import { addDays, nextWorkingDay } from "@/lib/business/working-days";
 import { getProjectRole } from "@/lib/projects/access";
 import { getWorkCalendar } from "@/lib/projects/calendar";
@@ -13,6 +14,7 @@ import { createClient } from "@/lib/supabase/server";
 import { CarryOverButton } from "./carry-over-button";
 import { ExecutorsPicker } from "./executors-picker";
 import { PlanTaskForm } from "./plan-task-form";
+import { ReturnToBacklogButton } from "./return-to-backlog-button";
 import { StatusSelect } from "./status-select";
 import { TaskDetailsForm } from "./task-details-form";
 import { TaskAttachments, type TaskPhoto } from "./task-attachments";
@@ -169,14 +171,23 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
             disabled={!canEdit}
           />
 
-          {canEdit ? (
-            <CarryOverButton
-              projectId={projectId}
-              taskId={taskId}
-              plannedDate={task.planned_date}
-              nextDate={nextDate}
-              status={task.status}
-            />
+          {/* Обёртка — только когда кнопки видны, иначе пустой блок добавит отступ. */}
+          {canEdit && task.planned_date && canReturnToBacklog(task.status) ? (
+            <div className="flex flex-wrap gap-2">
+              <CarryOverButton
+                projectId={projectId}
+                taskId={taskId}
+                plannedDate={task.planned_date}
+                nextDate={nextDate}
+                status={task.status}
+              />
+              <ReturnToBacklogButton
+                projectId={projectId}
+                taskId={taskId}
+                plannedDate={task.planned_date}
+                status={task.status}
+              />
+            </div>
           ) : null}
 
           <TaskMaterials
