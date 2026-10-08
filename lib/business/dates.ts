@@ -48,3 +48,16 @@ export function formatDateTime(isoTimestamp: string, timezone: string): string {
 
   return `${formatDateLong(`${part("year")}-${part("month")}-${part("day")}`)} ${part("year")}, ${part("hour")}:${part("minute")}`;
 }
+
+/** "01.10.2026" — дата момента (timestamptz) в timezone проекта, для списков. */
+export function formatDateNumeric(isoTimestamp: string, timezone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(isoTimestamp));
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+
+  return `${part("day")}.${part("month")}.${part("year")}`;
+}
