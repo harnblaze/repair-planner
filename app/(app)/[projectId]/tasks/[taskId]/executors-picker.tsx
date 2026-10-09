@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectLabel,
   SelectSeparator,
@@ -59,31 +60,44 @@ export function ExecutorsPicker({
             {(value: string[]) => executorsSummary((value ?? []).map((id) => nameById.get(id) ?? ""))}
           </SelectValue>
         </SelectTrigger>
-        <SelectContent>
-          {active.length === 0 ? (
-            <SelectLabel>Нет активных исполнителей</SelectLabel>
-          ) : (
-            active.map((executor) => (
-              <SelectItem key={executor.id} value={executor.id}>
-                {executor.name}
-                {executor.position ? ` — ${executor.position}` : ""}
-              </SelectItem>
-            ))
-          )}
+        {/* Под полем, а не поверх: при выборе нескольких исполнителей поле с итогом остаётся видно. */}
+        <SelectContent alignItemWithTrigger={false} align="start">
+          {/* SelectLabel работает только внутри SelectGroup — иначе Base UI роняет страницу. */}
+          <SelectGroup>
+            {active.length === 0 ? (
+              <SelectLabel>Нет активных исполнителей</SelectLabel>
+            ) : (
+              active.map((executor) => (
+                <SelectItem key={executor.id} value={executor.id}>
+                  <ExecutorOption executor={executor} />
+                </SelectItem>
+              ))
+            )}
+          </SelectGroup>
           {inactive.length > 0 ? (
             <>
               <SelectSeparator />
-              <SelectLabel>Неактивные</SelectLabel>
-              {inactive.map((executor) => (
-                <SelectItem key={executor.id} value={executor.id}>
-                  {executor.name}
-                  {executor.position ? ` — ${executor.position}` : ""}
-                </SelectItem>
-              ))}
+              <SelectGroup>
+                <SelectLabel>Неактивные</SelectLabel>
+                {inactive.map((executor) => (
+                  <SelectItem key={executor.id} value={executor.id}>
+                    <ExecutorOption executor={executor} />
+                  </SelectItem>
+                ))}
+              </SelectGroup>
             </>
           ) : null}
         </SelectContent>
       </Select>
     </PropertyField>
+  );
+}
+
+function ExecutorOption({ executor }: { executor: Executor }) {
+  return (
+    <>
+      <span className="truncate">{executor.name}</span>
+      {executor.position ? <span className="truncate text-meta">{executor.position}</span> : null}
+    </>
   );
 }
