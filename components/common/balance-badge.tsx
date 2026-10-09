@@ -1,4 +1,5 @@
 import { BADGE_BASE } from "@/components/common/status-badge";
+import { balanceState } from "@/lib/business/material-stock";
 import { cn } from "@/lib/utils";
 
 /**
@@ -15,7 +16,9 @@ export function BalanceBadge({
   minimumBalance: number;
   className?: string;
 }) {
-  if (balance < 0) {
+  const state = balanceState(balance, minimumBalance);
+
+  if (state === "negative") {
     return (
       <span className={cn(BADGE_BASE, "bg-status-alert-bg text-status-alert-fg", className)}>
         отрицательный остаток
@@ -23,7 +26,7 @@ export function BalanceBadge({
     );
   }
 
-  if (balance <= minimumBalance) {
+  if (state === "low") {
     return (
       <span className={cn(BADGE_BASE, "bg-status-warn-bg text-status-warn-fg", className)}>
         низкий остаток
