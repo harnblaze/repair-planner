@@ -21,7 +21,7 @@ import { CreateTaskForm } from "./create-task-form";
 import { OpenTasksFiltersForm } from "./open-tasks-filters-form";
 
 export const metadata: Metadata = {
-  title: "Заявки — Repair Planner",
+  title: "Заявки — Планировщик",
 };
 
 // Сегменты как у переключателя недели на доске (docs/redesign.md §3).

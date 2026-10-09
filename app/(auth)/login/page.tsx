@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = {
-  title: "Вход — Repair Planner",
+  title: "Вход — Планировщик",
 };
 
 export default function LoginPage() {

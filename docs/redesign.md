@@ -22,7 +22,7 @@
 - Flex, `justify-content: space-between`.
 - **Слева**, gap 20px:
   - Логотип-марка: квадрат 22×22, `border-radius: 5px`, фон = accent `#2F55C8`, внутри белая line-иконка календаря 12×12 (stroke 1.6).
-  - Название **Repair Planner** — 14.5px / 600 / `letter-spacing: -0.01em` / `#1B2430`. Gap между маркой и текстом 9px.
+  - Название **Планировщик** (до 2026-10-09 — Repair Planner) — 14.5px / 600 / `letter-spacing: -0.01em` / `#1B2430`. Gap между маркой и текстом 9px.
   - Вертикальный разделитель 1×18px, `#E1E6ED`.
   - Ссылка **Профиль** — 13px / 400 / `#55606E`, padding 5px 9px, radius 6px. Hover: фон `#F1F3F6`, текст `#1B2430`.
 - **Справа**: ссылка **Выйти** — 13px / `#6B7685`, padding 5px 10px, radius 6px, border 1px transparent. Hover: текст `#1B2430`, border `#E1E6ED`, фон `#F7F9FB`.

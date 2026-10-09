@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ForgotPasswordForm } from "./forgot-password-form";
 
 export const metadata: Metadata = {
-  title: "Восстановление пароля — Repair Planner",
+  title: "Восстановление пароля — Планировщик",
 };
 
 export default function ForgotPasswordPage() {

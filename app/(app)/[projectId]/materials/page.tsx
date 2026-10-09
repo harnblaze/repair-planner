@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { MaterialsList } from "./materials-list";
 
 export const metadata: Metadata = {
-  title: "Материалы — Repair Planner",
+  title: "Материалы — Планировщик",
 };
 
 export default async function MaterialsPage({ params }: PageProps<"/[projectId]/materials">) {

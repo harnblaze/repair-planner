@@ -10,7 +10,7 @@ import { CreateExecutorForm } from "./create-executor-form";
 import { ExecutorRow } from "./executor-row";
 
 export const metadata: Metadata = {
-  title: "Исполнители — Repair Planner",
+  title: "Исполнители — Планировщик",
 };
 
 export default async function ExecutorsPage({ params }: PageProps<"/[projectId]/executors">) {

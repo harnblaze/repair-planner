@@ -10,7 +10,7 @@ import { ArchivedProjects } from "./archived-projects";
 import { CreateProjectForm } from "./create-project-form";
 
 export const metadata: Metadata = {
-  title: "Проекты — Repair Planner",
+  title: "Проекты — Планировщик",
 };
 
 export default async function ProjectsPage() {

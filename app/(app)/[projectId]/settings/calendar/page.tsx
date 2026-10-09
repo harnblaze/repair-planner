@@ -14,7 +14,7 @@ import { AddPublicHolidaysButton } from "./add-public-holidays-button";
 import { CalendarDayRow } from "./calendar-day-row";
 
 export const metadata: Metadata = {
-  title: "Производственный календарь — Repair Planner",
+  title: "Производственный календарь — Планировщик",
 };
 
 // Сегментированная группа кнопок года — как навигация по неделям на доске.

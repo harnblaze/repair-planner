@@ -10,7 +10,7 @@ import { CategoryRow } from "./category-row";
 import { CreateCategoryForm } from "./create-category-form";
 
 export const metadata: Metadata = {
-  title: "Категории — Repair Planner",
+  title: "Категории — Планировщик",
 };
 
 export default async function CategoriesPage({ params }: PageProps<"/[projectId]/categories">) {

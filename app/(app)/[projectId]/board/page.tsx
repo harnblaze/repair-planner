@@ -22,7 +22,7 @@ import { BoardList } from "./board-list";
 import { WeekBoard, type BacklogTask, type BoardQueue, type DayTask } from "./week-board";
 
 export const metadata: Metadata = {
-  title: "Доска — Repair Planner",
+  title: "Доска — Планировщик",
 };
 
 type ExecutorJoin = { executors: { name: string } | null };

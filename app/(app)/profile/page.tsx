@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ProfileForm } from "./profile-form";
 
 export const metadata: Metadata = {
-  title: "Профиль — Repair Planner",
+  title: "Профиль — Планировщик",
 };
 
 export default async function ProfilePage() {

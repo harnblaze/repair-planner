@@ -15,7 +15,7 @@ import { MembersSection } from "./members-section";
 import { SettingsForm } from "./settings-form";
 
 export const metadata: Metadata = {
-  title: "Настройки проекта — Repair Planner",
+  title: "Настройки проекта — Планировщик",
 };
 
 export default async function ProjectSettingsPage({ params }: PageProps<"/[projectId]/settings">) {

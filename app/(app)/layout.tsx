@@ -28,7 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <CalendarIcon size={12} strokeWidth={1.6} />
             </span>
             <span className="text-[14.5px] font-semibold tracking-[-0.01em] text-ink">
-              Repair Planner
+              Планировщик
             </span>
           </Link>
           <span className="h-[18px] w-px bg-line-strong" />

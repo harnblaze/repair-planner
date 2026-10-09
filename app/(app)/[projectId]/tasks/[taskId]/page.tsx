@@ -27,7 +27,7 @@ import { TaskAttachments, type TaskPhoto } from "./task-attachments";
 import { TaskMaterials } from "./task-materials";
 
 export const metadata: Metadata = {
-  title: "Заявка — Repair Planner",
+  title: "Заявка — Планировщик",
 };
 
 export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks/[taskId]">) {

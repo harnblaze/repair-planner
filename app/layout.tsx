@@ -21,7 +21,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Repair Planner",
+  title: "Планировщик",
   description: "Планирование и управление работами ремонтно-строительного цеха",
   // Установка на главный экран iPhone: Safari не читает иконки из манифеста.
   appleWebApp: { title: "Планировщик", capable: true, statusBarStyle: "default" },

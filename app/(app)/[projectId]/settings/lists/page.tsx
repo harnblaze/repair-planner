@@ -13,7 +13,7 @@ import { ListRow, type ListRowData } from "./list-row";
 import { QueueRow } from "./queue-row";
 
 export const metadata: Metadata = {
-  title: "Очереди и списки — Repair Planner",
+  title: "Очереди и списки — Планировщик",
 };
 
 export default async function BoardListsPage({ params }: PageProps<"/[projectId]/settings/lists">) {

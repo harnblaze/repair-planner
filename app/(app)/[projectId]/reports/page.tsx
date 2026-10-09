@@ -21,7 +21,7 @@ import { loadWorksReport } from "./works-data";
 import { WorksReport } from "./works-report";
 
 export const metadata: Metadata = {
-  title: "Отчёты — Repair Planner",
+  title: "Отчёты — Планировщик",
 };
 
 /** Вкладки отчётов: при переключении сохраняются месяц и цех текущего отчёта. */

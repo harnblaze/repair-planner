@@ -10,7 +10,7 @@ import { invitationTokenSchema } from "@/lib/validation/members";
 import { AcceptInvitationButton } from "./accept-invitation-button";
 
 export const metadata: Metadata = {
-  title: "Приглашение в проект — Repair Planner",
+  title: "Приглашение в проект — Планировщик",
   // Токен в адресе не должен уходить в Referer.
   referrer: "no-referrer",
 };

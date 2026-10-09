@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ResetPasswordForm } from "./reset-password-form";
 
 export const metadata: Metadata = {
-  title: "Новый пароль — Repair Planner",
+  title: "Новый пароль — Планировщик",
 };
 
 export default function ResetPasswordPage() {

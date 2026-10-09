@@ -18,7 +18,7 @@ import { CountForm } from "./count-form";
 import { ReceiptForm } from "./receipt-form";
 
 export const metadata: Metadata = {
-  title: "Материал — Repair Planner",
+  title: "Материал — Планировщик",
 };
 
 const HISTORY_PAGE_SIZE = 50;
