@@ -1,6 +1,8 @@
 // Работа с датами всегда в timezone проекта, а не сервера/браузера (CLAUDE.md §32).
 // Формат хранения и передачи — "YYYY-MM-DD" (соответствует типу `date` в PostgreSQL).
 
+import { weekdayLabel } from "./working-days";
+
 /** "Сегодня" в IANA timezone проекта, а не в timezone сервера. */
 export function todayInTimezone(timezone: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date());
@@ -21,6 +23,22 @@ const MONTHS_RU_GENITIVE = [
   "декабря",
 ];
 
+// Свои сокращения, а не Intl: вывод ICU по-разному сокращает месяцы на разных платформах.
+const MONTHS_RU_SHORT = [
+  "янв.",
+  "февр.",
+  "марта",
+  "апр.",
+  "мая",
+  "июня",
+  "июля",
+  "авг.",
+  "сент.",
+  "окт.",
+  "нояб.",
+  "дек.",
+];
+
 /** "14.09" — короткая подпись для заголовков колонок доски. */
 export function formatDateShort(dateStr: string): string {
   const [, month, day] = dateStr.split("-");
@@ -31,6 +49,12 @@ export function formatDateShort(dateStr: string): string {
 export function formatDateLong(dateStr: string): string {
   const [, month, day] = dateStr.split("-").map(Number);
   return `${day} ${MONTHS_RU_GENITIVE[month - 1]}`;
+}
+
+/** "пн, 12 окт." — компактная подпись дня в кнопках карточки задачи. */
+export function formatDateWithWeekday(dateStr: string): string {
+  const [, month, day] = dateStr.split("-").map(Number);
+  return `${weekdayLabel(dateStr).toLowerCase()}, ${day} ${MONTHS_RU_SHORT[month - 1]}`;
 }
 
 /** "14 сентября 2026, 09:30" — момент (timestamptz) в timezone проекта, для истории движений. */

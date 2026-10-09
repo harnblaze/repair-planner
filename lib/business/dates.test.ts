@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDateNumeric, formatDateTime } from "./dates";
+import { formatDateNumeric, formatDateTime, formatDateWithWeekday } from "./dates";
 
 describe("formatDateTime", () => {
   it("formats the moment in the project timezone, not the runtime one", () => {
@@ -19,5 +19,19 @@ describe("formatDateNumeric", () => {
     // 22:00 UTC 30 сентября — уже 1 октября в Москве.
     expect(formatDateNumeric("2026-09-30T22:00:00+00:00", "Europe/Moscow")).toBe("01.10.2026");
     expect(formatDateNumeric("2026-09-30T22:00:00+00:00", "UTC")).toBe("30.09.2026");
+  });
+});
+
+describe("formatDateWithWeekday", () => {
+  it("names the weekday and abbreviates the month", () => {
+    expect(formatDateWithWeekday("2026-10-12")).toBe("пн, 12 окт.");
+  });
+
+  it("keeps short month names whole and drops the leading zero of the day", () => {
+    expect(formatDateWithWeekday("2026-05-01")).toBe("пт, 1 мая");
+  });
+
+  it("does not depend on the server timezone near midnight UTC", () => {
+    expect(formatDateWithWeekday("2026-01-04")).toBe("вс, 4 янв.");
   });
 });

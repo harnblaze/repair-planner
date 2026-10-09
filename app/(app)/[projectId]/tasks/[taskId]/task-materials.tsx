@@ -1,5 +1,6 @@
 "use client";
 
+import { PencilIcon, Trash2Icon } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -7,11 +8,11 @@ import { BalanceBadge } from "@/components/common/balance-badge";
 import { EmptyState } from "@/components/common/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { taskMaterialSchema } from "@/lib/validation/task";
 
 import { addTaskMaterialAction, removeTaskMaterialAction, updateTaskMaterialAction } from "./actions";
+import { SectionHeader } from "./section-header";
 
 type Material = {
   id: string;
@@ -50,8 +51,8 @@ export function TaskMaterials({
   );
 
   return (
-    <div className="flex flex-col gap-2">
-      <Label>Материалы</Label>
+    <div className="flex flex-col gap-1.5">
+      <SectionHeader title="Материалы" count={taskMaterials.length} />
 
       {taskMaterials.length === 0 ? (
         <EmptyState>Расход материалов ещё не указан.</EmptyState>
@@ -135,26 +136,31 @@ function TaskMaterialRowItem({
   if (editing && canEdit) {
     return (
       <div className="flex flex-col gap-1 py-1.5">
-        <div className="flex items-start gap-2">
-          <span className="flex-1 pt-1.5 text-sm">{material.name}</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="min-w-0 basis-full text-[12.5px] font-semibold text-ink sm:basis-auto">
+            {material.name}
+          </span>
           <Input
             type="number"
             step="0.001"
             min="0"
+            aria-label="Количество"
             className="w-24"
             value={quantity}
             disabled={pending}
             onChange={(e) => setQuantity(e.target.value)}
             autoFocus
           />
-          <span className="pt-1.5 text-[12px] text-meta">{material.unit}</span>
+          <span className="text-[12px] text-meta">{material.unit}</span>
+          <Input
+            placeholder="Примечание (необязательно)"
+            aria-label="Примечание"
+            className="w-auto min-w-40 flex-1"
+            value={note}
+            disabled={pending}
+            onChange={(e) => setNote(e.target.value)}
+          />
         </div>
-        <Input
-          placeholder="Примечание (необязательно)"
-          value={note}
-          disabled={pending}
-          onChange={(e) => setNote(e.target.value)}
-        />
         {exceedsBalance ? (
           <p className="text-sm text-amber-600 dark:text-amber-500">
             Списание больше остатка (доступно {balanceBeforeThisRow} {material.unit}).
@@ -183,13 +189,13 @@ function TaskMaterialRowItem({
   }
 
   return (
-    <div className="flex items-center justify-between gap-2 py-1.5">
-      <div>
+    <div className="flex items-center justify-between gap-2 py-1">
+      <div className="min-w-0">
         <span className="text-[12.5px] font-semibold text-ink">{material.name}</span>{" "}
         <span className="text-[12px] text-meta">
           — {row.quantity} {material.unit}
+          {row.note ? ` · ${row.note}` : ""}
         </span>
-        {row.note ? <p className="text-[11px] text-meta-alt">{row.note}</p> : null}
         <BalanceBadge
           className="ml-2 align-middle"
           balance={material.current_balance}
@@ -197,12 +203,27 @@ function TaskMaterialRowItem({
         />
       </div>
       {canEdit ? (
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
-            Изменить
+        <div className="flex flex-none items-center">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Изменить расход «${material.name}»`}
+            title="Изменить"
+            onClick={() => setEditing(true)}
+          >
+            <PencilIcon />
           </Button>
-          <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={remove}>
-            Удалить
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Удалить расход «${material.name}»`}
+            title="Удалить"
+            disabled={pending}
+            onClick={remove}
+          >
+            <Trash2Icon />
           </Button>
         </div>
       ) : null}
@@ -261,10 +282,10 @@ function AddTaskMaterialForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-2 pt-1" noValidate>
-      <div className="flex items-start gap-2">
+    <form onSubmit={onSubmit} className="flex flex-col gap-1.5 pt-1" noValidate>
+      {/* Одна строка на широком экране; на телефоне — материал с количеством, ниже примечание с кнопкой. */}
+      <div className="grid grid-cols-[minmax(0,1fr)_6rem] gap-2 sm:grid-cols-[minmax(0,2fr)_6rem_minmax(0,1.5fr)_auto]">
         <NativeSelect
-          wrapperClassName="flex-1"
           aria-label="Материал"
           value={materialId}
           disabled={pending}
@@ -282,26 +303,27 @@ function AddTaskMaterialForm({
           step="0.001"
           min="0"
           placeholder="Кол-во"
-          className="w-24"
+          aria-label="Количество"
           value={quantity}
           disabled={pending}
           onChange={(e) => setQuantity(e.target.value)}
         />
+        <Input
+          placeholder="Примечание"
+          aria-label="Примечание (необязательно)"
+          value={note}
+          disabled={pending}
+          onChange={(e) => setNote(e.target.value)}
+        />
+        <Button type="submit" disabled={pending || !materialId}>
+          {pending ? "Добавление…" : "Добавить"}
+        </Button>
       </div>
-      <Input
-        placeholder="Примечание (необязательно)"
-        value={note}
-        disabled={pending}
-        onChange={(e) => setNote(e.target.value)}
-      />
       {exceedsBalance ? (
         <p className="text-sm text-amber-600 dark:text-amber-500">
           Списание больше остатка (доступно {selected!.current_balance} {selected!.unit}).
         </p>
       ) : null}
-      <Button type="submit" size="sm" disabled={pending || !materialId} className="self-start">
-        {pending ? "Добавление…" : "Добавить материал"}
-      </Button>
     </form>
   );
 }

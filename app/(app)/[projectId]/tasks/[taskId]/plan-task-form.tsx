@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { isSubmittablePlanDate } from "@/lib/business/plan-date-input";
 
 import { setTaskPlannedDateAction } from "./actions";
+import { PropertyField } from "./property-field";
 
 // Пауза после последнего изменения: при вводе с клавиатуры поле отдаёт
 // промежуточные значения (день "01" до "13", год "0002" до "2026").
@@ -78,8 +78,7 @@ export function PlanTaskForm({
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      <Label htmlFor="plan-date">Запланировано на</Label>
+    <PropertyField label="Запланировано на" htmlFor="plan-date">
       <Input
         id="plan-date"
         type="date"
@@ -91,6 +90,6 @@ export function PlanTaskForm({
           if (e.key === "Enter") commit();
         }}
       />
-    </div>
+    </PropertyField>
   );
 }

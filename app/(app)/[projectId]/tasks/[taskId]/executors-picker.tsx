@@ -3,7 +3,6 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -13,8 +12,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { executorsSummary } from "@/lib/business/executor-names";
 
 import { setTaskExecutorsAction } from "./actions";
+import { PropertyField } from "./property-field";
 
 type Executor = { id: string; name: string; position: string | null; is_active: boolean };
 
@@ -51,16 +52,11 @@ export function ExecutorsPicker({
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      <Label>Исполнители</Label>
+    <PropertyField label="Исполнители">
       <Select multiple value={selected} onValueChange={onValueChange} disabled={pending || disabled}>
-        <SelectTrigger className="w-full">
-          <SelectValue>
-            {(value: string[]) => {
-              if (!value || value.length === 0) return "Не назначены";
-              const first = nameById.get(value[0]) ?? "";
-              return value.length > 1 ? `${first} и ещё ${value.length - 1}` : first;
-            }}
+        <SelectTrigger className="w-full min-w-0" aria-label="Исполнители">
+          <SelectValue className="truncate">
+            {(value: string[]) => executorsSummary((value ?? []).map((id) => nameById.get(id) ?? ""))}
           </SelectValue>
         </SelectTrigger>
         <SelectContent>
@@ -88,6 +84,6 @@ export function ExecutorsPicker({
           ) : null}
         </SelectContent>
       </Select>
-    </div>
+    </PropertyField>
   );
 }

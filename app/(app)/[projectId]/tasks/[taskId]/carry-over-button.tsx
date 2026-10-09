@@ -5,7 +5,7 @@ import { useTransition } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { formatDateLong } from "@/lib/business/dates";
+import { formatDateWithWeekday } from "@/lib/business/dates";
 import { canCarryOverTask } from "@/lib/business/task-planning";
 import type { TaskStatus } from "@/lib/business/task-status";
 
@@ -47,7 +47,7 @@ export function CarryOverButton({
 
   return (
     <Button variant="outline" size="sm" disabled={pending} onClick={onClick}>
-      Перенести на следующий рабочий день{nextDate ? ` (${formatDateLong(nextDate)})` : ""}
+      {nextDate ? `Перенести на ${formatDateWithWeekday(nextDate)}` : "Перенести на следующий рабочий день"}
     </Button>
   );
 }

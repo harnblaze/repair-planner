@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { BackLink } from "@/components/common/back-link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { canEditProject } from "@/lib/business/project-roles";
 import { canReturnToBacklog } from "@/lib/business/task-planning";
 import { addDays, nextWorkingDay } from "@/lib/business/working-days";
@@ -10,13 +10,19 @@ import { getProjectRole } from "@/lib/projects/access";
 import { getWorkCalendar } from "@/lib/projects/calendar";
 import { ATTACHMENTS_BUCKET, SIGNED_URL_TTL_SECONDS } from "@/lib/business/attachments";
 import { createClient } from "@/lib/supabase/server";
+import { cn } from "@/lib/utils";
 
 import { CarryOverButton } from "./carry-over-button";
 import { ExecutorsPicker } from "./executors-picker";
 import { PlanTaskForm } from "./plan-task-form";
 import { ReturnToBacklogButton } from "./return-to-backlog-button";
 import { StatusSelect } from "./status-select";
-import { TaskDetailsForm } from "./task-details-form";
+import {
+  TaskCategoryField,
+  TaskDescriptionField,
+  TaskQueueField,
+  TaskTitleField,
+} from "./task-details-form";
 import { TaskAttachments, type TaskPhoto } from "./task-attachments";
 import { TaskMaterials } from "./task-materials";
 
@@ -120,12 +126,15 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
     nextDate = calendar ? nextWorkingDay(task.planned_date, calendar) : null;
   }
 
+  // Строка свойств: три колонки или четыре, если есть поле очереди.
+  const hasQueues = (queues ?? []).length > 0;
+
   return (
-    <main className="mx-auto flex max-w-lg w-full flex-col gap-4 px-5 pt-6 pb-7">
+    <main className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-5 pt-6 pb-7">
       <BackLink fallbackHref={`/${projectId}/board`} />
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Заявка</CardTitle>
+        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
+          <TaskTitleField projectId={projectId} taskId={taskId} initialValue={task.title} disabled={!canEdit} />
           {/* key пересоздаёт список при смене статуса на сервере: дата плана
               меняет new ↔ planned (0015, 0028), а локальное состояние списка
               иначе не подхватит новый статус после router.refresh(). */}
@@ -137,39 +146,42 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
             disabled={!canEdit}
           />
         </CardHeader>
-        <CardContent className="flex flex-col gap-6">
-          <TaskDetailsForm
-            projectId={projectId}
-            taskId={taskId}
-            task={{
-              title: task.title,
-              description: task.description ?? "",
-              categoryId: task.category_id ?? "",
-              queueId: task.queue_id ?? "",
-            }}
-            categories={categories ?? []}
-            queues={queues ?? []}
-            disabled={!canEdit}
-          />
-
-          <ExecutorsPicker
-            projectId={projectId}
-            taskId={taskId}
-            executors={executors ?? []}
-            assignedExecutorIds={assignedExecutorIds}
-            disabled={!canEdit}
-          />
-
-          {/* key пересоздаёт форму при смене planned_date переносом (действие
-              вне этого поля) — иначе локальное состояние поля не подхватит
-              новую дату после router.refresh(). */}
-          <PlanTaskForm
-            key={task.planned_date ?? "unplanned"}
-            projectId={projectId}
-            taskId={taskId}
-            plannedDate={task.planned_date}
-            disabled={!canEdit}
-          />
+        <CardContent className="flex flex-col gap-4">
+          <div className={cn("grid grid-cols-2 gap-3", hasQueues ? "md:grid-cols-4" : "md:grid-cols-3")}>
+            <TaskCategoryField
+              projectId={projectId}
+              taskId={taskId}
+              initialValue={task.category_id ?? ""}
+              categories={categories ?? []}
+              disabled={!canEdit}
+            />
+            {hasQueues ? (
+              <TaskQueueField
+                projectId={projectId}
+                taskId={taskId}
+                initialValue={task.queue_id ?? ""}
+                queues={queues ?? []}
+                disabled={!canEdit}
+              />
+            ) : null}
+            <ExecutorsPicker
+              projectId={projectId}
+              taskId={taskId}
+              executors={executors ?? []}
+              assignedExecutorIds={assignedExecutorIds}
+              disabled={!canEdit}
+            />
+            {/* key пересоздаёт поле при смене planned_date переносом (действие
+                вне этого поля) — иначе локальное состояние поля не подхватит
+                новую дату после router.refresh(). */}
+            <PlanTaskForm
+              key={task.planned_date ?? "unplanned"}
+              projectId={projectId}
+              taskId={taskId}
+              plannedDate={task.planned_date}
+              disabled={!canEdit}
+            />
+          </div>
 
           {/* Обёртка — только когда кнопки видны, иначе пустой блок добавит отступ. */}
           {canEdit && task.planned_date && canReturnToBacklog(task.status) ? (
@@ -190,15 +202,26 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
             </div>
           ) : null}
 
-          <TaskMaterials
+          <TaskDescriptionField
             projectId={projectId}
             taskId={taskId}
-            materials={materials ?? []}
-            taskMaterials={taskMaterials ?? []}
-            canEdit={canEdit}
+            initialValue={task.description ?? ""}
+            disabled={!canEdit}
           />
 
-          <TaskAttachments projectId={projectId} taskId={taskId} photos={photos} canEdit={canEdit} />
+          <div className="border-t border-line-subtle pt-3">
+            <TaskMaterials
+              projectId={projectId}
+              taskId={taskId}
+              materials={materials ?? []}
+              taskMaterials={taskMaterials ?? []}
+              canEdit={canEdit}
+            />
+          </div>
+
+          <div className="border-t border-line-subtle pt-3">
+            <TaskAttachments projectId={projectId} taskId={taskId} photos={photos} canEdit={canEdit} />
+          </div>
         </CardContent>
       </Card>
     </main>

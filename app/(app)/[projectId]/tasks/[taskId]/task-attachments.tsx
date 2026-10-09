@@ -8,7 +8,6 @@ import { toast } from "sonner";
 
 import { EmptyState } from "@/components/common/empty-state";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { compressImage } from "@/lib/attachments/compress-image";
 import { MAX_SOURCE_BYTES, rememberSignedUrls, urlAfterLoadError } from "@/lib/business/attachments";
 import { ATTACHMENT_MESSAGES, formatUploadErrors } from "@/lib/errors";
@@ -18,6 +17,7 @@ import {
   deleteTaskAttachmentAction,
   startTaskAttachmentUploadAction,
 } from "./attachment-actions";
+import { SectionHeader } from "./section-header";
 
 export type TaskPhoto = { id: string; url: string | null; width: number; height: number };
 
@@ -136,12 +136,40 @@ export function TaskAttachments({
 
   return (
     <div className="flex flex-col gap-2">
-      <Label>Фото</Label>
+      <SectionHeader
+        title="Фото"
+        count={photos.length}
+        action={
+          canEdit ? (
+            <>
+              {/* Без capture: на телефоне система предлагает и камеру, и галерею. */}
+              <input
+                ref={inputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={(event) => void handleFiles(event.target.files)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={progress !== null}
+                onClick={() => inputRef.current?.click()}
+              >
+                <ImagePlusIcon />
+                {progress ? `Загружается ${progress.current} из ${progress.total}` : "Добавить фото"}
+              </Button>
+            </>
+          ) : null
+        }
+      />
 
       {photos.length === 0 ? (
         <EmptyState>Фото пока нет.</EmptyState>
       ) : (
-        <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+        <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-5 md:grid-cols-6">
           {photos.map((photo, index) => (
             <PhotoThumb
               key={photo.id}
@@ -154,29 +182,6 @@ export function TaskAttachments({
           ))}
         </div>
       )}
-
-      {canEdit ? (
-        <div>
-          {/* Без capture: на телефоне система предлагает и камеру, и галерею. */}
-          <input
-            ref={inputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            hidden
-            onChange={(event) => void handleFiles(event.target.files)}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            disabled={progress !== null}
-            onClick={() => inputRef.current?.click()}
-          >
-            <ImagePlusIcon />
-            {progress ? `Загружается ${progress.current} из ${progress.total}` : "Добавить фото"}
-          </Button>
-        </div>
-      ) : null}
 
       <Dialog.Root
         open={current !== null}
