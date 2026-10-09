@@ -546,21 +546,33 @@ function DayColumn({
         items={tasks.map((t) => `${date}|${t.id}`)}
         strategy={verticalListSortingStrategy}
       >
-        <div className="flex flex-1 flex-col gap-[7px] p-2 xl:p-2.5">
+        {/* Свободное место рабочего дня разлиновано, нерабочего — заштриховано
+            (утилиты day-ruled / day-hatched в app/globals.css). */}
+        <div
+          className={cn(
+            "flex flex-1 flex-col bg-inherit p-2 xl:p-2.5",
+            dayOff !== null ? "day-hatched" : "day-ruled",
+          )}
+        >
           {tasks.length === 0 ? (
             <p className="px-0.5 py-1.5 text-[11.5px] text-faint">
               {dayOff !== null ? "Работы не планируются" : "Нет запланированных работ"}
             </p>
           ) : (
-            tasks.map((task) => (
-              <SortableTaskChip
-                key={task.id}
-                projectId={projectId}
-                date={date}
-                task={task}
-                canEdit={canEdit}
-              />
-            ))
+            // Фон колонки под стопкой карточек (до боковых краёв и на зазор ниже)
+            // закрывает разлиновку: карточки разной высоты не совпадают с шагом
+            // линий, и обрывки линий между ними выглядели бы как мусор.
+            <div className="-mx-2 flex flex-col gap-[7px] bg-inherit px-2 pb-[7px] xl:-mx-2.5 xl:px-2.5">
+              {tasks.map((task) => (
+                <SortableTaskChip
+                  key={task.id}
+                  projectId={projectId}
+                  date={date}
+                  task={task}
+                  canEdit={canEdit}
+                />
+              ))}
+            </div>
           )}
         </div>
       </SortableContext>

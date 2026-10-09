@@ -133,6 +133,34 @@
   --sidebar-ring: #2f55c8;
 }
 
+/* Доска: разлиновка свободного места в колонке рабочего дня — «ежедневник».
+   Шаг — типовая карточка заявки (название + строка статуса, 60px) плюс зазор
+   между карточками (7px); линия ложится в середину зазора. Карточки белые и
+   закрывают линии собой, поэтому линии видны только ниже последней заявки.
+   Первая линия на отступ колонки (p-2 / xl:p-2.5) + 60px + 3px, линия в
+   градиенте на 66px — отсюда сдвиг «отступ − 3px». */
+@utility day-ruled {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0 66px,
+    var(--color-line-subtle) 66px 67px
+  );
+  background-repeat: no-repeat;
+  background-position: 0 5px;
+  @variant xl {
+    background-position: 0 7px;
+  }
+}
+
+/* Доска: нерабочий день (выходной или праздник) — диагональная штриховка. */
+@utility day-hatched {
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 7px,
+    var(--color-line-strong) 7px 8px
+  );
+}
+
 @layer base {
   * {
     @apply border-border;
