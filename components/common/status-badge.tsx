@@ -1,11 +1,12 @@
 import { taskStatusLabel, type TaskStatus } from "@/lib/business/task-status";
 import { cn } from "@/lib/utils";
 
-// Цвета бейджей заданы дизайном (docs/redesign.md §5 «Статусы»). Ключи —
-// стабильные значения из БД, подписи по-прежнему берутся из taskStatusLabel.
-const STATUS_CLASSES: Record<TaskStatus, string> = {
-  new: "bg-brand-surface text-brand",
-  planned: "bg-brand-surface text-brand",
+// Цвета бейджей заданы дизайном (docs/redesign.md §5 «Статусы»): у каждого
+// статуса свой цвет, чтобы их различать с первого взгляда. Ключи — стабильные
+// значения из БД, подписи по-прежнему берутся из taskStatusLabel.
+export const STATUS_CLASSES: Record<TaskStatus, string> = {
+  new: "bg-status-new-bg text-status-new-fg",
+  planned: "bg-status-planned-bg text-status-planned-fg",
   in_progress: "bg-status-progress-bg text-status-progress-fg",
   paused: "bg-status-warn-bg text-status-warn-fg",
   completed: "bg-status-done-bg text-status-done-fg",

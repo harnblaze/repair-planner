@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { EmptyState } from "@/components/common/empty-state";
+import { StatusBadge } from "@/components/common/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { canEditProject } from "@/lib/business/project-roles";
 import { matchesTaskText } from "@/lib/business/task-search";
-import { taskStatusLabel } from "@/lib/business/task-status";
 import { getProjectRole } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
@@ -161,7 +161,7 @@ async function OpenTasks({ projectId, filters }: { projectId: string; filters: O
               <span>{task.title}</span>
               <span className="flex items-center gap-2 text-[12px] text-meta">
                 {task.categories ? <span>{task.categories.name}</span> : null}
-                <span>{taskStatusLabel(task.status)}</span>
+                <StatusBadge status={task.status} />
               </span>
             </Link>
           ))
