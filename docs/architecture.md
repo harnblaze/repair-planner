@@ -108,6 +108,19 @@ Email-рассылки нет: ссылку владелец отправляе�
 
 На production это требует ручной настройки удалённого проекта Supabase (локальный `config.toml` на него не действует): Auth → URL Configuration → Redirect URLs — `https://<домен>/**`; Auth → Email Templates → Confirm signup — содержимое `confirmation.html` (или `supabase config push`). Без этого открытый редирект всё равно закрыт, но `next` теряется, как раньше.
 
+### 4.3 Установка как приложение (PWA)
+
+Приложение можно установить на главный экран телефона или компьютера под названием «Планировщик». Офлайн-режима нет (вне MVP): без связи вместо ошибки браузера показывается экран «Нет соединения».
+
+* `app/manifest.ts` — манифест (`/manifest.webmanifest`): название, `display: standalone`, цвета из `app/globals.css`, иконки 192/512 и maskable 512.
+* `public/icons/` — иконки; генерируются из логотипа шапки скриптом `node scripts/generate-pwa-icons.mjs` (sharp). Для iPhone — `apple-touch-icon.png` и `metadata.appleWebApp` в `app/layout.tsx`: Safari не берёт иконки из манифеста.
+* `public/sw.js` — сервис-воркер. При установке кеширует только `public/offline.html`; перехватывает только переходы между страницами (`request.mode === "navigate"`): сначала сеть, при ошибке — экран «Нет соединения». Запросы данных, скрипты и картинки не трогает и ничего из данных проекта не кеширует — устаревшие остатки и чужие данные на устройстве не появятся. Меняя `offline.html`, увеличить версию `CACHE` в `sw.js`.
+* `components/common/service-worker-registration.tsx` регистрирует воркер только в production (`next start`, Timeweb); в `next dev` его нет.
+* `next.config.ts` отдаёт `/sw.js` с `Cache-Control: no-cache, no-store, must-revalidate`, чтобы браузер видел обновления после деплоя.
+* `proxy.ts` исключает `manifest.webmanifest`, `sw.js`, `offline.html` (и картинки) из matcher: без сессии они иначе отдавали бы редирект на `/login`.
+
+Своей кнопки «Установить» нет: на Android и в Chrome/Edge браузер предлагает установку сам, на iPhone — «Поделиться → На экран „Домой“».
+
 ## 5. Бизнес-логика
 
 Вынесена в `lib/business/`, не размазана по компонентам:

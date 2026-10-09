@@ -16,6 +16,19 @@ const nextConfig: NextConfig = {
   logging: {
     serverFunctions: false,
   },
+  // Сервис-воркер нельзя кешировать: иначе браузер не увидит обновление
+  // public/sw.js (новую версию экрана «Нет сети») после деплоя.
+  async headers() {
+    return [
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
