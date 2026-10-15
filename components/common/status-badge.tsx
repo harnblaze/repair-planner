@@ -13,6 +13,16 @@ export const STATUS_CLASSES: Record<TaskStatus, string> = {
   cancelled: "bg-status-alert-bg text-status-alert-fg",
 };
 
+/** Цветная точка статуса в меню выбора — тот же цвет, что у текста бейджа. */
+export const STATUS_DOT_CLASSES: Record<TaskStatus, string> = {
+  new: "bg-status-new-fg",
+  planned: "bg-status-planned-fg",
+  in_progress: "bg-status-progress-fg",
+  paused: "bg-status-warn-fg",
+  completed: "bg-status-done-fg",
+  cancelled: "bg-status-alert-fg",
+};
+
 export const BADGE_BASE =
   "inline-block max-w-full flex-none overflow-hidden text-ellipsis whitespace-nowrap rounded-[4px] px-1.5 py-1 text-[10.5px] font-semibold leading-none";
 

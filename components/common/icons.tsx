@@ -84,6 +84,15 @@ export function ListIcon(props: IconProps) {
   );
 }
 
+export function UserIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="8" cy="5.4" r="2.6" />
+      <path d="M3 13.6a5 5 0 0 1 10 0" />
+    </svg>
+  );
+}
+
 export function PlusIcon({ size = 11, className, strokeWidth = 2 }: IconProps) {
   return (
     <svg {...base({ size, className, strokeWidth })}>

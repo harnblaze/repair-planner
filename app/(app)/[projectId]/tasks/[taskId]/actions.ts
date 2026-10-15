@@ -11,6 +11,7 @@ import { requireProjectEdit } from "@/lib/projects/access";
 import { getWorkCalendar } from "@/lib/projects/calendar";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
+import { idSchema } from "@/lib/validation/board-move";
 import {
   taskDescriptionSchema,
   taskMaterialSchema,
@@ -280,6 +281,75 @@ export async function setTaskExecutorsAction(
       console.error("setTaskExecutorsAction (insert):", insertError);
       return { ok: false, error: "Не удалось изменить исполнителей. Попробуйте ещё раз." };
     }
+  }
+
+  revalidateTask(projectId, taskId);
+  return { ok: true };
+}
+
+const EXECUTORS_ERROR: ActionResult = {
+  ok: false,
+  error: "Не удалось изменить исполнителей. Попробуйте ещё раз.",
+};
+
+const validIds = (...ids: string[]) => ids.every((id) => idSchema.safeParse(id).success);
+
+/**
+ * Назначение одного исполнителя с доски — один INSERT … ON CONFLICT DO NOTHING:
+ * атомарно и не мешает параллельным галочкам других исполнителей (в отличие от
+ * setTaskExecutorsAction, который заменяет весь список). Что задача и исполнитель
+ * из этого проекта, гарантируют составные FK task_executors (0004), доступ — RLS.
+ */
+export async function assignTaskExecutorAction(
+  projectId: string,
+  taskId: string,
+  executorId: string,
+): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+  if (!validIds(taskId, executorId)) return EXECUTORS_ERROR;
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("task_executors")
+    .upsert(
+      { task_id: taskId, executor_id: executorId, project_id: projectId },
+      { onConflict: "task_id,executor_id", ignoreDuplicates: true },
+    );
+
+  if (error) {
+    console.error("assignTaskExecutorAction:", error);
+    if (error.code === "23503") {
+      return { ok: false, error: "Заявка или исполнитель не найдены. Обновите страницу." };
+    }
+    return EXECUTORS_ERROR;
+  }
+
+  revalidateTask(projectId, taskId);
+  return { ok: true };
+}
+
+/** Снятие одного исполнителя с доски; уже снятый — не ошибка. */
+export async function unassignTaskExecutorAction(
+  projectId: string,
+  taskId: string,
+  executorId: string,
+): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+  if (!validIds(taskId, executorId)) return EXECUTORS_ERROR;
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("task_executors")
+    .delete()
+    .eq("project_id", projectId)
+    .eq("task_id", taskId)
+    .eq("executor_id", executorId);
+
+  if (error) {
+    console.error("unassignTaskExecutorAction:", error);
+    return EXECUTORS_ERROR;
   }
 
   revalidateTask(projectId, taskId);

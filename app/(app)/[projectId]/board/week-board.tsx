@@ -34,6 +34,7 @@ import {
   keepsDayOnReturnToBacklog,
   statusAfterReturnToBacklog,
 } from "@/lib/business/task-planning";
+import { taskStatusLabel, type TaskStatus } from "@/lib/business/task-status";
 import { weekdayLabel } from "@/lib/business/working-days";
 import type { ActionResult } from "@/lib/types/action-result";
 import { cn } from "@/lib/utils";
@@ -44,6 +45,12 @@ import {
   planTaskOnDayAction,
   returnTaskToBacklogAction,
 } from "./actions";
+import {
+  assignTaskExecutorAction,
+  setTaskStatusAction,
+  unassignTaskExecutorAction,
+} from "../tasks/[taskId]/actions";
+import { UNDO_TOAST_MS } from "../tasks/[taskId]/undo-carry-over";
 import { CreateTaskForm } from "./create-task-form";
 import {
   BOARD_ACCESSIBILITY,
@@ -53,9 +60,11 @@ import {
   useSuppressClickAfterDrag,
 } from "./dnd";
 import { Panel, PanelEmpty, PanelHeader } from "./panel";
+import { ExecutorsMenu, StatusMenu, type DirectoryExecutor } from "./quick-edit-menus";
 import { CarryOverChipButton } from "./carry-over-chip-button";
 import { CompleteChipButton } from "./complete-chip-button";
 import { TaskChip, TaskRow, type BoardTask } from "./task-chip";
+import { patchTask, toggleExecutor, type TaskExecutor } from "./task-updates";
 import { UndoCarryOverChipButton } from "./undo-carry-over-chip-button";
 
 // Неделя доски и панели очередей текущих заявок в одном DndContext: задачу
@@ -78,6 +87,13 @@ const queueKeyOfContainer = (container: string) => container.slice(QUEUE_PREFIX.
 /** queues — заявки панелей по ключу очереди (lib/business/backlog-queues.ts::queueKey). */
 type BoardState = { days: Record<string, DayTask[]>; queues: Record<string, BacklogTask[]> };
 
+/** Быстрая правка с карточки дня; null — только просмотр. */
+type QuickEdit = {
+  executors: DirectoryExecutor[];
+  setStatus: (taskId: string, status: TaskStatus, previous: TaskStatus) => void;
+  toggleExecutor: (taskId: string, executor: TaskExecutor, assign: boolean) => void;
+};
+
 /** container — дата "YYYY-MM-DD" или "queue:<ключ>"; taskId отсутствует у самой колонки. */
 type DragData = { container: string; taskId?: string; title?: string };
 
@@ -86,7 +102,9 @@ type Move =
   | { type: "changeDay"; taskId: string; fromDate: string; toDate: string; index: number }
   | { type: "plan"; taskId: string; fromQueue: string; toDate: string; index: number }
   | { type: "toBacklog"; taskId: string; today: string }
-  | { type: "moveInQueues"; taskId: string; fromQueue: string; toQueue: string; index: number };
+  | { type: "moveInQueues"; taskId: string; fromQueue: string; toQueue: string; index: number }
+  | { type: "setStatus"; taskId: string; status: TaskStatus }
+  | { type: "toggleExecutor"; taskId: string; executor: TaskExecutor; assign: boolean };
 
 function applyMove(state: BoardState, move: Move): BoardState {
   switch (move.type) {
@@ -176,6 +194,15 @@ function applyMove(state: BoardState, move: Move): BoardState {
         ...state,
         queues: moveTaskBetweenQueues(state.queues, move.taskId, move.fromQueue, move.toQueue, move.index),
       };
+
+    case "setStatus":
+      return patchTask<DayTask, BacklogTask, BoardState>(state, move.taskId, (t) => ({ ...t, status: move.status }));
+
+    case "toggleExecutor":
+      return patchTask<DayTask, BacklogTask, BoardState>(state, move.taskId, (t) => ({
+        ...t,
+        executors: toggleExecutor(t.executors, move.executor, move.assign),
+      }));
   }
 }
 
@@ -261,6 +288,7 @@ export function WeekBoard({
   days,
   queues,
   categories,
+  executors,
   canEdit,
   children,
 }: {
@@ -274,6 +302,8 @@ export function WeekBoard({
   /** Панели очередей в порядке показа: первая — «Текущие заявки». */
   queues: BoardQueue[];
   categories: { id: string; name: string }[];
+  /** Справочник исполнителей проекта для меню на карточках, по имени. */
+  executors: DirectoryExecutor[];
   /** false — только просмотр: без перетаскивания и формы создания. */
   canEdit: boolean;
   /** Остальные панели нижнего ряда — дополнительные списки. */
@@ -309,6 +339,34 @@ export function WeekBoard({
       else if (result.message) toast.success(result.message);
     });
   };
+
+  // Статус меняется сразу; «Отменить» в уведомлении возвращает прежний, как у
+  // кнопки «Завершить» (complete-chip-button.tsx). Отмена уведомления не создаёт.
+  const setStatus = (taskId: string, status: TaskStatus, previous: TaskStatus | null) => {
+    startTransition(async () => {
+      applyOptimistic({ type: "setStatus", taskId, status });
+      const result = await setTaskStatusAction(projectId, taskId, status);
+      if (!result.ok) {
+        toast.error(result.error);
+      } else if (previous !== null) {
+        toast.success(`Статус: ${taskStatusLabel(status)}`, {
+          duration: UNDO_TOAST_MS,
+          action: { label: "Отменить", onClick: () => setStatus(taskId, previous, null) },
+        });
+      }
+    });
+  };
+
+  const quickEdit: QuickEdit | null = canEdit
+    ? {
+        executors,
+        setStatus,
+        toggleExecutor: (taskId, executor, assign) =>
+          run({ type: "toggleExecutor", taskId, executor, assign }, () =>
+            (assign ? assignTaskExecutorAction : unassignTaskExecutorAction)(projectId, taskId, executor.id),
+          ),
+      }
+    : null;
 
   const onDragStart = ({ active: dragged }: DragStartEvent) => {
     clicks.onDragStart();
@@ -431,6 +489,7 @@ export function WeekBoard({
                 tasks={(board.days[date] ?? []).map(withQueueLabel)}
                 highlighted={dropAllowed(date)}
                 canEdit={canEdit}
+                quickEdit={quickEdit}
               />
             ))}
           </div>
@@ -492,6 +551,7 @@ function DayColumn({
   tasks,
   highlighted,
   canEdit,
+  quickEdit,
 }: {
   projectId: string;
   date: string;
@@ -502,6 +562,7 @@ function DayColumn({
   tasks: DayTask[];
   highlighted: boolean;
   canEdit: boolean;
+  quickEdit: QuickEdit | null;
 }) {
   const { setNodeRef } = useDroppable({ id: `day:${date}`, data: { container: date } satisfies DragData });
 
@@ -570,6 +631,7 @@ function DayColumn({
                   date={date}
                   task={task}
                   canEdit={canEdit}
+                  quickEdit={quickEdit}
                 />
               ))}
             </div>
@@ -588,11 +650,13 @@ function SortableTaskChip({
   date,
   task,
   canEdit,
+  quickEdit,
 }: {
   projectId: string;
   date: string;
   task: DayTask;
   canEdit: boolean;
+  quickEdit: QuickEdit | null;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `${date}|${task.id}`,
@@ -608,6 +672,8 @@ function SortableTaskChip({
   const canComplete = canCompleteFromBoard(task, canEdit);
   const canUndo = canUndoCarryOverFromBoard(task, canEdit);
   const cornerButtons = [canUndo, canComplete, canCarryOver].filter(Boolean).length;
+  // День-история — след переноса: правят заявку на её текущем дне.
+  const editable = quickEdit !== null && !task.isHistory;
 
   // Сдвиг при перетаскивании — на обёртке, чтобы кнопки угла ехали вместе
   // с карточкой; слушатели перетаскивания — только на ссылке, кнопки они не задевают.
@@ -621,6 +687,20 @@ function SortableTaskChip({
         projectId={projectId}
         task={task}
         cornerButtons={cornerButtons}
+        statusControl={
+          editable ? (
+            <StatusMenu status={task.status} onChange={(status) => quickEdit.setStatus(task.id, status, task.status)} />
+          ) : undefined
+        }
+        executorsControl={
+          editable ? (
+            <ExecutorsMenu
+              assigned={task.executors}
+              directory={quickEdit.executors}
+              onToggle={(executor, assign) => quickEdit.toggleExecutor(task.id, executor, assign)}
+            />
+          ) : undefined
+        }
         {...dragAttributes(attributes)}
         {...dragListeners(listeners)}
         className={DRAGGABLE_CLASS}

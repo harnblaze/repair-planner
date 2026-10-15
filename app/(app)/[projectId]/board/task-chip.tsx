@@ -2,15 +2,19 @@ import Link from "next/link";
 
 import { ArrowRightIcon, BookmarkIcon, CameraIcon } from "@/components/common/icons";
 import { BADGE_BASE, StatusBadge } from "@/components/common/status-badge";
+import { executorsInitials } from "@/lib/business/executor-names";
 import type { TaskStatus } from "@/lib/business/task-status";
 import { cn } from "@/lib/utils";
+
+import type { TaskExecutor } from "./task-updates";
 
 export type BoardTask = {
   id: string;
   title: string;
   status: TaskStatus;
   categoryName: string | null;
-  executorNames: string[];
+  /** Назначенные исполнители, по имени (page.tsx). */
+  executors: TaskExecutor[];
   // День — история: после него задачу перенесли или отложили
   // (product-requirements.md §4.3, §4.4). Карточка приглушается.
   isHistory?: boolean;
@@ -31,15 +35,25 @@ type LinkRestProps = Omit<React.ComponentProps<typeof Link>, "href" | "children"
 const CORNER_PADDING: Record<number, string> = { 1: "pr-6", 2: "pr-14", 3: "pr-21" };
 
 // Статус вынесен в бейдж, поэтому в текстовые метаданные он больше не входит.
+// Исполнители — «Иванов И., Петров П. +1», как в меню быстрой правки.
 function metaOf(task: BoardTask): string {
-  return [task.categoryName, ...task.executorNames].filter(Boolean).join(" · ");
+  return [task.categoryName, executorsInitials(task.executors.map((e) => e.name))].filter(Boolean).join(" · ");
 }
 
-/** Карточка задачи в колонке рабочего дня (docs/redesign.md §5). */
+/**
+ * Карточка задачи в колонке рабочего дня (docs/redesign.md §5).
+ *
+ * Ссылка — заголовок, растянутый на всю карточку (after:inset-0): нажатие в
+ * любом месте открывает заявку, а кнопки быстрой правки (statusControl,
+ * executorsControl) лежат поверх неё — кнопку нельзя вкладывать в ссылку.
+ * Пропсы перетаскивания (rest) — на ссылке, className — на самой карточке.
+ */
 export function TaskChip({
   projectId,
   task,
   cornerButtons = 0,
+  statusControl,
+  executorsControl,
   className,
   ...rest
 }: {
@@ -50,29 +64,35 @@ export function TaskChip({
    * статуса, заголовок сохраняет всю ширину колонки и не ломает слова.
    */
   cornerButtons?: number;
+  /** Кнопка-меню статуса вместо бейджа (quick-edit-menus.tsx). */
+  statusControl?: React.ReactNode;
+  /** Кнопка-меню исполнителей вместо их имён в метаданных. */
+  executorsControl?: React.ReactNode;
 } & LinkRestProps) {
-  const meta = metaOf(task);
+  const meta = executorsControl ? task.categoryName : metaOf(task);
   const isHistory = Boolean(task.isHistory);
 
   return (
-    <Link
-      href={`/${projectId}/tasks/${task.id}`}
-      // Нативное перетаскивание ссылки браузером конфликтует с drag-and-drop доски.
-      draggable={false}
-      {...rest}
+    <div
       className={cn(
-        "flex flex-col gap-[5px] rounded-[7px] border border-line-card bg-surface px-2.5 pt-2 pb-[9px] transition-[border-color,box-shadow] duration-120 hover:border-line-card-hover hover:shadow-[0_1px_2px_rgba(20,30,50,0.06)]",
+        "relative flex flex-col gap-[5px] rounded-[7px] border border-line-card bg-surface px-2.5 pt-2 pb-[9px] transition-[border-color,box-shadow] duration-120 hover:border-line-card-hover hover:shadow-[0_1px_2px_rgba(20,30,50,0.06)] has-[a:focus-visible]:border-brand has-[a:focus-visible]:ring-[3px] has-[a:focus-visible]:ring-brand/12",
         isHistory && "opacity-[0.66]",
         className,
       )}
     >
       {/* Заголовок занимает отдельную строку: в колонке ~165px он не должен
           делить строку с бейджем, иначе слова ломаются посередине. */}
-      <span className="text-[13px] leading-snug font-semibold tracking-[-0.005em] break-words text-ink">
+      <Link
+        href={`/${projectId}/tasks/${task.id}`}
+        // Нативное перетаскивание ссылки браузером конфликтует с drag-and-drop доски.
+        draggable={false}
+        {...rest}
+        className="text-[13px] leading-snug font-semibold tracking-[-0.005em] break-words text-ink outline-none after:absolute after:inset-0 after:rounded-[7px] after:content-['']"
+      >
         {task.title}
-      </span>
+      </Link>
       <span className={cn("flex flex-wrap items-center gap-1.5", CORNER_PADDING[cornerButtons])}>
-        <StatusBadge status={task.status} muted={isHistory} />
+        {statusControl ?? <StatusBadge status={task.status} muted={isHistory} />}
         {task.queueName ? (
           <span
             className={cn(BADGE_BASE, "inline-flex items-center gap-1 border border-line-card bg-surface py-[3px] text-meta-alt")}
@@ -92,6 +112,7 @@ export function TaskChip({
           </span>
         ) : null}
         {meta ? <span className="text-[11.5px] break-words text-meta">{meta}</span> : null}
+        {executorsControl}
       </span>
       {task.transferNote ? (
         <span className="mt-px flex items-start gap-[5px] border-t border-dashed border-line-card pt-1.5 text-[11px] text-meta-dim">
@@ -99,7 +120,7 @@ export function TaskChip({
           {task.transferNote}
         </span>
       ) : null}
-    </Link>
+    </div>
   );
 }
 

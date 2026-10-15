@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { executorsSummary } from "./executor-names";
+import { executorsInitials, executorsSummary } from "./executor-names";
 
 describe("executorsSummary", () => {
   it("says nobody is assigned when the list is empty", () => {
@@ -17,5 +17,25 @@ describe("executorsSummary", () => {
 
   it("keeps one-word names as they are and ignores extra spaces", () => {
     expect(executorsSummary(["  Сидоров ", "Кузнецов   Олег"])).toBe("Сидоров, Кузнецов О.");
+  });
+});
+
+describe("executorsInitials", () => {
+  it("is empty when nobody is assigned", () => {
+    expect(executorsInitials([])).toBe("");
+  });
+
+  it("shows even a single executor as surname and first initial", () => {
+    expect(executorsInitials(["Иванов Иван Иванович"])).toBe("Иванов И.");
+  });
+
+  it("keeps one-word names and ignores extra spaces", () => {
+    expect(executorsInitials(["  Сидоров ", "Кузнецов   Олег"])).toBe("Сидоров, Кузнецов О.");
+  });
+
+  it("lists two executors and counts the rest", () => {
+    expect(executorsInitials(["Иванов Иван", "Петров Пётр", "Сидоров Сидор", "Кузнецов Олег"])).toBe(
+      "Иванов И., Петров П. +2",
+    );
   });
 });

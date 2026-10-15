@@ -19,16 +19,20 @@ import { createClient } from "@/lib/supabase/server";
 
 import type { BoardItem } from "./board-item-row";
 import { BoardList } from "./board-list";
+import type { TaskExecutor } from "./task-updates";
 import { WeekBoard, type BacklogTask, type BoardQueue, type DayTask } from "./week-board";
 
 export const metadata: Metadata = {
   title: "Доска — Планировщик",
 };
 
-type ExecutorJoin = { executors: { name: string } | null };
+type ExecutorJoin = { executor_id: string; executors: { name: string } | null };
 
-function toExecutorNames(rows: ExecutorJoin[] | null | undefined): string[] {
-  return (rows ?? []).map((r) => r.executors?.name).filter((name): name is string => Boolean(name));
+// По имени — тот же порядок, что после галочки в меню (task-updates.ts::toggleExecutor).
+function toExecutors(rows: ExecutorJoin[] | null | undefined): TaskExecutor[] {
+  return (rows ?? [])
+    .flatMap((r) => (r.executors ? [{ id: r.executor_id, name: r.executors.name }] : []))
+    .sort((a, b) => a.name.localeCompare(b.name, "ru"));
 }
 
 type ScheduleJoin = { work_date: string; postponed: boolean };
@@ -75,6 +79,7 @@ export default async function BoardPage({
     { data: boardLists },
     { data: boardItems },
     { data: taskQueues },
+    { data: executors },
   ] = await Promise.all([
     getProjectRole(projectId),
     supabase
@@ -87,7 +92,7 @@ export default async function BoardPage({
       .from("tasks")
       // task_schedule — дни истории отложенной задачи: новый день не может быть раньше последнего.
       .select(
-        "id, title, status, queue_id, categories(name), task_executors(executors(name)), task_schedule(work_date, postponed), task_attachments(count)",
+        "id, title, status, queue_id, categories(name), task_executors(executor_id, executors(name)), task_schedule(work_date, postponed), task_attachments(count)",
       )
       .eq("project_id", projectId)
       .is("planned_date", null)
@@ -100,7 +105,7 @@ export default async function BoardPage({
     supabase
       .from("task_schedule")
       .select(
-        "work_date, position, tasks(id, title, status, planned_date, queue_id, categories(name), task_executors(executors(name)), task_schedule(work_date, postponed), task_attachments(count))",
+        "work_date, position, tasks(id, title, status, planned_date, queue_id, categories(name), task_executors(executor_id, executors(name)), task_schedule(work_date, postponed), task_attachments(count))",
       )
       .eq("project_id", projectId)
       // Пн–Сб: какие колонки показать, зависит от календаря и от задач на субботу.
@@ -134,6 +139,12 @@ export default async function BoardPage({
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true })
       .order("id", { ascending: true }),
+    // Справочник для меню исполнителей на карточках (quick-edit-menus.tsx).
+    supabase
+      .from("executors")
+      .select("id, name, position, is_active")
+      .eq("project_id", projectId)
+      .order("name", { ascending: true }),
   ]);
 
   const calendar = buildWorkCalendar(calendarDays ?? []);
@@ -167,7 +178,7 @@ export default async function BoardPage({
       title: t.title,
       status: t.status,
       categoryName: t.categories?.name ?? null,
-      executorNames: toExecutorNames(t.task_executors),
+      executors: toExecutors(t.task_executors),
       photoCount: toPhotoCount(t.task_attachments),
       lastWorkDate: lastWorkDate(toScheduleDays(t.task_schedule)),
       queueId: queue.id,
@@ -193,7 +204,7 @@ export default async function BoardPage({
       title: row.tasks.title,
       status: row.tasks.status,
       categoryName: row.tasks.categories?.name ?? null,
-      executorNames: toExecutorNames(row.tasks.task_executors),
+      executors: toExecutors(row.tasks.task_executors),
       photoCount: toPhotoCount(row.tasks.task_attachments),
       isHistory: occurrence.isHistory,
       transferNote: occurrence.note,
@@ -255,6 +266,12 @@ export default async function BoardPage({
         days={days}
         queues={queues}
         categories={categories ?? []}
+        executors={(executors ?? []).map((e) => ({
+          id: e.id,
+          name: e.name,
+          position: e.position,
+          isActive: e.is_active,
+        }))}
         canEdit={canEdit}
       >
         {(boardLists ?? []).map((list) => (
