@@ -52,6 +52,8 @@ import {
 } from "../tasks/[taskId]/actions";
 import { toastCarriedOver, undoCarryOver, UNDO_TOAST_MS } from "../tasks/[taskId]/undo-carry-over";
 import { CreateTaskForm } from "./create-task-form";
+import { splitDayTasks } from "./day-stack";
+import { DoneStack } from "./done-stack";
 import {
   BOARD_ACCESSIBILITY,
   dragAttributes,
@@ -572,6 +574,22 @@ function DayColumn({
   quickEdit: QuickEdit | null;
 }) {
   const { setNodeRef } = useDroppable({ id: `day:${date}`, data: { container: date } satisfies DragData });
+  // Стопка «Сделано» — только отображение: порядок в состоянии и позиции не трогаем.
+  const { active, done, stacked } = splitDayTasks(tasks);
+  // Раскрытие стопки — в памяти колонки (колонка с key=дата переживает router.refresh()).
+  const [doneOpen, setDoneOpen] = useState(false);
+  // В SortableContext — только реально показанные карточки, в порядке показа.
+  const shown = stacked && !doneOpen ? active : [...active, ...done];
+  const renderChip = (task: DayTask) => (
+    <SortableTaskChip
+      key={task.id}
+      projectId={projectId}
+      date={date}
+      task={task}
+      canEdit={canEdit}
+      quickEdit={quickEdit}
+    />
+  );
 
   return (
     <div
@@ -611,7 +629,7 @@ function DayColumn({
         </p>
       ) : null}
       <SortableContext
-        items={tasks.map((t) => `${date}|${t.id}`)}
+        items={shown.map((t) => `${date}|${t.id}`)}
         strategy={verticalListSortingStrategy}
       >
         {/* Свободное место рабочего дня разлиновано, нерабочего — заштриховано
@@ -631,16 +649,15 @@ function DayColumn({
             // закрывает разлиновку: карточки разной высоты не совпадают с шагом
             // линий, и обрывки линий между ними выглядели бы как мусор.
             <div className="-mx-2 flex flex-col gap-[7px] bg-inherit px-2 pb-[7px] xl:-mx-2.5 xl:px-2.5">
-              {tasks.map((task) => (
-                <SortableTaskChip
-                  key={task.id}
-                  projectId={projectId}
-                  date={date}
-                  task={task}
-                  canEdit={canEdit}
-                  quickEdit={quickEdit}
-                />
-              ))}
+              {active.map(renderChip)}
+              {stacked ? (
+                // Свёрнутая строка не входит в SortableContext; раскрытые карточки — входят.
+                <DoneStack count={done.length} open={doneOpen} onToggle={() => setDoneOpen((v) => !v)}>
+                  {done.map(renderChip)}
+                </DoneStack>
+              ) : (
+                done.map(renderChip)
+              )}
             </div>
           )}
         </div>
