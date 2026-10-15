@@ -3,12 +3,13 @@
 import { Menu } from "@base-ui/react/menu";
 import { useState } from "react";
 
-import { CheckIcon, ChevronDownIcon, PlusIcon, UserIcon } from "@/components/common/icons";
+import { ArrowRightIcon, CheckIcon, ChevronDownIcon, PlusIcon, UndoIcon, UserIcon } from "@/components/common/icons";
 import { BADGE_BASE, STATUS_CLASSES, STATUS_DOT_CLASSES } from "@/components/common/status-badge";
 import { executorsInitials } from "@/lib/business/executor-names";
 import { TASK_STATUSES, taskStatusLabel, type TaskStatus } from "@/lib/business/task-status";
 import { cn } from "@/lib/utils";
 
+import { CHIP_EXECUTORS_VISIBLE } from "./task-chip";
 import type { TaskExecutor } from "./task-updates";
 
 // Меню быстрой правки на карточке дня (docs/redesign.md «Быстрая правка с доски»).
@@ -38,13 +39,23 @@ function Popup({ children, onKeyDown }: { children: React.ReactNode; onKeyDown?:
   );
 }
 
-/** Бейдж статуса-кнопка: меню всех шести статусов; цифры 1–6 выбирают сразу. */
+/**
+ * Бейдж статуса-кнопка: меню всех шести статусов (цифры 1–6 выбирают сразу),
+ * под чертой — перенос на следующий рабочий день и его отмена, если доступны
+ * (lib/business/task-planning.ts: canCarryOverFromBoard, canUndoCarryOverFromBoard).
+ */
 export function StatusMenu({
   status,
   onChange,
+  onCarryOver,
+  onUndoCarryOver,
 }: {
   status: TaskStatus;
   onChange: (status: TaskStatus) => void;
+  /** null — переносить нельзя. */
+  onCarryOver: (() => void) | null;
+  /** null — отменять нечего. */
+  onUndoCarryOver: (() => void) | null;
 }) {
   const [open, setOpen] = useState(false);
   const label = taskStatusLabel(status);
@@ -69,11 +80,16 @@ export function StatusMenu({
         className={cn(
           BADGE_BASE,
           STATUS_CLASSES[status],
-          "relative z-10 inline-flex cursor-pointer items-center gap-[3px] transition-[filter] duration-120 hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand data-[popup-open]:brightness-95",
+          "group/status relative z-10 inline-flex cursor-pointer items-center gap-[3px] transition-[filter] duration-120 hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand data-[popup-open]:brightness-95",
         )}
       >
         <span className="truncate">{label}</span>
-        <ChevronDownIcon size={9} className="shrink-0 opacity-70" />
+        {/* Стрелка — подсказка, что бейдж нажимается: на компьютере при наведении
+            на карточку, на телефоне всегда. */}
+        <ChevronDownIcon
+          size={9}
+          className="-mr-px hidden shrink-0 opacity-70 group-hover:inline group-focus-visible/status:inline group-data-[popup-open]/status:inline [@media(hover:none)]:inline"
+        />
       </Menu.Trigger>
       <Popup onKeyDown={onKeyDown}>
         <Menu.RadioGroup value={status} onValueChange={(value) => choose(value as TaskStatus)}>
@@ -89,14 +105,28 @@ export function StatusMenu({
             </Menu.RadioItem>
           ))}
         </Menu.RadioGroup>
+        {onCarryOver || onUndoCarryOver ? <Menu.Separator className="-mx-1 my-1 h-px bg-line-subtle" /> : null}
+        {onCarryOver ? (
+          <Menu.Item className={ITEM_CLASS} onClick={onCarryOver}>
+            <ArrowRightIcon size={13} className="shrink-0 text-meta" />
+            Перенести на следующий рабочий день
+          </Menu.Item>
+        ) : null}
+        {onUndoCarryOver ? (
+          <Menu.Item className={ITEM_CLASS} onClick={onUndoCarryOver}>
+            <UndoIcon size={13} className="shrink-0 text-meta" />
+            Отменить перенос
+          </Menu.Item>
+        ) : null}
       </Popup>
     </Menu.Root>
   );
 }
 
 /**
- * Исполнители карточки: «Иванов И., Петров П. +1» или «Назначить». Галочки
- * сохраняются по одной, меню не закрывается — можно отметить нескольких подряд.
+ * Строка исполнителей карточки: «Иванов И., Петров П., Сидоров С.» или
+ * «Назначить» — видна всегда, чтобы заявка без исполнителей сразу бросалась
+ * в глаза. Галочки сохраняются по одной, меню не закрывается.
  */
 export function ExecutorsMenu({
   assigned,
@@ -118,16 +148,21 @@ export function ExecutorsMenu({
       <Menu.Trigger
         aria-label={empty ? "Назначить исполнителей" : `Исполнители: ${fullNames}. Изменить`}
         title={empty ? undefined : fullNames}
+        // -mx-1 px-1: иконка стоит по одной линии с цехом-заказчиком выше, а
+        // подсветка при наведении выходит чуть за текст.
         className={cn(
-          "relative z-10 inline-flex max-w-full cursor-pointer items-center gap-1 rounded-[4px] border px-1 py-[2px] text-[11.5px] transition-[opacity,color,background-color,border-color] duration-120 hover:bg-row-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-brand data-[popup-open]:bg-row-hover",
-          empty
-            ? // Как кнопки угла: на компьютере — при наведении на карточку, на телефоне — всегда.
-              "border-dashed border-line-strong text-meta-dim opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[popup-open]:opacity-100 [@media(hover:none)]:opacity-100"
-            : "border-transparent text-meta",
+          "relative z-10 -mx-1 flex max-w-[calc(100%+0.5rem)] cursor-pointer items-start gap-1 self-start rounded-[4px] px-1 py-px text-left text-[11.5px] transition-colors duration-120 hover:bg-row-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-brand data-[popup-open]:bg-row-hover",
+          empty ? "text-meta-dim" : "text-meta",
         )}
       >
-        {empty ? <PlusIcon size={9} className="shrink-0" /> : <UserIcon size={11} className="shrink-0" />}
-        <span className="truncate">{empty ? "Назначить" : executorsInitials(assigned.map((e) => e.name))}</span>
+        {empty ? (
+          <PlusIcon size={10} className="mt-[3px] shrink-0" />
+        ) : (
+          <UserIcon size={11} className="mt-[2px] shrink-0" />
+        )}
+        <span>
+          {empty ? "Назначить" : executorsInitials(assigned.map((e) => e.name), CHIP_EXECUTORS_VISIBLE)}
+        </span>
       </Menu.Trigger>
       <Popup>
         {options.length === 0 ? (

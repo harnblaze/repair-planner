@@ -1,7 +1,7 @@
 import Link from "next/link";
 
-import { ArrowRightIcon, BookmarkIcon, CameraIcon } from "@/components/common/icons";
-import { BADGE_BASE, StatusBadge } from "@/components/common/status-badge";
+import { ArrowRightIcon, BookmarkIcon, CameraIcon, UserIcon } from "@/components/common/icons";
+import { StatusBadge } from "@/components/common/status-badge";
 import { executorsInitials } from "@/lib/business/executor-names";
 import type { TaskStatus } from "@/lib/business/task-status";
 import { cn } from "@/lib/utils";
@@ -31,17 +31,18 @@ export type BoardTask = {
 // у карточки одна точка фокуса и для перехода, и для перетаскивания с клавиатуры.
 type LinkRestProps = Omit<React.ComponentProps<typeof Link>, "href" | "children">;
 
-// Кнопки угла по 28px (size-7) + отступ right-1.
-const CORNER_PADDING: Record<number, string> = { 1: "pr-6", 2: "pr-14", 3: "pr-21" };
-
-// Статус вынесен в бейдж, поэтому в текстовые метаданные он больше не входит.
-// Исполнители — «Иванов И., Петров П. +1», как в меню быстрой правки.
+// Строка панели очереди: статус вынесен в бейдж, исполнители — «Иванов И., Петров П. +1».
 function metaOf(task: BoardTask): string {
   return [task.categoryName, executorsInitials(task.executors.map((e) => e.name))].filter(Boolean).join(" · ");
 }
 
+/** «Иванов И., Петров П., Сидоров С.» — на своей строке помещаются три фамилии. */
+export const CHIP_EXECUTORS_VISIBLE = 3;
+
 /**
- * Карточка задачи в колонке рабочего дня (docs/redesign.md §5).
+ * Карточка задачи в колонке рабочего дня (docs/redesign.md §5): название и
+ * статус справа вверху (название обтекает бейдж), ниже цех-заказчик, ниже
+ * исполнители — каждый на своём месте, без кнопок в углу.
  *
  * Ссылка — заголовок, растянутый на всю карточку (after:inset-0): нажатие в
  * любом месте открывает заявку, а кнопки быстрой правки (statusControl,
@@ -51,7 +52,6 @@ function metaOf(task: BoardTask): string {
 export function TaskChip({
   projectId,
   task,
-  cornerButtons = 0,
   statusControl,
   executorsControl,
   className,
@@ -59,61 +59,65 @@ export function TaskChip({
 }: {
   projectId: string;
   task: BoardTask;
-  /**
-   * Сколько кнопок в правом нижнем углу: под них резервируется место в строке
-   * статуса, заголовок сохраняет всю ширину колонки и не ломает слова.
-   */
-  cornerButtons?: number;
   /** Кнопка-меню статуса вместо бейджа (quick-edit-menus.tsx). */
   statusControl?: React.ReactNode;
-  /** Кнопка-меню исполнителей вместо их имён в метаданных. */
+  /** Кнопка-меню исполнителей вместо строки с их именами. */
   executorsControl?: React.ReactNode;
 } & LinkRestProps) {
-  const meta = executorsControl ? task.categoryName : metaOf(task);
   const isHistory = Boolean(task.isHistory);
+  const hasMeta = Boolean(task.categoryName || task.queueName || task.photoCount);
 
   return (
     <div
       className={cn(
-        "relative flex flex-col gap-[5px] rounded-[7px] border border-line-card bg-surface px-2.5 pt-2 pb-[9px] transition-[border-color,box-shadow] duration-120 hover:border-line-card-hover hover:shadow-[0_1px_2px_rgba(20,30,50,0.06)] has-[a:focus-visible]:border-brand has-[a:focus-visible]:ring-[3px] has-[a:focus-visible]:ring-brand/12",
+        "relative flex flex-col gap-1 rounded-[7px] border border-line-card bg-surface px-2.5 pt-2 pb-[9px] transition-[border-color,box-shadow] duration-120 hover:border-line-card-hover hover:shadow-[0_1px_2px_rgba(20,30,50,0.06)] has-[a:focus-visible]:border-brand has-[a:focus-visible]:ring-[3px] has-[a:focus-visible]:ring-brand/12",
         isHistory && "opacity-[0.66]",
         className,
       )}
     >
-      {/* Заголовок занимает отдельную строку: в колонке ~165px он не должен
-          делить строку с бейджем, иначе слова ломаются посередине. */}
-      <Link
-        href={`/${projectId}/tasks/${task.id}`}
-        // Нативное перетаскивание ссылки браузером конфликтует с drag-and-drop доски.
-        draggable={false}
-        {...rest}
-        className="text-[13px] leading-snug font-semibold tracking-[-0.005em] break-words text-ink outline-none after:absolute after:inset-0 after:rounded-[7px] after:content-['']"
-      >
-        {task.title}
-      </Link>
-      <span className={cn("flex flex-wrap items-center gap-1.5", CORNER_PADDING[cornerButtons])}>
-        {statusControl ?? <StatusBadge status={task.status} muted={isHistory} />}
-        {task.queueName ? (
-          <span
-            className={cn(BADGE_BASE, "inline-flex items-center gap-1 border border-line-card bg-surface py-[3px] text-meta-alt")}
-            title={`Очередь: ${task.queueName}`}
-          >
-            <BookmarkIcon size={10} className="shrink-0" />
-            <span className="truncate">{task.queueName}</span>
+      {/* Бейдж прижат вправо float-ом, название его обтекает: отдельный столбец
+          под статус в колонке ~165px сжал бы название и ломал слова. */}
+      <div className="text-[13px] leading-snug">
+        <span className="float-right mb-0.5 ml-2 flex max-w-[60%]">
+          {statusControl ?? <StatusBadge status={task.status} muted={isHistory} />}
+        </span>
+        <Link
+          href={`/${projectId}/tasks/${task.id}`}
+          // Нативное перетаскивание ссылки браузером конфликтует с drag-and-drop доски.
+          draggable={false}
+          {...rest}
+          className="font-semibold tracking-[-0.005em] break-words text-ink outline-none after:absolute after:inset-0 after:rounded-[7px] after:content-['']"
+        >
+          {task.title}
+        </Link>
+      </div>
+      {hasMeta ? (
+        <span className="flex min-w-0 items-center gap-2 text-[11.5px] text-meta-alt">
+          {task.queueName ? (
+            <span className="inline-flex min-w-0 shrink items-center gap-1" title={`Очередь: ${task.queueName}`}>
+              <BookmarkIcon size={10} className="shrink-0" />
+              <span className="truncate">{task.queueName}</span>
+            </span>
+          ) : null}
+          {task.photoCount ? (
+            <span className="inline-flex shrink-0 items-center gap-1" title={`Фото: ${task.photoCount}`}>
+              <CameraIcon size={10} className="shrink-0" />
+              {task.photoCount}
+            </span>
+          ) : null}
+          {task.categoryName ? <span className="min-w-0 truncate text-meta">{task.categoryName}</span> : null}
+        </span>
+      ) : null}
+      {executorsControl ??
+        (task.executors.length > 0 ? (
+          <span className="flex items-start gap-1 text-[11.5px] text-meta">
+            <UserIcon size={11} className="mt-[2px] shrink-0" />
+            {executorsInitials(
+              task.executors.map((e) => e.name),
+              CHIP_EXECUTORS_VISIBLE,
+            )}
           </span>
-        ) : null}
-        {task.photoCount ? (
-          <span
-            className={cn(BADGE_BASE, "inline-flex items-center gap-1 border border-line-card bg-surface py-[3px] text-meta-alt")}
-            title={`Фото: ${task.photoCount}`}
-          >
-            <CameraIcon size={10} className="shrink-0" />
-            {task.photoCount}
-          </span>
-        ) : null}
-        {meta ? <span className="text-[11.5px] break-words text-meta">{meta}</span> : null}
-        {executorsControl}
-      </span>
+        ) : null)}
       {task.transferNote ? (
         <span className="mt-px flex items-start gap-[5px] border-t border-dashed border-line-card pt-1.5 text-[11px] text-meta-dim">
           <ArrowRightIcon size={11} className="mt-[3px] shrink-0" />

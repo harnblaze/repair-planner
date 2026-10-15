@@ -27,7 +27,6 @@ import {
 import { formatDateLong, formatDateShort } from "@/lib/business/dates";
 import {
   canCarryOverFromBoard,
-  canCompleteFromBoard,
   canUndoCarryOverFromBoard,
   canPlanOnDate,
   canReturnToBacklog,
@@ -47,10 +46,11 @@ import {
 } from "./actions";
 import {
   assignTaskExecutorAction,
+  carryOverTaskAction,
   setTaskStatusAction,
   unassignTaskExecutorAction,
 } from "../tasks/[taskId]/actions";
-import { UNDO_TOAST_MS } from "../tasks/[taskId]/undo-carry-over";
+import { toastCarriedOver, undoCarryOver, UNDO_TOAST_MS } from "../tasks/[taskId]/undo-carry-over";
 import { CreateTaskForm } from "./create-task-form";
 import {
   BOARD_ACCESSIBILITY,
@@ -61,11 +61,8 @@ import {
 } from "./dnd";
 import { Panel, PanelEmpty, PanelHeader } from "./panel";
 import { ExecutorsMenu, StatusMenu, type DirectoryExecutor } from "./quick-edit-menus";
-import { CarryOverChipButton } from "./carry-over-chip-button";
-import { CompleteChipButton } from "./complete-chip-button";
 import { TaskChip, TaskRow, type BoardTask } from "./task-chip";
 import { patchTask, toggleExecutor, type TaskExecutor } from "./task-updates";
-import { UndoCarryOverChipButton } from "./undo-carry-over-chip-button";
 
 // Неделя доски и панели очередей текущих заявок в одном DndContext: задачу
 // можно запланировать, сменить ей день, упорядочить внутри дня или очереди,
@@ -92,6 +89,9 @@ type QuickEdit = {
   executors: DirectoryExecutor[];
   setStatus: (taskId: string, status: TaskStatus, previous: TaskStatus) => void;
   toggleExecutor: (taskId: string, executor: TaskExecutor, assign: boolean) => void;
+  /** Перенос на следующий рабочий день и его отмена — те же действия, что на странице заявки. */
+  carryOver: (taskId: string) => void;
+  undoCarryOver: (taskId: string) => void;
 };
 
 /** container — дата "YYYY-MM-DD" или "queue:<ключ>"; taskId отсутствует у самой колонки. */
@@ -340,8 +340,8 @@ export function WeekBoard({
     });
   };
 
-  // Статус меняется сразу; «Отменить» в уведомлении возвращает прежний, как у
-  // кнопки «Завершить» (complete-chip-button.tsx). Отмена уведомления не создаёт.
+  // Статус меняется сразу; «Отменить» в уведомлении возвращает прежний.
+  // Отмена уведомления не создаёт.
   const setStatus = (taskId: string, status: TaskStatus, previous: TaskStatus | null) => {
     startTransition(async () => {
       applyOptimistic({ type: "setStatus", taskId, status });
@@ -365,6 +365,13 @@ export function WeekBoard({
           run({ type: "toggleExecutor", taskId, executor, assign }, () =>
             (assign ? assignTaskExecutorAction : unassignTaskExecutorAction)(projectId, taskId, executor.id),
           ),
+        carryOver: (taskId) =>
+          startTransition(async () => {
+            const result = await carryOverTaskAction(projectId, taskId);
+            if (!result.ok) toast.error(result.error);
+            else toastCarriedOver(result.message ?? "Перенесено.", projectId, taskId);
+          }),
+        undoCarryOver: (taskId) => startTransition(() => undoCarryOver(projectId, taskId)),
       }
     : null;
 
@@ -668,15 +675,10 @@ function SortableTaskChip({
     return <TaskChip projectId={projectId} task={task} />;
   }
 
-  const canCarryOver = canCarryOverFromBoard(task, canEdit);
-  const canComplete = canCompleteFromBoard(task, canEdit);
-  const canUndo = canUndoCarryOverFromBoard(task, canEdit);
-  const cornerButtons = [canUndo, canComplete, canCarryOver].filter(Boolean).length;
   // День-история — след переноса: правят заявку на её текущем дне.
   const editable = quickEdit !== null && !task.isHistory;
 
-  // Сдвиг при перетаскивании — на обёртке, чтобы кнопки угла ехали вместе
-  // с карточкой; слушатели перетаскивания — только на ссылке, кнопки они не задевают.
+  // Слушатели перетаскивания — только на ссылке, кнопки быстрой правки они не задевают.
   return (
     <div
       ref={setNodeRef}
@@ -686,10 +688,16 @@ function SortableTaskChip({
       <TaskChip
         projectId={projectId}
         task={task}
-        cornerButtons={cornerButtons}
         statusControl={
           editable ? (
-            <StatusMenu status={task.status} onChange={(status) => quickEdit.setStatus(task.id, status, task.status)} />
+            <StatusMenu
+              status={task.status}
+              onChange={(status) => quickEdit.setStatus(task.id, status, task.status)}
+              onCarryOver={canCarryOverFromBoard(task, canEdit) ? () => quickEdit.carryOver(task.id) : null}
+              onUndoCarryOver={
+                canUndoCarryOverFromBoard(task, canEdit) ? () => quickEdit.undoCarryOver(task.id) : null
+              }
+            />
           ) : undefined
         }
         executorsControl={
@@ -705,15 +713,6 @@ function SortableTaskChip({
         {...dragListeners(listeners)}
         className={DRAGGABLE_CLASS}
       />
-      {cornerButtons > 0 && !isDragging ? (
-        <div className="absolute right-1 bottom-1 flex">
-          {canUndo ? <UndoCarryOverChipButton projectId={projectId} taskId={task.id} /> : null}
-          {canComplete ? (
-            <CompleteChipButton projectId={projectId} taskId={task.id} previousStatus={task.status} />
-          ) : null}
-          {canCarryOver ? <CarryOverChipButton projectId={projectId} taskId={task.id} /> : null}
-        </div>
-      ) : null}
     </div>
   );
 }

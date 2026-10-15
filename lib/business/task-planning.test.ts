@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   canCarryOverFromBoard,
   canCarryOverTask,
-  canCompleteFromBoard,
   canUndoCarryOverFromBoard,
   canPlanOnDate,
   describeOccurrence,
@@ -45,22 +44,6 @@ describe("canCarryOverFromBoard", () => {
 
   it("не показывает перенос без права редактирования", () => {
     expect(canCarryOverFromBoard(live, false)).toBe(false);
-  });
-});
-
-describe("canCompleteFromBoard", () => {
-  const live = { status: "planned" as const, isHistory: false };
-
-  it("разрешает завершение с карточки последнего дня открытой задачи", () => {
-    expect(canCompleteFromBoard(live, true)).toBe(true);
-    expect(canCompleteFromBoard({ ...live, status: "paused" }, true)).toBe(true);
-  });
-
-  it("не показывает завершение на дне из истории, у закрытой задачи и без права редактирования", () => {
-    expect(canCompleteFromBoard({ ...live, isHistory: true }, true)).toBe(false);
-    expect(canCompleteFromBoard({ ...live, status: "completed" }, true)).toBe(false);
-    expect(canCompleteFromBoard({ ...live, status: "cancelled" }, true)).toBe(false);
-    expect(canCompleteFromBoard(live, false)).toBe(false);
   });
 });
 

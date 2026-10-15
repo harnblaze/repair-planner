@@ -15,8 +15,8 @@ export function canCarryOverTask(status: TaskStatus): boolean {
 }
 
 /**
- * Кнопка переноса на карточке доски: только в последнем дне задачи (дни из
- * истории уже перенесены) и только у того, кто может редактировать проект.
+ * Перенос из меню статуса на карточке доски: только в последнем дне задачи
+ * (дни из истории уже перенесены) и только у того, кто может редактировать проект.
  */
 export function canCarryOverFromBoard(
   task: { status: TaskStatus; isHistory?: boolean },
@@ -24,9 +24,6 @@ export function canCarryOverFromBoard(
 ): boolean {
   return canEdit && !task.isHistory && canCarryOverTask(task.status);
 }
-
-/** Кнопка «Завершить» на карточке доски — там же, где кнопка переноса (product-requirements.md §2). */
-export const canCompleteFromBoard = canCarryOverFromBoard;
 
 /** Вернуть в «Текущие заявки» можно только незавершённую задачу — те же статусы, что и для переноса. */
 export const canReturnToBacklog = canCarryOverTask;
