@@ -121,10 +121,11 @@ export function TaskAttachments({
     setOpenIndex((index) => (index === null ? null : (index + step + photos.length) % photos.length));
   }
 
-  function handleDelete() {
-    if (!current || !window.confirm("Удалить фото?")) return;
+  // Общая для миниатюры и просмотрщика.
+  function deletePhoto(photo: TaskPhoto) {
+    if (!window.confirm("Удалить фото?")) return;
     startDelete(async () => {
-      const result = await deleteTaskAttachmentAction(projectId, taskId, current.id);
+      const result = await deleteTaskAttachmentAction(projectId, taskId, photo.id);
       if (!result.ok) {
         toast.error(result.error);
         return;
@@ -177,6 +178,8 @@ export function TaskAttachments({
               url={displayUrl(photo)}
               index={index}
               onOpen={() => setOpenIndex(index)}
+              onDelete={canEdit ? () => deletePhoto(photo) : undefined}
+              isDeleting={isDeleting}
               onLoadError={(failedUrl) => handleLoadError(photo, failedUrl)}
             />
           ))}
@@ -209,7 +212,12 @@ export function TaskAttachments({
               </Dialog.Title>
               <div className="flex items-center gap-2">
                 {canEdit ? (
-                  <Button type="button" variant="destructive" disabled={isDeleting} onClick={handleDelete}>
+                  <Button type="button" variant="destructive" 
+                    disabled={isDeleting}
+                    onClick={() => {
+                      if (current) deletePhoto(current);
+                    }}
+                  >
                     <Trash2Icon />
                     Удалить
                   </Button>
@@ -275,40 +283,61 @@ function PhotoThumb({
   url,
   index,
   onOpen,
+  onDelete,
+  isDeleting,
   onLoadError,
-}: PhotoImageProps & { index: number; onOpen: () => void }) {
+}: PhotoImageProps & {
+  index: number;
+  onOpen: () => void;
+  /** undefined — без кнопки удаления (только просмотр). */
+  onDelete?: () => void;
+  isDeleting: boolean;
+}) {
   // Подписанная ссылка живёт час: на долго открытой вкладке картинка
   // перестаёт грузиться — показываем подсказку вместо битого изображения.
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
 
-  if (!url || failedUrl === url) {
-    return (
-      <div className="flex aspect-square items-center justify-center rounded-md bg-page p-1 text-center text-[11px] text-faint">
-        {EXPIRED_TEXT}
-      </div>
-    );
-  }
-
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      aria-label={`Открыть фото ${index + 1}`}
-      className="aspect-square overflow-hidden rounded-md bg-page outline-none focus-visible:ring-[3px] focus-visible:ring-brand/12"
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element -- подписанная ссылка живёт час, оптимизатор next/image её не кеширует */}
-      <img
-        src={url}
-        alt=""
-        loading="lazy"
-        width={photo.width}
-        height={photo.height}
-        className="size-full object-cover"
-        onError={() => {
-          if (!onLoadError(url)) setFailedUrl(url);
-        }}
-      />
-    </button>
+    <div className="relative aspect-square">
+      {!url || failedUrl === url ? (
+        <div className="flex size-full items-center justify-center rounded-md bg-page p-1 text-center text-[11px] text-faint">
+          {EXPIRED_TEXT}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={`Открыть фото ${index + 1}`}
+          className="size-full overflow-hidden rounded-md bg-page outline-none focus-visible:ring-[3px] focus-visible:ring-brand/12"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element -- подписанная ссылка живёт час, оптимизатор next/image её не кеширует */}
+          <img
+            src={url}
+            alt=""
+            loading="lazy"
+            width={photo.width}
+            height={photo.height}
+            className="size-full object-cover"
+            onError={() => {
+              if (!onLoadError(url)) setFailedUrl(url);
+            }}
+          />
+        </button>
+      )}
+      {/* Видна всегда, не по наведению: на телефоне наведения нет. after: —
+          зона нажатия ~40px при небольшом значке. */}
+      {onDelete ? (
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={isDeleting}
+          aria-label={`Удалить фото ${index + 1}`}
+          className="absolute top-1 right-1 flex size-7 items-center justify-center rounded-full bg-black/55 text-white outline-none after:absolute after:-inset-1.5 hover:bg-black/75 focus-visible:ring-[3px] focus-visible:ring-brand/40 disabled:opacity-50 [&_svg]:size-3.5"
+        >
+          <Trash2Icon />
+        </button>
+      ) : null}
+    </div>
   );
 }
 
