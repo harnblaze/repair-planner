@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseDecimal, parsePastedRows, splitTsv } from "./supply-paste";
+import { numberRows, parseDecimal, parsePastedRows, splitTsv } from "./supply-paste";
 
 describe("parseDecimal", () => {
   it.each([
@@ -77,5 +77,16 @@ describe("parsePastedRows", () => {
     const rows = parsePastedRows("\n\t\t\n1\tПодвес прямой\tшт\t230\r\n\r\n");
     expect(rows).toHaveLength(1);
     expect(rows[0].raw).toBe("1\tПодвес прямой\tшт\t230");
+  });
+});
+
+describe("numberRows", () => {
+  it("keeps given numbers and continues after the largest one", () => {
+    const rows = numberRows([{ lineNo: 4 }, { lineNo: null }, { lineNo: 2 }, { lineNo: null }], 0);
+    expect(rows.map((r) => r.lineNo)).toEqual([4, 5, 2, 6]);
+  });
+
+  it("starts after existing lines of the document", () => {
+    expect(numberRows([{ lineNo: null }, { lineNo: null }], 34).map((r) => r.lineNo)).toEqual([35, 36]);
   });
 });

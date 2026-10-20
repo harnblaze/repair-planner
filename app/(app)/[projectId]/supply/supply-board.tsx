@@ -2,14 +2,18 @@
 
 import { useMemo, useState } from "react";
 
+import { PencilIcon, PlusIcon } from "lucide-react";
+
 import { EmptyState } from "@/components/common/empty-state";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { filterSupplyRequests } from "@/lib/business/supply-filter";
 import { summarizeRequest } from "@/lib/business/supply-status";
-import type { SupplyRequestView } from "@/lib/types/supply";
+import type { SupplyItemView, SupplyRequestView } from "@/lib/types/supply";
 import { cn } from "@/lib/utils";
 
 import { RequestBlock } from "./request-block";
+import { ItemDialog, ItemsDialog, RequestDialog } from "./request-dialogs";
 import type { SupplyMaterialOption } from "./supply-data";
 
 export interface SupplyBoardProps {
@@ -20,7 +24,15 @@ export interface SupplyBoardProps {
   today: string;
 }
 
-export function SupplyBoard({ requests }: SupplyBoardProps) {
+// Одно открытое окно на странице; данные окна — снимок на момент открытия.
+type OpenDialog =
+  | { kind: "request"; request: SupplyRequestView | null }
+  | { kind: "items"; request: SupplyRequestView }
+  | { kind: "item"; item: SupplyItemView };
+
+export function SupplyBoard({ projectId, requests, materials, canEdit, today }: SupplyBoardProps) {
+  const [dialog, setDialog] = useState<OpenDialog | null>(null);
+  const closeDialog = () => setDialog(null);
   const [query, setQuery] = useState("");
   const [onlyActive, setOnlyActive] = useState(true);
   // Явно раскрытые/свёрнутые мастером; остальные — по умолчанию (§6.1).
@@ -64,6 +76,12 @@ export function SupplyBoard({ requests }: SupplyBoardProps) {
             </button>
           ))}
         </div>
+        {canEdit && (
+          <Button type="button" className="ml-auto" onClick={() => setDialog({ kind: "request", request: null })}>
+            <PlusIcon />
+            Заявка на ТМЦ
+          </Button>
+        )}
       </div>
 
       {requests.length === 0 ? (
@@ -78,8 +96,40 @@ export function SupplyBoard({ requests }: SupplyBoardProps) {
             summary={summaries.get(request.id)!}
             open={isOpen(request.id)}
             onToggle={() => setToggled((t) => ({ ...t, [request.id]: !isOpen(request.id) }))}
+            onItemClick={canEdit ? (item) => setDialog({ kind: "item", item }) : undefined}
+            menu={
+              canEdit && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`Изменить заявку №${request.number}`}
+                  onClick={() => setDialog({ kind: "request", request })}
+                >
+                  <PencilIcon />
+                </Button>
+              )
+            }
+            footer={
+              canEdit && (
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setDialog({ kind: "items", request })}>
+                    <PlusIcon />
+                    Позиции
+                  </Button>
+                </div>
+              )
+            }
           />
         ))
+      )}
+
+      {dialog?.kind === "request" && (
+        <RequestDialog projectId={projectId} today={today} request={dialog.request} onClose={closeDialog} />
+      )}
+      {dialog?.kind === "items" && <ItemsDialog projectId={projectId} request={dialog.request} onClose={closeDialog} />}
+      {dialog?.kind === "item" && (
+        <ItemDialog projectId={projectId} item={dialog.item} materials={materials} onClose={closeDialog} />
       )}
     </div>
   );

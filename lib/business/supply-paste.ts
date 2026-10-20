@@ -132,3 +132,19 @@ function parseCells(rawCells: string[]): PastedRow {
     raw,
   };
 }
+
+/**
+ * № п/п строкам без номера: следующий после наибольшего встреченного
+ * (среди уже сохранённых строк документа — `after` — и вставленных выше).
+ */
+export function numberRows<T extends { lineNo: number | null }>(
+  rows: T[],
+  after: number,
+): (Omit<T, "lineNo"> & { lineNo: number })[] {
+  let max = after;
+  return rows.map((row) => {
+    const lineNo = row.lineNo ?? max + 1;
+    max = Math.max(max, lineNo);
+    return { ...row, lineNo };
+  });
+}
