@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { ATTACHMENT_MESSAGES, formatUploadErrors, mapAuthError, mapBoardMoveError, NOT_WORKING_DAY_MESSAGE } from "@/lib/errors";
+import {
+  ATTACHMENT_MESSAGES,
+  formatUploadErrors,
+  mapAuthError,
+  mapBoardMoveError,
+  mapSupplyError,
+  NOT_WORKING_DAY_MESSAGE,
+} from "@/lib/errors";
 
 describe("mapBoardMoveError", () => {
   it("maps a known RPC code", () => {
@@ -52,5 +59,49 @@ describe("formatUploadErrors", () => {
     expect(formatUploadErrors([ATTACHMENT_MESSAGES.uploadFailed], 3)).toBe(
       "Не удалось загрузить 1 фото из 3. Попробуйте ещё раз.",
     );
+  });
+});
+
+describe("mapSupplyError", () => {
+  it.each([
+    ["supply_line_not_found", "Строка поставки не найдена. Обновите страницу."],
+    ["already_received", "Эта поставка уже оприходована."],
+    ["material_not_found", "Материал не найден. Обновите страницу."],
+    ["invalid_quantity", "Проверьте количество."],
+    ["access_denied", "Недостаточно прав для изменения данных проекта."],
+    ["supply_lines_empty", "Добавьте хотя бы одну строку."],
+    ["supply_parent_not_found", "Документ не найден. Обновите страницу."],
+  ])("maps %s", (code, text) => {
+    expect(mapSupplyError({ code: "P0001", message: code })).toBe(text);
+  });
+
+  it("explains a blocked delete of a received delivery", () => {
+    expect(
+      mapSupplyError({
+        code: "23503",
+        message:
+          'update or delete on table "supply_delivery_lines" violates foreign key constraint "material_movements_supply_line_fk" on table "material_movements"',
+      }),
+    ).toBe("Нельзя удалить: материалы из этой поставки уже оприходованы. Исправьте остаток пересчётом в «Материалах».");
+  });
+
+  it("explains a link to an item of another request", () => {
+    expect(
+      mapSupplyError({
+        code: "23503",
+        message: 'insert or update on table "supply_invoice_lines" violates foreign key constraint "supply_invoice_lines_item_fk"',
+      }),
+    ).toBe("Позиция не найдена в этой заявке. Обновите страницу.");
+  });
+
+  it("maps an RLS denial to access_denied text", () => {
+    expect(mapSupplyError({ code: "42501", message: "new row violates row-level security policy" })).toBe(
+      "Недостаточно прав для изменения данных проекта.",
+    );
+  });
+
+  it("falls back to a generic text", () => {
+    expect(mapSupplyError({ code: "XX000", message: "boom" })).toBe("Не удалось сохранить. Попробуйте ещё раз.");
+    expect(mapSupplyError(null)).toBe("Не удалось сохранить. Попробуйте ещё раз.");
   });
 });

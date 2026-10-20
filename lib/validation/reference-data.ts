@@ -42,7 +42,7 @@ export type CreateMaterialInput = z.output<typeof createMaterialSchema>;
 export type CreateMaterialFormValues = z.input<typeof createMaterialSchema>;
 
 // numeric(14, 3): не больше 11 знаков до запятой — иначе переполнение в БД.
-const MAX_QUANTITY = 99_999_999_999;
+export const MAX_QUANTITY = 99_999_999_999;
 
 const movementNoteSchema = z.string().trim().max(500, "Комментарий слишком длинный").optional();
 

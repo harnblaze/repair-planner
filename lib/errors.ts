@@ -76,6 +76,36 @@ export function mapMaterialMovementError(message: string | undefined | null): st
   );
 }
 
+// Снабжение (supabase/migrations/0030): коды RPC и нарушения FK, которые
+// приложение может вызвать (удаление оприходованного, чужая позиция).
+const SUPPLY_ERROR_MESSAGES: Record<string, string> = {
+  supply_line_not_found: "Строка поставки не найдена. Обновите страницу.",
+  already_received: "Эта поставка уже оприходована.",
+  material_not_found: "Материал не найден. Обновите страницу.",
+  invalid_quantity: "Проверьте количество.",
+  access_denied: "Недостаточно прав для изменения данных проекта.",
+  supply_lines_empty: "Добавьте хотя бы одну строку.",
+  supply_parent_not_found: "Документ не найден. Обновите страницу.",
+};
+
+export const SUPPLY_RECEIVED_DELETE_MESSAGE =
+  "Нельзя удалить: материалы из этой поставки уже оприходованы. Исправьте остаток пересчётом в «Материалах».";
+
+/** Переводит ошибку PostgREST/RPC снабжения в понятное сообщение. */
+export function mapSupplyError(error: { code?: string; message?: string } | null | undefined): string {
+  const message = error?.message ?? "";
+  if (SUPPLY_ERROR_MESSAGES[message]) return SUPPLY_ERROR_MESSAGES[message];
+  if (error?.code === "23503" && message.includes("material_movements_supply_line_fk")) {
+    return SUPPLY_RECEIVED_DELETE_MESSAGE;
+  }
+  if (error?.code === "23503" && message.includes("supply_invoice_lines_item_fk")) {
+    return "Позиция не найдена в этой заявке. Обновите страницу.";
+  }
+  // RLS: роль сменили на «просмотр», пока страница была открыта.
+  if (error?.code === "42501") return SUPPLY_ERROR_MESSAGES.access_denied;
+  return "Не удалось сохранить. Попробуйте ещё раз.";
+}
+
 // Коды исключений RPC приглашений (supabase/migrations/0012).
 const INVITATION_ERROR_MESSAGES: Record<string, string> = {
   access_denied: "Приглашать участников может только владелец проекта.",
