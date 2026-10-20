@@ -1,0 +1,60 @@
+// Подсказка: к какой позиции заявки относится строка счёта
+// (docs/superpowers/specs/2026-10-20-supply-tracking-design.md §6.4).
+// Только предложение — мастер подтверждает или меняет его в предпросмотре.
+//
+// Счёт — доля слов позиции, найденных в строке счёта. Поставщик дописывает
+// своё («3,8х35 (1000шт) в ведре»), поэтому лишние слова строки не штрафуются.
+
+import type { SupplyItemView } from "@/lib/types/supply";
+
+export const SUPPLY_MATCH_THRESHOLD = 0.35;
+
+// Кириллические буквы, неотличимые от латинских: в документах их путают
+// («Т93» и «T93», «Alprofі»). Приводим к латинице до нижнего регистра.
+const LOOKALIKES: Record<string, string> = {
+  А: "A", В: "B", Е: "E", К: "K", М: "M", Н: "H", О: "O", Р: "P", С: "C", Т: "T", Х: "X",
+  а: "a", е: "e", о: "o", р: "p", с: "c", у: "y", х: "x", і: "i", І: "I",
+};
+
+/** Слова ≥ 2 букв, обрезанные до 5 символов (грубая основа), и числа любой длины. */
+export function matchTokens(name: string): Set<string> {
+  const normalized = name
+    .replace(/[АВЕКМНОРСТХаеорсухіІ]/g, (ch) => LOOKALIKES[ch])
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/(\p{L})(\p{N})/gu, "$1 $2")
+    .replace(/(\p{N})(\p{L})/gu, "$1 $2");
+
+  const tokens = new Set<string>();
+  for (const word of normalized.split(" ")) {
+    if (/^\p{N}+$/u.test(word)) tokens.add(word);
+    else if (word.length >= 2) tokens.add(word.slice(0, 5));
+  }
+  return tokens;
+}
+
+export function matchScore(itemName: string, lineName: string): number {
+  const itemTokens = matchTokens(itemName);
+  if (itemTokens.size === 0) return 0;
+  const lineTokens = matchTokens(lineName);
+  let found = 0;
+  for (const token of itemTokens) if (lineTokens.has(token)) found += 1;
+  return found / itemTokens.size;
+}
+
+export function suggestItemId(
+  lineName: string,
+  items: Pick<SupplyItemView, "id" | "name" | "cancelled" | "lineNo">[],
+): string | null {
+  let best: { id: string; score: number; lineNo: number } | null = null;
+  for (const item of items) {
+    if (item.cancelled) continue;
+    const score = matchScore(item.name, lineName);
+    if (score < SUPPLY_MATCH_THRESHOLD) continue;
+    if (!best || score > best.score || (score === best.score && item.lineNo < best.lineNo)) {
+      best = { id: item.id, score, lineNo: item.lineNo };
+    }
+  }
+  return best?.id ?? null;
+}
