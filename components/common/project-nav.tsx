@@ -13,6 +13,7 @@ const SECTIONS = [
   { segment: "categories", label: "Категории" },
   { segment: "executors", label: "Исполнители" },
   { segment: "materials", label: "Материалы" },
+  { segment: "supply", label: "Снабжение" },
   { segment: "reports", label: "Отчёты" },
   { segment: "settings", label: "Настройки" },
 ] as const;
