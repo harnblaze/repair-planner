@@ -351,11 +351,11 @@ select is(
   'resuming a postponed task adds a day and keeps the history'
 );
 
--- 26. Задачу с историей нельзя перетащить на другой день
+-- 26. День истории нельзя перетащить на другой день (текущий день — можно, 0029)
 select throws_ok(
-  $$ select move_task_schedule('e0000000-0000-0000-0000-00000000000c', '2020-01-08', '2020-01-09', 0) $$,
+  $$ select move_task_schedule('e0000000-0000-0000-0000-00000000000c', '2020-01-06', '2020-01-09', 0) $$,
   null::char(5), 'task_has_history',
-  'move_task_schedule rejects moving a task with history to another day'
+  'move_task_schedule rejects moving a history day to another day'
 );
 
 -- 27. Порядок внутри дня

@@ -262,7 +262,7 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 | Функция | Что делает |
 |---|---|
 | `plan_task_on_day(p_task_id, p_work_date, p_position default null)` | задача из «Текущих заявок» → день; дата не раньше последнего дня истории; тот же день снимает `postponed`; `new` → `planned` |
-| `move_task_schedule(p_task_id, p_from_date, p_to_date, p_position)` | порядок внутри дня или смена дня (только для единственного неотложенного дня задачи) |
+| `move_task_schedule(p_task_id, p_from_date, p_to_date, p_position)` | порядок внутри дня (любой день) или смена дня — только текущего (`= planned_date`) дня задачи; с 0029 и у задачи с историей: не раньше последнего дня истории (`date_before_history`), на сам этот день — слияние (строка удаляется, с дня истории снимается `postponed`; если текущий день уже прошёл — `day_already_passed`); день истории — `task_has_history` |
 | `return_task_to_backlog(p_task_id) returns boolean` | правило «Отложить» (product-requirements.md §4.4); `true` — история сохранена; не начатая задача: `planned` → `new` (0028) |
 | `move_board_item(p_item_id, p_position)` | порядок записи внутри списка |
 | `move_backlog_task(p_task_id, p_queue_id, p_position)` (0018, 0019) | перестановка в панели очереди и перенос между очередями: меняет `queue_id`, перенумеровывает `backlog_position` целевой очереди 0..n-1 под advisory-блокировкой обеих очередей (в порядке ключей); после блокировок перечитывает заявку `for update` и повторяет проверки (0019); `task_not_found`, `access_denied`, `task_already_planned`, `task_closed`, `queue_not_found`, `task_moved` (пока ждали блокировку, заявку увели в другую очередь) |
@@ -558,7 +558,8 @@ update materials set current_balance = current_balance + delta where id = p_mate
 26. `0026_task_attachment_orphans` — RPC `task_attachment_orphans` для очистки файлов без строки `task_attachments`; новых таблиц и политик нет.
 27. `0027_project_archive_delete` — удаление проекта только из архива (политика `projects_delete`), ранний выход триггера расхода при каскаде, RPC `project_attachment_paths`.
 28. `0028_unplan_status_new` — снятие с плана (`return_task_to_backlog`, `set_task_planned_date(null)`) возвращает `planned` → `new`; разовая чистка задач `planned` без даты.
+29. `0029_move_task_with_history` — `move_task_schedule` меняет день и у задачи с историей (переносы, отложена и продолжена): не раньше последнего дня истории, на сам день истории — слияние; новый код `day_already_passed`. Тест — `supabase/tests/database/move-task-with-history.test.sql`.
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
-Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/rls.test.sql` (142), `supabase/tests/database/attachments.test.sql` (28) `supabase/tests/database/task-queues.test.sql` (45) и `supabase/tests/database/archive-search.test.sql` (25) — `supabase test db`, 240/240 успешно. TypeScript-типы сгенерированы в `lib/types/database.ts`.
+Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/*.test.sql` (11 файлов) — `supabase test db`, 346/346 успешно (2026-10-20). TypeScript-типы сгенерированы в `lib/types/database.ts`.

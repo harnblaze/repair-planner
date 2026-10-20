@@ -5,6 +5,7 @@ import {
   canCarryOverTask,
   canUndoCarryOverFromBoard,
   canPlanOnDate,
+  dayChangeBlock,
   describeOccurrence,
   isUndoableCarryOver,
   keepsDayOnReturnToBacklog,
@@ -95,19 +96,21 @@ describe("describeOccurrence", () => {
     { workDate: "2026-09-15", postponed: false },
   ];
 
-  it("текущий день однодневной задачи можно перетащить на другой день", () => {
+  it("текущий день однодневной задачи можно перетащить на любой день", () => {
     expect(describeOccurrence("2026-09-15", "2026-09-15", single)).toEqual({
       isHistory: false,
       note: null,
       canChangeDay: true,
+      previousWorkDate: null,
     });
   });
 
-  it("текущий день перенесённой задачи — не история, но день не меняется", () => {
+  it("текущий день перенесённой задачи можно перетащить, но не раньше истории", () => {
     expect(describeOccurrence("2026-09-15", "2026-09-15", carried)).toEqual({
       isHistory: false,
       note: null,
-      canChangeDay: false,
+      canChangeDay: true,
+      previousWorkDate: "2026-09-14",
     });
   });
 
@@ -116,6 +119,7 @@ describe("describeOccurrence", () => {
       isHistory: true,
       note: "Перенесена на 15 сентября",
       canChangeDay: false,
+      previousWorkDate: null,
     });
   });
 
@@ -137,7 +141,39 @@ describe("describeOccurrence", () => {
       isHistory: true,
       note: "Отложена, продолжена 25 сентября",
       canChangeDay: false,
+      previousWorkDate: null,
     });
+    expect(describeOccurrence("2026-09-25", "2026-09-25", days)).toEqual({
+      isHistory: false,
+      note: null,
+      canChangeDay: true,
+      previousWorkDate: "2026-09-15",
+    });
+  });
+});
+
+describe("dayChangeBlock", () => {
+  const today = "2026-10-20";
+
+  it("однодневную задачу можно перенести на любой день, в т.ч. в прошлое", () => {
+    expect(dayChangeBlock("2026-10-21", "2026-10-13", null, today)).toBeNull();
+  });
+
+  it("задачу с историей можно перенести на любой день после последнего дня истории", () => {
+    expect(dayChangeBlock("2026-10-21", "2026-10-23", "2026-10-20", today)).toBeNull();
+  });
+
+  it("раньше последнего дня истории — нельзя", () => {
+    expect(dayChangeBlock("2026-10-21", "2026-10-19", "2026-10-20", today)).toBe("before_history");
+  });
+
+  it("на сам день истории — слияние, если текущий день не прошёл", () => {
+    expect(dayChangeBlock("2026-10-21", "2026-10-20", "2026-10-20", today)).toBeNull();
+    expect(dayChangeBlock("2026-10-20", "2026-10-16", "2026-10-16", today)).toBeNull();
+  });
+
+  it("прошедший текущий день с днём истории не сливается", () => {
+    expect(dayChangeBlock("2026-10-19", "2026-10-16", "2026-10-16", today)).toBe("merge_past");
   });
 });
 

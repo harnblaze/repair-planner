@@ -30,6 +30,7 @@ import {
   canUndoCarryOverFromBoard,
   canPlanOnDate,
   canReturnToBacklog,
+  dayChangeBlock,
   keepsDayOnReturnToBacklog,
   statusAfterReturnToBacklog,
 } from "@/lib/business/task-planning";
@@ -70,10 +71,15 @@ import { patchTask, toggleExecutor, type TaskExecutor } from "./task-updates";
 // можно запланировать, сменить ей день, упорядочить внутри дня или очереди,
 // перенести в другую очередь и вернуть с доски. Правила —
 // lib/business/task-planning.ts и lib/business/backlog-queues.ts, окончательная
-// проверка — RPC supabase/migrations/0008, 0018. Интерфейс обновляется сразу
+// проверка — RPC supabase/migrations/0008, 0018, 0029. Интерфейс обновляется сразу
 // (useOptimistic); при ошибке сервера состояние само возвращается к данным сервера.
 
-export type DayTask = BoardTask & { canChangeDay: boolean; queueId: string | null };
+export type DayTask = BoardTask & {
+  canChangeDay: boolean;
+  /** Последний день истории перед текущим днём (lib/business/task-planning.ts::describeOccurrence). */
+  previousWorkDate: string | null;
+  queueId: string | null;
+};
 export type BacklogTask = BoardTask & { lastWorkDate: string | null; queueId: string | null };
 /** Панель очереди: id null — «Текущие заявки». */
 export type BoardQueue = { id: string | null; name: string; tasks: BacklogTask[] };
@@ -119,8 +125,9 @@ function applyMove(state: BoardState, move: Move): BoardState {
     case "changeDay": {
       const task = state.days[move.fromDate]?.find((t) => t.id === move.taskId);
       if (!task) return state;
-      const target = [...state.days[move.toDate]];
-      target.splice(move.index, 0, task);
+      // Перенос на день истории сливает дни (0029): карточка истории заменяется текущей.
+      const target = state.days[move.toDate].filter((t) => t.id !== move.taskId);
+      target.splice(Math.min(move.index, target.length), 0, task);
       return {
         ...state,
         days: {
@@ -142,7 +149,8 @@ function applyMove(state: BoardState, move: Move): BoardState {
         status: task.status === "new" ? "planned" : task.status,
         isHistory: false,
         transferNote: null,
-        canChangeDay: task.lastWorkDate === null,
+        canChangeDay: true,
+        previousWorkDate: task.lastWorkDate,
       });
       return {
         queues: { ...state.queues, [move.fromQueue]: source.filter((t) => t.id !== move.taskId) },
@@ -214,6 +222,8 @@ const HISTORY_REASON = "Это день из истории заявки — е�
 
 const dayOffReason = (date: string) => `${formatDateLong(date)} — нерабочий день.`;
 
+const MERGE_PAST_REASON = "Этот день уже прошёл — объединить его с предыдущим днём заявки нельзя.";
+
 /**
  * null — перемещение ничего не меняет; ok: false — запрещено с понятной причиной.
  * daysOff — нерабочие дни недели: в них нельзя планировать, но задачи, которые
@@ -224,6 +234,7 @@ function checkDrop(
   from: DragData,
   target: string,
   daysOff: Record<string, string>,
+  today: string,
 ): DropVerdict {
   if (isQueueContainer(from.container)) {
     const task = state.queues[queueKeyOfContainer(from.container)]?.find((t) => t.id === from.taskId);
@@ -259,12 +270,15 @@ function checkDrop(
   if (target === from.container) return { ok: true };
   if (task.isHistory) return { ok: false, reason: HISTORY_REASON };
   if (target in daysOff) return { ok: false, reason: dayOffReason(target) };
-  if (!task.canChangeDay) {
-    return {
-      ok: false,
-      reason:
-        "Перенесённую заявку можно только упорядочить внутри дня. Дату можно изменить в карточке заявки.",
-    };
+  if (!task.canChangeDay) return { ok: false, reason: HISTORY_REASON };
+  switch (dayChangeBlock(from.container, target, task.previousWorkDate, today)) {
+    case "before_history":
+      return {
+        ok: false,
+        reason: `Заявку уже вели ${formatDateLong(task.previousWorkDate!)} — перенесите её не раньше этого дня.`,
+      };
+    case "merge_past":
+      return { ok: false, reason: MERGE_PAST_REASON };
   }
   return { ok: true };
 }
@@ -331,7 +345,7 @@ export function WeekBoard({
   const [overContainer, setOverContainer] = useState<string | null>(null);
 
   const dropAllowed = (container: string) =>
-    active !== null && overContainer === container && checkDrop(board, active, container, daysOff)?.ok === true;
+    active !== null && overContainer === container && checkDrop(board, active, container, daysOff, today)?.ok === true;
 
   const run = (move: Move, action: () => Promise<ActionResult>) => {
     startTransition(async () => {
@@ -399,7 +413,7 @@ export function WeekBoard({
     const from = dragged.data.current as DragData;
     const to = over.data.current as DragData;
     const taskId = from.taskId!;
-    const verdict = checkDrop(board, from, to.container, daysOff);
+    const verdict = checkDrop(board, from, to.container, daysOff, today);
 
     if (verdict === null) return;
     if (!verdict.ok) {

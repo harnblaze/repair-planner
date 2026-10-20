@@ -209,6 +209,7 @@ export default async function BoardPage({
       isHistory: occurrence.isHistory,
       transferNote: occurrence.note,
       canChangeDay: occurrence.canChangeDay,
+      previousWorkDate: occurrence.previousWorkDate,
       undoableCarryOver: isUndoableCarryOver(row.work_date, row.tasks.planned_date, scheduleDays, today),
       queueId: row.tasks.queue_id,
     });

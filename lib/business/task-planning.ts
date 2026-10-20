@@ -63,8 +63,10 @@ export type Occurrence = {
   isHistory: boolean;
   /** Пояснение для исторического дня: «Перенесена на …» / «Отложена». */
   note: string | null;
-  /** Перетаскивание на другой день: только однодневная задача в своём текущем дне. */
+  /** Перетаскивание на другой день: только текущий (не исторический) день задачи. */
   canChangeDay: boolean;
+  /** Последний день истории перед текущим днём; раньше него перетащить нельзя (0029). */
+  previousWorkDate: string | null;
 };
 
 /**
@@ -80,7 +82,8 @@ export function describeOccurrence(
   const isHistory = workDate !== plannedDate;
 
   if (!isHistory) {
-    return { isHistory, note: null, canChangeDay: days.length === 1 };
+    const previousWorkDate = lastWorkDate(days.filter((d) => d.workDate < workDate));
+    return { isHistory, note: null, canChangeDay: true, previousWorkDate };
   }
 
   const day = days.find((d) => d.workDate === workDate);
@@ -96,7 +99,25 @@ export function describeOccurrence(
     note = next ? `Перенесена на ${formatDateLong(next)}` : null;
   }
 
-  return { isHistory, note, canChangeDay: false };
+  return { isHistory, note, canChangeDay: false, previousWorkDate: null };
+}
+
+/**
+ * Почему текущий день задачи нельзя перетащить с `fromDate` на `toDate`
+ * (public.move_task_schedule, 0029), или null — можно. Раньше последнего дня
+ * истории нельзя: эти дни уже прошли в работе. На сам день истории — слияние
+ * (текущий день удаляется, «Отложена» снимается), но только если текущий день
+ * ещё не прошёл: прошедший день — история, её не удаляем.
+ */
+export function dayChangeBlock(
+  fromDate: string,
+  toDate: string,
+  previousWorkDate: string | null,
+  today: string,
+): "before_history" | "merge_past" | null {
+  if (previousWorkDate === null || toDate > previousWorkDate) return null;
+  if (toDate < previousWorkDate) return "before_history";
+  return fromDate < today ? "merge_past" : null;
 }
 
 /**
