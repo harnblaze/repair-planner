@@ -1,0 +1,81 @@
+import { describe, expect, it } from "vitest";
+
+import { parseDecimal, parsePastedRows, splitTsv } from "./supply-paste";
+
+describe("parseDecimal", () => {
+  it.each([
+    ["5,2", 5.2],
+    ["1 500", 1500],
+    ["1 500", 1500],
+    ["1 500,5", 1500.5],
+    ["18.2", 18.2],
+    ["0", 0],
+  ])("parses %j", (raw, expected) => {
+    expect(parseDecimal(raw)).toBe(expected);
+  });
+
+  it.each(["", "шт", "1,2,3", "3,8х51"])("rejects %j", (raw) => {
+    expect(parseDecimal(raw)).toBeNull();
+  });
+});
+
+describe("splitTsv", () => {
+  it("keeps a quoted cell with a newline in one row", () => {
+    expect(splitTsv('6\t"Плинтус напольный\nКлассик 55"\tшт\t17')).toEqual([
+      ["6", "Плинтус напольный\nКлассик 55", "шт", "17"],
+    ]);
+  });
+
+  it("unescapes doubled quotes and handles CRLF", () => {
+    expect(splitTsv('"ООО ""РК-Гранд"""\t1\r\nдругая\t2')).toEqual([
+      ['ООО "РК-Гранд"', "1"],
+      ["другая", "2"],
+    ]);
+  });
+});
+
+describe("parsePastedRows", () => {
+  it("parses a request row with line number", () => {
+    expect(parsePastedRows("1\tСаморезы по дереву 51мм\t\tшт\t1500\t")[0]).toMatchObject({
+      lineNo: 1,
+      name: "Саморезы по дереву 51мм",
+      unit: "шт",
+      quantity: 1500,
+      note: "",
+      valid: true,
+    });
+  });
+
+  it("parses decimal comma, padded unit and a note", () => {
+    expect(
+      parsePastedRows("4\tЛинолеум коммерческий Centra Botticelli T93 3.5м\t\tпог. м \t5,2\tКаталог ЦСК")[0],
+    ).toMatchObject({ unit: "пог. м", quantity: 5.2, note: "Каталог ЦСК", valid: true });
+  });
+
+  it("parses an invoice row without line number, unit after quantity", () => {
+    expect(parsePastedRows("Саморез по дереву 3,8х51 (500шт) в ведре\t3\tупак")[0]).toMatchObject({
+      lineNo: null,
+      name: "Саморез по дереву 3,8х51 (500шт) в ведре",
+      unit: "упак",
+      quantity: 3,
+      valid: true,
+    });
+  });
+
+  it("joins a multiline quoted cell with a space", () => {
+    const rows = parsePastedRows('6\t"Плинтус напольный\nКлассик 55"\tшт\t17');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ lineNo: 6, name: "Плинтус напольный Классик 55", quantity: 17, valid: true });
+  });
+
+  it("marks header and signature rows as not recognized", () => {
+    const rows = parsePastedRows("№\tНаименование\tЕд.\tКол-во\n\tНачальник цеха:\tМинигулов А.Р.");
+    expect(rows.map((r) => r.valid)).toEqual([false, false]);
+  });
+
+  it("drops empty lines", () => {
+    const rows = parsePastedRows("\n\t\t\n1\tПодвес прямой\tшт\t230\r\n\r\n");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].raw).toBe("1\tПодвес прямой\tшт\t230");
+  });
+});
