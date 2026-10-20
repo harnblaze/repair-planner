@@ -9,9 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { filterSupplyRequests } from "@/lib/business/supply-filter";
 import { summarizeRequest } from "@/lib/business/supply-status";
-import type { SupplyItemView, SupplyRequestView } from "@/lib/types/supply";
+import type { SupplyInvoiceLineView, SupplyInvoiceView, SupplyItemView, SupplyRequestView } from "@/lib/types/supply";
 import { cn } from "@/lib/utils";
 
+import { InvoicesList } from "./documents-list";
+import { InvoiceDialog, InvoiceLineDialog, InvoiceLinesDialog, PaidDialog } from "./invoice-dialogs";
 import { RequestBlock } from "./request-block";
 import { ItemDialog, ItemsDialog, RequestDialog } from "./request-dialogs";
 import type { SupplyMaterialOption } from "./supply-data";
@@ -28,7 +30,11 @@ export interface SupplyBoardProps {
 type OpenDialog =
   | { kind: "request"; request: SupplyRequestView | null }
   | { kind: "items"; request: SupplyRequestView }
-  | { kind: "item"; item: SupplyItemView };
+  | { kind: "item"; item: SupplyItemView }
+  | { kind: "invoice"; request: SupplyRequestView; invoice: SupplyInvoiceView | null }
+  | { kind: "invoice-lines"; request: SupplyRequestView; invoice: SupplyInvoiceView }
+  | { kind: "paid"; invoice: SupplyInvoiceView }
+  | { kind: "line"; request: SupplyRequestView; line: SupplyInvoiceLineView };
 
 export function SupplyBoard({ projectId, requests, materials, canEdit, today }: SupplyBoardProps) {
   const [dialog, setDialog] = useState<OpenDialog | null>(null);
@@ -97,6 +103,7 @@ export function SupplyBoard({ projectId, requests, materials, canEdit, today }: 
             open={isOpen(request.id)}
             onToggle={() => setToggled((t) => ({ ...t, [request.id]: !isOpen(request.id) }))}
             onItemClick={canEdit ? (item) => setDialog({ kind: "item", item }) : undefined}
+            onLineClick={canEdit ? (line) => setDialog({ kind: "line", request, line }) : undefined}
             menu={
               canEdit && (
                 <Button
@@ -111,14 +118,37 @@ export function SupplyBoard({ projectId, requests, materials, canEdit, today }: 
               )
             }
             footer={
-              canEdit && (
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => setDialog({ kind: "items", request })}>
-                    <PlusIcon />
-                    Позиции
-                  </Button>
-                </div>
-              )
+              <>
+                <InvoicesList
+                  request={request}
+                  actions={
+                    canEdit
+                      ? {
+                          onEdit: (invoice) => setDialog({ kind: "invoice", request, invoice }),
+                          onPaid: (invoice) => setDialog({ kind: "paid", invoice }),
+                          onAddLines: (invoice) => setDialog({ kind: "invoice-lines", request, invoice }),
+                        }
+                      : undefined
+                  }
+                />
+                {canEdit && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setDialog({ kind: "items", request })}>
+                      <PlusIcon />
+                      Позиции
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setDialog({ kind: "invoice", request, invoice: null })}
+                    >
+                      <PlusIcon />
+                      Счёт
+                    </Button>
+                  </div>
+                )}
+              </>
             }
           />
         ))
@@ -128,6 +158,18 @@ export function SupplyBoard({ projectId, requests, materials, canEdit, today }: 
         <RequestDialog projectId={projectId} today={today} request={dialog.request} onClose={closeDialog} />
       )}
       {dialog?.kind === "items" && <ItemsDialog projectId={projectId} request={dialog.request} onClose={closeDialog} />}
+      {dialog?.kind === "invoice" && (
+        <InvoiceDialog projectId={projectId} request={dialog.request} invoice={dialog.invoice} onClose={closeDialog} />
+      )}
+      {dialog?.kind === "invoice-lines" && (
+        <InvoiceLinesDialog projectId={projectId} request={dialog.request} invoice={dialog.invoice} onClose={closeDialog} />
+      )}
+      {dialog?.kind === "paid" && (
+        <PaidDialog projectId={projectId} invoice={dialog.invoice} today={today} onClose={closeDialog} />
+      )}
+      {dialog?.kind === "line" && (
+        <InvoiceLineDialog projectId={projectId} request={dialog.request} line={dialog.line} onClose={closeDialog} />
+      )}
       {dialog?.kind === "item" && (
         <ItemDialog projectId={projectId} item={dialog.item} materials={materials} onClose={closeDialog} />
       )}

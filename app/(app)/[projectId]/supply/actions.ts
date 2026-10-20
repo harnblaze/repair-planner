@@ -8,9 +8,14 @@ import { requireProjectEdit } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
 import {
+  supplyInvoiceLineSchema,
+  supplyInvoiceLinesSchema,
+  supplyInvoiceSchema,
   supplyItemEditSchema,
   supplyItemsSchema,
   supplyRequestSchema,
+  type SupplyInvoiceInput,
+  type SupplyInvoiceLineInput,
   type SupplyItemEditInput,
   type SupplyItemInput,
   type SupplyRequestInput,
@@ -200,4 +205,175 @@ export async function deleteSupplyItemAction(projectId: string, itemId: string):
     .select("id");
 
   return affected("deleteSupplyItemAction", projectId, result);
+}
+
+// ================= Счета =================
+
+const invoiceLineRow = (line: SupplyInvoiceLineInput) => ({
+  line_no: line.lineNo,
+  name: line.name,
+  unit: line.unit,
+  quantity: line.quantity,
+  request_item_id: line.requestItemId,
+});
+
+export async function createSupplyInvoiceAction(
+  projectId: string,
+  requestId: string,
+  input: SupplyInvoiceInput,
+  lines: SupplyInvoiceLineInput[],
+): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const header = supplyInvoiceSchema.safeParse(input);
+  if (!header.success) return invalid(header.error);
+  const parsedLines = lines.length === 0 ? { success: true as const, data: [] } : supplyInvoiceLinesSchema.safeParse(lines);
+  if (!parsedLines.success) return invalid(parsedLines.error);
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("create_supply_invoice", {
+    p_request_id: requestId,
+    p_number: header.data.number,
+    p_invoice_date: header.data.invoiceDate,
+    p_supplier: header.data.supplier,
+    // null у необязательных аргументов RPC: сгенерированный тип их не допускает.
+    p_amount: header.data.amount as number,
+    p_paid_on: header.data.paidOn as string,
+    p_lines: parsedLines.data.map(invoiceLineRow),
+  });
+
+  if (error) return failed("createSupplyInvoiceAction", error);
+  revalidateSupply(projectId);
+  return { ok: true };
+}
+
+export async function updateSupplyInvoiceAction(
+  projectId: string,
+  invoiceId: string,
+  input: SupplyInvoiceInput,
+): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const parsed = supplyInvoiceSchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+
+  const supabase = await createClient();
+  const result = await supabase
+    .from("supply_invoices")
+    .update({
+      number: parsed.data.number,
+      invoice_date: parsed.data.invoiceDate,
+      supplier: parsed.data.supplier,
+      amount: parsed.data.amount,
+      paid_on: parsed.data.paidOn,
+    })
+    .eq("id", invoiceId)
+    .eq("project_id", projectId)
+    .select("id");
+
+  return affected("updateSupplyInvoiceAction", projectId, result);
+}
+
+export async function setSupplyInvoicePaidAction(
+  projectId: string,
+  invoiceId: string,
+  paidOn: string | null,
+): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const parsed = supplyInvoiceSchema.shape.paidOn.safeParse(paidOn);
+  if (!parsed.success) return { ok: false, error: "Укажите дату оплаты." };
+
+  const supabase = await createClient();
+  const result = await supabase
+    .from("supply_invoices")
+    .update({ paid_on: parsed.data })
+    .eq("id", invoiceId)
+    .eq("project_id", projectId)
+    .select("id");
+
+  return affected("setSupplyInvoicePaidAction", projectId, result);
+}
+
+export async function deleteSupplyInvoiceAction(projectId: string, invoiceId: string): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const supabase = await createClient();
+  const result = await supabase
+    .from("supply_invoices")
+    .delete()
+    .eq("id", invoiceId)
+    .eq("project_id", projectId)
+    .select("id");
+
+  return affected("deleteSupplyInvoiceAction", projectId, result);
+}
+
+/** Строки в существующий счёт; requestId чужой заявки отвергнет FK (invoice_id, request_id). */
+export async function addSupplyInvoiceLinesAction(
+  projectId: string,
+  requestId: string,
+  invoiceId: string,
+  lines: SupplyInvoiceLineInput[],
+): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const parsed = supplyInvoiceLinesSchema.safeParse(lines);
+  if (!parsed.success) return invalid(parsed.error);
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("supply_invoice_lines").insert(
+    parsed.data.map((line) => ({
+      ...invoiceLineRow(line),
+      project_id: projectId,
+      request_id: requestId,
+      invoice_id: invoiceId,
+    })),
+  );
+
+  if (error) return failed("addSupplyInvoiceLinesAction", error);
+  revalidateSupply(projectId);
+  return { ok: true };
+}
+
+export async function updateSupplyInvoiceLineAction(
+  projectId: string,
+  lineId: string,
+  input: SupplyInvoiceLineInput,
+): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const parsed = supplyInvoiceLineSchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+
+  const supabase = await createClient();
+  const result = await supabase
+    .from("supply_invoice_lines")
+    .update(invoiceLineRow(parsed.data))
+    .eq("id", lineId)
+    .eq("project_id", projectId)
+    .select("id");
+
+  return affected("updateSupplyInvoiceLineAction", projectId, result);
+}
+
+export async function deleteSupplyInvoiceLineAction(projectId: string, lineId: string): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const supabase = await createClient();
+  const result = await supabase
+    .from("supply_invoice_lines")
+    .delete()
+    .eq("id", lineId)
+    .eq("project_id", projectId)
+    .select("id");
+
+  return affected("deleteSupplyInvoiceLineAction", projectId, result);
 }
