@@ -10,18 +10,18 @@ import type { SupplyItemView } from "@/lib/types/supply";
 export const SUPPLY_MATCH_THRESHOLD = 0.35;
 
 // Кириллические буквы, неотличимые от латинских: в документах их путают
-// («Т93» и «T93», «Alprofі»). Приводим к латинице до нижнего регистра.
+// («Т93» и «T93», «Alprofі»). Сначала нижний регистр, потом строчные двойники
+// в латиницу — иначе «К» и «к» разошлись бы и подбор зависел бы от регистра.
 const LOOKALIKES: Record<string, string> = {
-  А: "A", В: "B", Е: "E", К: "K", М: "M", Н: "H", О: "O", Р: "P", С: "C", Т: "T", Х: "X",
-  а: "a", е: "e", о: "o", р: "p", с: "c", у: "y", х: "x", і: "i", І: "I",
+  а: "a", в: "b", е: "e", к: "k", м: "m", н: "h", о: "o", р: "p", с: "c", т: "t", у: "y", х: "x", і: "i",
 };
 
 /** Слова ≥ 2 букв, обрезанные до 5 символов (грубая основа), и числа любой длины. */
 export function matchTokens(name: string): Set<string> {
   const normalized = name
-    .replace(/[АВЕКМНОРСТХаеорсухіІ]/g, (ch) => LOOKALIKES[ch])
     .toLowerCase()
     .replace(/ё/g, "е")
+    .replace(/[авекмнорстухі]/g, (ch) => LOOKALIKES[ch])
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(/(\p{L})(\p{N})/gu, "$1 $2")
     .replace(/(\p{N})(\p{L})/gu, "$1 $2");

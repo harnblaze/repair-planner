@@ -6,7 +6,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(54);
+select plan(55);
 
 -- ================= Фикстуры (как postgres, минуя RLS) =================
 -- A — владелец PA, B — владелец PB, V — viewer в PA, M — member в PA.
@@ -376,6 +376,13 @@ select throws_ok(
   'receive 0'
 );
 
+-- 50a. Количество оприходованной строки поставки не меняется; приход и документ не расходятся
+select throws_ok(
+  $$ update public.supply_delivery_lines set quantity = 5
+     where id = current_setting('test.delivery_line')::uuid $$,
+  'P0001', 'already_received',
+  'received delivery line quantity cannot be changed'
+);
 -- 51. Viewer
 select set_config('request.jwt.claim.sub', '33333333-3333-3333-3333-333333333333', true) as _;
 select throws_ok(

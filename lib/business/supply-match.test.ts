@@ -62,3 +62,13 @@ describe("unitsMatch", () => {
     expect(unitsMatch("упак", "шт")).toBe(false);
   });
 });
+
+describe("case-insensitive matching", () => {
+  it.each([
+    ["Кабель ВВГ", "кабель ввг"],
+    ["Труба профильная 40х20", "ТРУБА ПРОФИЛЬНАЯ 40Х20"],
+    ["Электроды МР-3", "ЭЛЕКТРОДЫ МР-3"],
+  ])("%s ~ %s → 1", (item, line) => {
+    expect(matchScore(item, line)).toBe(1);
+  });
+});

@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { formatDateShort } from "@/lib/business/dates";
 import { unitsMatch } from "@/lib/business/supply-match";
-import { parseDecimal } from "@/lib/business/supply-paste";
+import { collectQuantities } from "@/lib/business/supply-paste";
 import { lineProgress, remainingToDeliver } from "@/lib/business/supply-status";
 import type {
   SupplyDeliveryLineView,
@@ -81,13 +81,23 @@ export function DeliveryDialog({
     Object.fromEntries(lines.map((l) => [l.id, asInput(remainingToDeliver(l))]));
   const [quantities, setQuantities] = useState<Record<string, string>>(() => remainingInputs(initial?.lines ?? []));
   const itemName = new Map(request.items.map((i) => [i.id, `${i.lineNo}. ${i.name}`]));
+  const [invalid, setInvalid] = useState<Set<string>>(new Set());
 
   const onSubmit = () => {
     if (!invoice) return;
-    const lines = invoice.lines
-      .map((l) => ({ invoiceLineId: l.id, quantity: quantities[l.id] ?? "" }))
-      .filter((l) => (parseDecimal(l.quantity) ?? 0) > 0);
-    const parsed = supplyDeliverySchema.safeParse({ number, deliveryDate: date, lines });
+    const { lines, invalidIds } = collectQuantities(
+      invoice.lines.map((l) => ({ id: l.id, value: quantities[l.id] ?? "" })),
+    );
+    if (invalidIds.length > 0) {
+      setInvalid(new Set(invalidIds));
+      toast.error("Проверьте количество в подсвеченных строках: только число, например 12,5.");
+      return;
+    }
+    const parsed = supplyDeliverySchema.safeParse({
+      number,
+      deliveryDate: date,
+      lines: lines.map((l) => ({ invoiceLineId: l.id, quantity: l.quantity })),
+    });
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Проверьте поля поставки.");
       return;
@@ -162,10 +172,18 @@ export function DeliveryDialog({
                       <td className="px-1 py-0.5">
                         <input
                           aria-label={`Привезено: ${line.name}`}
+                          aria-invalid={invalid.has(line.id)}
                           inputMode="decimal"
-                          className="h-7 w-full rounded-[6px] border border-control bg-surface px-2 text-[12px] outline-none focus-visible:border-brand"
+                          className="h-7 w-full rounded-[6px] border border-control bg-surface px-2 text-[12px] outline-none focus-visible:border-brand aria-invalid:border-destructive"
                           value={quantities[line.id] ?? ""}
-                          onChange={(e) => setQuantities((q) => ({ ...q, [line.id]: e.target.value }))}
+                          onChange={(e) => {
+                            setQuantities((q) => ({ ...q, [line.id]: e.target.value }));
+                            setInvalid((prev) => {
+                              const next = new Set(prev);
+                              next.delete(line.id);
+                              return next;
+                            });
+                          }}
                         />
                       </td>
                     </tr>

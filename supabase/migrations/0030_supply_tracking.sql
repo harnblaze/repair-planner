@@ -464,3 +464,28 @@ revoke all on function public.create_supply_delivery(uuid, text, date, jsonb) fr
 grant execute on function public.create_supply_delivery(uuid, text, date, jsonb) to authenticated;
 revoke all on function public.receive_supply_delivery_line(uuid, uuid, numeric, text) from public, anon;
 grant execute on function public.receive_supply_delivery_line(uuid, uuid, numeric, text) to authenticated;
+
+-- ================= Оприходованная строка поставки неизменна =================
+-- Количество строки поставки, по которой уже записан приход, не меняется:
+-- иначе документ разойдётся с остатком (старая вкладка, прямой запрос).
+-- Удаление такой строки запрещает FK material_movements_supply_line_fk.
+
+create or replace function private.guard_received_supply_delivery_line()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.quantity is distinct from old.quantity and exists (
+    select 1 from public.material_movements mm where mm.supply_delivery_line_id = old.id
+  ) then
+    raise exception 'already_received';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists supply_delivery_lines_guard_received on public.supply_delivery_lines;
+create trigger supply_delivery_lines_guard_received
+  before update of quantity on public.supply_delivery_lines
+  for each row execute function private.guard_received_supply_delivery_line();

@@ -21,6 +21,7 @@ export interface PastedRow {
 const SPACES = "[ \\u00a0\\u202f\\u2009]";
 const PLAIN_NUMBER = /^\d+(?:[.,]\d+)?$/;
 const GROUPED_NUMBER = new RegExp(`^\\d{1,3}(?:${SPACES}\\d{3})+(?:[.,]\\d+)?$`);
+const STANDARD_CELL = /^(ГОСТ|ОСТ|ТУ|СТО|DIN|ISO)(\s|$)/i;
 
 /** "5,2" → 5.2, "1 500" → 1500; пробелы допустимы только как разделители тысяч. */
 export function parseDecimal(raw: string): number | null {
@@ -96,10 +97,11 @@ function parseCells(rawCells: string[]): PastedRow {
   const quantity = quantityCell ? parseDecimal(quantityCell.c) : null;
 
   const texts = filled.filter((x) => x.index !== lineNoIndex && !isNumber(x.c));
-  const nameCell = texts.reduce<(typeof texts)[number] | undefined>(
-    (best, x) => (!best || x.c.length > best.c.length ? x : best),
-    undefined,
-  );
+  // Ячейка стандарта («ГОСТ 7798-70 М12х50») бывает длиннее наименования
+  // («Болт») — наименованием её не считаем, она уходит в примечание.
+  const nameCell = texts
+    .filter((x) => !STANDARD_CELL.test(x.c))
+    .reduce<(typeof texts)[number] | undefined>((best, x) => (!best || x.c.length > best.c.length ? x : best), undefined);
 
   let unitIndex = -1;
   if (quantityCell) {
@@ -112,9 +114,10 @@ function parseCells(rawCells: string[]): PastedRow {
     }
   }
 
+  // Примечание — все остальные текстовые ячейки по порядку (ГОСТ, требования).
   const note = quantityCell
     ? texts
-        .filter((x) => x.index > quantityCell.index && x.index !== unitIndex && x.index !== nameCell?.index)
+        .filter((x) => x.index !== unitIndex && x.index !== nameCell?.index)
         .map((x) => x.c)
         .join("; ")
     : "";
@@ -147,4 +150,24 @@ export function numberRows<T extends { lineNo: number | null }>(
     max = Math.max(max, lineNo);
     return { ...row, lineNo };
   });
+}
+
+/**
+ * Поля «привезено» формы поставки: пустое поле и «0» — строка не вошла в
+ * поставку; непустой ввод, который не разобрать («12,5кг»), — ошибка, а не
+ * молчаливый пропуск строки.
+ */
+export function collectQuantities(entries: { id: string; value: string }[]): {
+  lines: { id: string; quantity: string }[];
+  invalidIds: string[];
+} {
+  const lines: { id: string; quantity: string }[] = [];
+  const invalidIds: string[] = [];
+  for (const { id, value } of entries) {
+    if (value.trim() === "") continue;
+    const quantity = parseDecimal(value);
+    if (quantity === null) invalidIds.push(id);
+    else if (quantity > 0) lines.push({ id, quantity: value });
+  }
+  return { lines, invalidIds };
 }

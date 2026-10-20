@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { numberRows, parseDecimal, parsePastedRows, splitTsv } from "./supply-paste";
+import { collectQuantities, numberRows, parseDecimal, parsePastedRows, splitTsv } from "./supply-paste";
 
 describe("parseDecimal", () => {
   it.each([
@@ -52,6 +52,26 @@ describe("parsePastedRows", () => {
     ).toMatchObject({ unit: "пог. м", quantity: 5.2, note: "Каталог ЦСК", valid: true });
   });
 
+  it("keeps the name when a ГОСТ cell is longer and moves ГОСТ to the note", () => {
+    expect(parsePastedRows("2\tБолт\tГОСТ 7798-70 М12х50\tшт\t10")[0]).toMatchObject({
+      lineNo: 2,
+      name: "Болт",
+      unit: "шт",
+      quantity: 10,
+      note: "ГОСТ 7798-70 М12х50",
+      valid: true,
+    });
+  });
+
+  it("keeps text cells before the quantity in the note", () => {
+    expect(parsePastedRows("1\tЭлектрод МР-3\tГОСТ 9466-75\tкг\t5,2\tсрочно")[0]).toMatchObject({
+      name: "Электрод МР-3",
+      unit: "кг",
+      quantity: 5.2,
+      note: "ГОСТ 9466-75; срочно",
+    });
+  });
+
   it("parses an invoice row without line number, unit after quantity", () => {
     expect(parsePastedRows("Саморез по дереву 3,8х51 (500шт) в ведре\t3\tупак")[0]).toMatchObject({
       lineNo: null,
@@ -88,5 +108,28 @@ describe("numberRows", () => {
 
   it("starts after existing lines of the document", () => {
     expect(numberRows([{ lineNo: null }, { lineNo: null }], 34).map((r) => r.lineNo)).toEqual([35, 36]);
+  });
+});
+
+describe("collectQuantities", () => {
+  it("skips empty and zero fields, keeps positive ones", () => {
+    expect(
+      collectQuantities([
+        { id: "a", value: "8" },
+        { id: "b", value: "" },
+        { id: "c", value: "0" },
+        { id: "d", value: "18,2" },
+      ]),
+    ).toEqual({ lines: [{ id: "a", quantity: "8" }, { id: "d", quantity: "18,2" }], invalidIds: [] });
+  });
+
+  it("reports unreadable input instead of dropping it", () => {
+    expect(
+      collectQuantities([
+        { id: "a", value: "12,5кг" },
+        { id: "b", value: "5..2" },
+        { id: "c", value: "3" },
+      ]).invalidIds,
+    ).toEqual(["a", "b"]);
   });
 });

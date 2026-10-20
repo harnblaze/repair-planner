@@ -421,7 +421,7 @@ RPC (все `set search_path = ''`, `EXECUTE` отозван у `public, anon`):
 | `create_supply_delivery(p_invoice_id, p_number, p_delivery_date, p_lines jsonb) returns uuid` | `security invoker`: поставка и строки `[{invoice_line_id, quantity}]`; пустой массив — `supply_lines_empty` |
 | `receive_supply_delivery_line(p_delivery_line_id, p_material_id, p_quantity, p_note) returns material_movements` | `security definer`: приход на материал того же проекта, `current_balance += p_quantity`, движение `receipt` со ссылкой на строку поставки; примечание по умолчанию «УПД №… от ДД.ММ.ГГГГ, счёт №…». Коды: `supply_line_not_found` (нет строки или доступа), `access_denied`, `material_not_found`, `invalid_quantity`, `already_received`. Строка поставки блокируется `for update`, гонку страхует уникальный индекс |
 
-Добавление строк в существующие заявку/счёт, правки и удаления — обычные запросы через RLS.
+Добавление строк в существующие заявку/счёт, правки и удаления — обычные запросы через RLS. Триггер `supply_delivery_lines_guard_received` (функция `private.guard_received_supply_delivery_line`) не даёт изменить количество оприходованной строки поставки — `already_received`: иначе документ разошёлся бы с приходом.
 
 ## 6. RLS
 
@@ -599,6 +599,6 @@ update materials set current_balance = current_balance + delta where id = p_mate
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
-30. `0030_supply_tracking` — снабжение: шесть таблиц `supply_*` с RLS и составными FK, `material_movements.supply_delivery_line_id`, RPC `create_supply_request`, `create_supply_invoice`, `create_supply_delivery`, `receive_supply_delivery_line` (§5.16). Тест — `supabase/tests/database/supply-tracking.test.sql` (54).
+30. `0030_supply_tracking` — снабжение: шесть таблиц `supply_*` с RLS и составными FK, `material_movements.supply_delivery_line_id`, RPC `create_supply_request`, `create_supply_invoice`, `create_supply_delivery`, `receive_supply_delivery_line` (§5.16). Тест — `supabase/tests/database/supply-tracking.test.sql` (55).
 
-Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/*.test.sql` (12 файлов) — `supabase test db`, 400/400 успешно (2026-10-20). TypeScript-типы сгенерированы в `lib/types/database.ts`.
+Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/*.test.sql` (12 файлов) — `supabase test db`, 401/401 успешно (2026-10-20). TypeScript-типы сгенерированы в `lib/types/database.ts`.
