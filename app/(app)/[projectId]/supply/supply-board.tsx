@@ -88,7 +88,7 @@ export function SupplyBoard({ projectId, requests, materials, canEdit, today }: 
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Поиск: номер, поставщик, материал…"
           aria-label="Поиск по заявкам на ТМЦ"
-          className="max-w-sm flex-1"
+          className="w-full sm:w-auto sm:max-w-sm sm:flex-1"
         />
         <div role="radiogroup" aria-label="Какие заявки показывать" className="flex rounded-[7px] bg-page p-0.5">
           {[

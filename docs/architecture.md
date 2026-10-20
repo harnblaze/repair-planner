@@ -75,6 +75,10 @@ PostgreSQL (Supabase)
 
 Действия — `app/(app)/projects/actions.ts`: `archiveProjectAction` (карточка «Архив» в настройках), `restoreProjectAction` и `deleteProjectAction` (раздел «Архив» на `/projects`, только проекты владельца). Удаление навсегда: проверка архива и названия (`confirmsProjectName`, `lib/business/project-archive.ts`) → файлы пачками по 1000 (RPC `project_attachment_paths` → `storage.remove`; ошибка или неполное удаление — стоп, проект не трогается; если часть фото уже удалена — сообщение «повторите удаление») → `delete from projects` под RLS, остальное — каскад. Файлы удаляются первыми: после удаления проекта RLS `storage.objects` их не отдаст. Service role не используется. Архив и возврат при 0 изменённых строк перечитывают проект: если он уже в нужном состоянии (повтор из второй вкладки), это успех, иначе — сообщение о правах.
 
+### 3.4 Снабжение: заявки на ТМЦ
+
+`app/(app)/[projectId]/supply/`. `page.tsx` (Server Component) одним вложенным запросом загружает все заявки проекта со счетами, строками, поставками и признаком оприходования (`supply-data.ts`; заявок десятки в год, поиск — на клиенте) и активные материалы. `supply-board.tsx` — клиентская часть: поиск, фильтр, сворачиваемые блоки (`request-block.tsx`, `request-table.tsx`) и одно открытое окно за раз (`*-dialogs.tsx`, обёртка `supply-dialog.tsx` над `@base-ui/react/dialog`). Вставка из Excel с предпросмотром — `paste-rows.tsx`. Изменения — server actions (`actions.ts`): создание документа со строками — RPC, остальное — запросы через RLS; ошибки — `mapSupplyError`. Оприходование обновляет и `/materials`.
+
 ## 4. Маршрутизация и выбор проекта
 
 Активный проект — часть URL: `/(app)/[projectId]/...`. Это даёт:
@@ -133,6 +137,10 @@ Email-рассылки нет: ссылку владелец отправляе�
 | `material-report.ts` | месяц отчёта, группировка по цехам, CSV, форматирование количеств |
 | `material-movements.ts` | подписи операций журнала, остаток после каждого движения в истории |
 | `dates.ts` | преобразования `date` ↔ строка, «сегодня» и момент времени с учётом `project.timezone` |
+| `supply-status.ts` | статусы снабжения: прогресс строки счёта, статус позиции заявки и заявки, счётчики, остаток к поставке |
+| `supply-paste.ts` | разбор вставки из Excel (TSV, кавычки, десятичная запятая), нумерация строк без № п/п |
+| `supply-match.ts` | подбор позиции заявки к строке счёта (доля слов позиции), сравнение единиц |
+| `supply-filter.ts` | поиск и фильтр «Активные / Все» на странице «Снабжение» |
 
 Правила, которые обязаны жить в БД (а не только здесь): пересчёт остатка, запись журнала движений, кеш планового дня задачи, проверка рабочего дня и следующий рабочий день при переносе (database.md §8).
 
@@ -224,6 +232,7 @@ app/
       tasks/[taskId]/               карточка задачи; фото: attachment-actions.ts, task-attachments.tsx
       materials/                    справочник и остатки, быстрый приход в строке
       materials/[materialId]/       приход, корректировка по пересчёту, история движений
+      supply/                       снабжение: заявки на ТМЦ, счета, поставки, оприходование (§3.4)
       reports/                      отчёты, вкладки «Расход материалов» и «Выполненные работы» (?report=works):
                                     page, data.ts + export/route.ts — расход; works-data.ts (RPC completed_works_report, 0025),
                                     works-report.tsx, works/export/route.ts — работы; CSV-формат общий — lib/business/csv.ts
@@ -241,7 +250,8 @@ components/
 lib/
   supabase/                         client.ts, server.ts, proxy.ts
   business/                         working-days.ts, public-holidays.ts, task-planning.ts,
-                                    material-report.ts, dates.ts, project-roles.ts, attachments.ts
+                                    material-report.ts, dates.ts, project-roles.ts, attachments.ts,
+                                    supply-status.ts, supply-paste.ts, supply-match.ts, supply-filter.ts
   attachments/compress-image.ts     сжатие фото в браузере перед загрузкой
   projects/access.ts                getProjectRole (cache), requireProjectEdit
   projects/calendar.ts              getWorkCalendar — исключения календаря за диапазон дат
@@ -262,7 +272,7 @@ proxy.ts
 | Бизнес-функции (рабочие дни, перенос, расчёт остатков, панели очередей) | Vitest, unit-тесты (`lib/business/*.test.ts`, в т. ч. `backlog-queues.test.ts`); схемы Zod — `lib/validation/*.test.ts` |
 | Типы | `tsc --noEmit` |
 | Стиль | ESLint (конфигурация Next.js) |
-| RLS | pgTAP `supabase/tests/database/rls.test.sql`: изоляция пользователей, права viewer/member/owner, приглашения, календарь проекта и рабочие дни в RPC; `attachments.test.sql`: фото задач — таблица, bucket и `storage.objects`; `task-queues.test.sql`: очереди, триггер сброса позиции и RPC `move_backlog_task` |
+| RLS | pgTAP `supabase/tests/database/rls.test.sql`: изоляция пользователей, права viewer/member/owner, приглашения, календарь проекта и рабочие дни в RPC; `attachments.test.sql`: фото задач — таблица, bucket и `storage.objects`; `task-queues.test.sql`: очереди, триггер сброса позиции и RPC `move_backlog_task`; `supply-tracking.test.sql`: снабжение — RLS, составные FK, RPC и оприходование |
 
 Тесты RLS обязательны: это единственный слой, который нельзя проверить глазами.
 

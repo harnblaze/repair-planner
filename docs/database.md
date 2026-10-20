@@ -18,6 +18,10 @@ auth.users 1─1 profiles
                   ├──* materials ──* material_movements
                   ├──* board_lists ──* board_items
                   ├──* task_queues ──* tasks (queue_id; null — основная очередь)
+                  ├──* supply_requests ──* supply_request_items
+                  │          └──* supply_invoices ──* supply_invoice_lines (*──0..1 supply_request_items)
+                  │                     └──* supply_deliveries ──* supply_delivery_lines (*──1 supply_invoice_lines)
+                  │                                                     └── 0..1 material_movements (receipt)
                   └──* tasks
                          ├──* task_schedule        (дни работы)
                          ├──* task_executors  *──1 executors
@@ -327,6 +331,8 @@ PK: `(task_id, executor_id)`. Составные FK на `tasks` и `executors`.
 Ограничение: `check (kind <> 'consumption' or task_id is not null)`.
 Индексы: `(project_id, occurred_at)`, `(material_id, occurred_at)`, `(task_id)`.
 
+`supply_delivery_line_id uuid null` (0030) — строка поставки, по которой оприходован приход: составной FK `(supply_delivery_line_id, project_id)` → `supply_delivery_lines` **on delete no action** (`material_movements_supply_line_fk`), `check (supply_delivery_line_id is null or kind = 'receipt')`, уникальный частичный индекс — одна строка поставки оприходуется один раз (§5.16).
+
 Таблица неизменяема: UPDATE и DELETE запрещены для всех, INSERT возможен **только** из `SECURITY DEFINER` функций. Это основа будущих месячных отчётов.
 
 Каскадное удаление проекта (0027): триггер `apply_task_material_change` при DELETE строки `task_materials` удалённого проекта не меняет остаток и не пишет движение — журнал и материалы удаляет тот же каскад. Удаление расхода в живом проекте пишет `adjustment`, как прежде.
@@ -385,6 +391,37 @@ RLS: SELECT — любой участник; INSERT/UPDATE/DELETE — `project_c
 `id`, `project_id`, `name` (1–60 символов после trim), timestamps, `unique (id, project_id)`. Основной очереди строки нет — это `tasks.queue_id is null`, поэтому её нельзя удалить или переименовать. RLS: SELECT — участник проекта, INSERT/UPDATE/DELETE — `project_can_edit`. Право UPDATE у `authenticated` — только на колонки `name` и `sort_order` (0022): `project_id` неизменяем.
 
 `sort_order int not null default 0` (0022) — ручной порядок своих очередей (панели на доске, выпадающие списки); порядок `sort_order, created_at, id`. Меняется RPC `move_task_queue`; новая очередь добавляется в конец (`max(sort_order) + 1`). Миграция пронумеровала существующие очереди по `created_at`.
+
+### 5.16 Снабжение: заявки на ТМЦ, счета, поставки (0030)
+
+Дизайн — `docs/superpowers/specs/2026-10-20-supply-tracking-design.md`. Все шесть таблиц — данные проекта: `project_id`, `unique (id, project_id)`, составные FK на родителя. RLS: SELECT — участник проекта (`project_access`), INSERT/UPDATE/DELETE — `project_can_edit`. UPDATE у `authenticated` только на перечисленные колонки: `project_id` и ссылки на родителя неизменяемы. Статусы не хранятся — вычисляются в `lib/business/supply-status.ts`.
+
+| Таблица | Поля | Изменяемые колонки |
+|---|---|---|
+| `supply_requests` | `number` (1–60), `request_date date`, `description` (≤500), `created_by` | `number, request_date, description` |
+| `supply_request_items` | `request_id`, `line_no ≥ 1`, `name` (1–300), `unit` (1–30), `quantity > 0`, `note` (≤300), `material_id` (подсказка для оприходования, FK on delete set null), `cancelled_at` («снята»); `unique (id, request_id)` | `line_no, name, unit, quantity, note, material_id, cancelled_at` |
+| `supply_invoices` | `request_id`, `number` (1–60), `invoice_date`, `supplier` (1–200), `amount numeric(14,2)` null, `paid_on date` null (= не оплачен), `created_by`; `unique (id, request_id)` | `number, invoice_date, supplier, amount, paid_on` |
+| `supply_invoice_lines` | `invoice_id`, `request_id` (денормализация), `request_item_id` null (= «вне заявки»), `line_no`, `name`, `unit`, `quantity > 0`; `unique (id, invoice_id)` | `line_no, name, unit, quantity, request_item_id` |
+| `supply_deliveries` | `invoice_id`, `number` (№ УПД), `delivery_date`, `created_by`; `unique (id, invoice_id)` | `number, delivery_date` |
+| `supply_delivery_lines` | `delivery_id`, `invoice_id`, `invoice_line_id`, `quantity > 0` (в единицах строки счёта); `unique (delivery_id, invoice_line_id)` | `quantity` |
+
+Целостность декларативно, без триггеров:
+
+* `supply_invoice_lines_invoice_fk (invoice_id, request_id)` → `supply_invoices (id, request_id)` и `supply_invoice_lines_item_fk (request_item_id, request_id)` → `supply_request_items (id, request_id)` on delete set null (request_item_id): строку счёта нельзя привязать к позиции другой заявки; удалённая позиция делает строки «вне заявки».
+* `supply_delivery_lines_delivery_fk (delivery_id, invoice_id)` и `supply_delivery_lines_invoice_line_fk (invoice_line_id, invoice_id)`: нельзя привезти строку чужого счёта.
+* Каскад: заявка → позиции, счета → строки, поставки → строки поставок. Оприходованная строка поставки держит `material_movements_supply_line_fk` (no action): её удаление (и её поставки, счёта, заявки) падает с 23503; удаление проекта проходит — каскад удаляет и движения в том же операторе.
+* Подсказки PostgREST при вложенном select обязательны (`!supply_invoices_request_fk` и т. п.): строки счёта и поставки ссылаются на нескольких родителей, и между таблицами больше одной связи.
+
+RPC (все `set search_path = ''`, `EXECUTE` отозван у `public, anon`):
+
+| Функция | Что делает |
+|---|---|
+| `create_supply_request(p_project_id, p_number, p_request_date, p_description, p_items jsonb) returns uuid` | `security invoker`: заявка и позиции `[{line_no, name, unit, quantity, note}]` одной транзакцией |
+| `create_supply_invoice(p_request_id, p_number, p_invoice_date, p_supplier, p_amount, p_paid_on, p_lines jsonb) returns uuid` | `security invoker`: счёт и строки `[{line_no, name, unit, quantity, request_item_id}]`; невидимая заявка — `supply_parent_not_found` |
+| `create_supply_delivery(p_invoice_id, p_number, p_delivery_date, p_lines jsonb) returns uuid` | `security invoker`: поставка и строки `[{invoice_line_id, quantity}]`; пустой массив — `supply_lines_empty` |
+| `receive_supply_delivery_line(p_delivery_line_id, p_material_id, p_quantity, p_note) returns material_movements` | `security definer`: приход на материал того же проекта, `current_balance += p_quantity`, движение `receipt` со ссылкой на строку поставки; примечание по умолчанию «УПД №… от ДД.ММ.ГГГГ, счёт №…». Коды: `supply_line_not_found` (нет строки или доступа), `access_denied`, `material_not_found`, `invalid_quantity`, `already_received`. Строка поставки блокируется `for update`, гонку страхует уникальный индекс |
+
+Добавление строк в существующие заявку/счёт, правки и удаления — обычные запросы через RLS.
 
 ## 6. RLS
 
@@ -562,4 +599,6 @@ update materials set current_balance = current_balance + delta where id = p_mate
 
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
-Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/*.test.sql` (11 файлов) — `supabase test db`, 346/346 успешно (2026-10-20). TypeScript-типы сгенерированы в `lib/types/database.ts`.
+30. `0030_supply_tracking` — снабжение: шесть таблиц `supply_*` с RLS и составными FK, `material_movements.supply_delivery_line_id`, RPC `create_supply_request`, `create_supply_invoice`, `create_supply_delivery`, `receive_supply_delivery_line` (§5.16). Тест — `supabase/tests/database/supply-tracking.test.sql` (54).
+
+Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/*.test.sql` (12 файлов) — `supabase test db`, 400/400 успешно (2026-10-20). TypeScript-типы сгенерированы в `lib/types/database.ts`.
