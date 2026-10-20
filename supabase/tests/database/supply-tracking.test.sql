@@ -6,7 +6,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(34);
+select plan(54);
 
 -- ================= Фикстуры (как postgres, минуя RLS) =================
 -- A — владелец PA, B — владелец PB, V — viewer в PA, M — member в PA.
@@ -246,6 +246,160 @@ select is(
   'deleting item turns its invoice lines into off-request'
 );
 
+-- ================= RPC =================
+
+-- 34-37
+select ok(not has_function_privilege('anon', 'public.create_supply_request(uuid, text, date, text, jsonb)', 'execute'),
+  'anon cannot execute create_supply_request');
+select ok(not has_function_privilege('anon', 'public.create_supply_invoice(uuid, text, date, text, numeric, date, jsonb)', 'execute'),
+  'anon cannot execute create_supply_invoice');
+select ok(not has_function_privilege('anon', 'public.create_supply_delivery(uuid, text, date, jsonb)', 'execute'),
+  'anon cannot execute create_supply_delivery');
+select ok(not has_function_privilege('anon', 'public.receive_supply_delivery_line(uuid, uuid, numeric, text)', 'execute'),
+  'anon cannot execute receive_supply_delivery_line');
+
+-- 38-39. Заявка с позициями — одной транзакцией
+-- Вызов и проверка — разными операторами: оператор не видит строк,
+-- вставленных функцией в его же CTE (снимок берётся до вызова).
+select set_config('test.request', public.create_supply_request(
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', ' 16 ', date '2026-10-20', 'Цех',
+    '[{"line_no": 1, "name": "Подвес прямой", "unit": "шт", "quantity": 230},
+      {"line_no": 2, "name": "Дюбель NAT 6", "unit": "шт", "quantity": 500, "note": "каталог Лемана"}]'::jsonb
+  )::text, false) as _;
+select is(
+  (select count(*)::int from public.supply_request_items where request_id = current_setting('test.request')::uuid),
+  2,
+  'create_supply_request inserts request and 2 items'
+);
+
+select throws_ok(
+  $$ select public.create_supply_request(
+       'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '17', date '2026-10-20', null,
+       '[{"line_no": 1, "name": "Подвес", "unit": "шт", "quantity": 1},
+         {"line_no": 2, "name": "Дюбель", "unit": "шт", "quantity": 0}]'::jsonb) $$,
+  '23514', null,
+  'create_supply_request is all-or-nothing'
+);
+
+-- 40. После ошибки заявки «17» нет
+select is((select count(*)::int from public.supply_requests where number = '17'), 0, 'failed create_supply_request leaves no request');
+
+-- 41-42. Счёт со строками
+select set_config('test.invoice', public.create_supply_invoice(
+    '5a000000-0000-0000-0000-000000000002', '89598', date '2026-10-08', 'ТД ЦСК', 1000, null,
+    '[{"line_no": 3, "name": "Саморез по дереву 3,8х35 (1000шт)", "unit": "упак", "quantity": 1,
+       "request_item_id": "6a000000-0000-0000-0000-000000000002"}]'::jsonb
+  )::text, false) as _;
+select is(
+  (select request_item_id from public.supply_invoice_lines where invoice_id = current_setting('test.invoice')::uuid),
+  '6a000000-0000-0000-0000-000000000002'::uuid,
+  'create_supply_invoice links line to item'
+);
+
+select throws_ok(
+  $$ select public.create_supply_invoice(
+       '5a000000-0000-0000-0000-000000000001', '1', date '2026-10-08', 'ЦСК', null, null,
+       '[{"line_no": 1, "name": "Саморез", "unit": "упак", "quantity": 1,
+          "request_item_id": "6a000000-0000-0000-0000-000000000002"}]'::jsonb) $$,
+  '23503', null,
+  'create_supply_invoice rejects item of other request'
+);
+
+-- 43-44. Поставка
+select throws_ok(
+  $$ select public.create_supply_delivery(
+       (select id from public.supply_invoices where request_id = '5a000000-0000-0000-0000-000000000002'),
+       '84009', date '2026-10-16', '[]'::jsonb) $$,
+  'P0001', 'supply_lines_empty',
+  'create_supply_delivery with empty lines'
+);
+
+select set_config('test.delivery', public.create_supply_delivery(
+    (select id from public.supply_invoices where request_id = '5a000000-0000-0000-0000-000000000002'),
+    '84009', date '2026-10-16',
+    jsonb_build_array(jsonb_build_object(
+      'invoice_line_id',
+      (select l.id from public.supply_invoice_lines l where l.request_id = '5a000000-0000-0000-0000-000000000002'),
+      'quantity', 1))
+  )::text, false) as _;
+select is(
+  (select count(*)::int from public.supply_delivery_lines where delivery_id = current_setting('test.delivery')::uuid),
+  1,
+  'create_supply_delivery inserts lines'
+);
+
+select set_config(
+  'test.delivery_line',
+  (select dl.id::text from public.supply_delivery_lines dl
+   where dl.invoice_id = (select id from public.supply_invoices where request_id = '5a000000-0000-0000-0000-000000000002')),
+  false
+) as _;
+
+-- 45-47. Оприходование
+with m as (
+  select public.receive_supply_delivery_line(
+    current_setting('test.delivery_line')::uuid, 'd1000000-0000-0000-0000-0000000000a1', 3, null
+  ) as mv
+)
+select is((select (mv).quantity from m), 3::numeric(14, 3), 'receive returns the receipt movement');
+
+select is(
+  (select current_balance from public.materials where id = 'd1000000-0000-0000-0000-0000000000a1'),
+  3::numeric(14, 3),
+  'receive: balance grows by p_quantity'
+);
+
+select is(
+  (select kind::text || ' / ' || note from public.material_movements
+   where supply_delivery_line_id = current_setting('test.delivery_line')::uuid),
+  'receipt / УПД №84009 от 16.10.2026, счёт №89598',
+  'receive: movement is receipt linked to line with default note'
+);
+
+-- 48-50
+select throws_ok(
+  $$ select public.receive_supply_delivery_line(current_setting('test.delivery_line')::uuid,
+       'd1000000-0000-0000-0000-0000000000a1', 3, null) $$,
+  'P0001', 'already_received',
+  'receive twice'
+);
+select throws_ok(
+  $$ select public.receive_supply_delivery_line(current_setting('test.delivery_line')::uuid,
+       'd1000000-0000-0000-0000-0000000000b1', 3, null) $$,
+  'P0001', 'material_not_found',
+  'receive into material of other project'
+);
+select throws_ok(
+  $$ select public.receive_supply_delivery_line(current_setting('test.delivery_line')::uuid,
+       'd1000000-0000-0000-0000-0000000000a1', 0, null) $$,
+  'P0001', 'invalid_quantity',
+  'receive 0'
+);
+
+-- 51. Viewer
+select set_config('request.jwt.claim.sub', '33333333-3333-3333-3333-333333333333', true) as _;
+select throws_ok(
+  $$ select public.receive_supply_delivery_line(current_setting('test.delivery_line')::uuid,
+       'd1000000-0000-0000-0000-0000000000a1', 3, null) $$,
+  'P0001', 'access_denied',
+  'receive by viewer'
+);
+
+-- 52-53. Чужой владелец B
+select set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true) as _;
+select throws_ok(
+  $$ select public.receive_supply_delivery_line(current_setting('test.delivery_line')::uuid,
+       'd1000000-0000-0000-0000-0000000000a1', 3, null) $$,
+  'P0001', 'supply_line_not_found',
+  'receive by B'
+);
+select throws_ok(
+  $$ select public.create_supply_invoice(
+       '5a000000-0000-0000-0000-000000000001', '1', date '2026-10-08', 'ЦСК', null, null, '[]'::jsonb) $$,
+  'P0001', 'supply_parent_not_found',
+  'create_supply_invoice on foreign request'
+);
+
 -- ================= Удаление проекта с оприходованной поставкой =================
 
 reset role;
@@ -259,7 +413,7 @@ insert into public.material_movements (project_id, material_id, kind, quantity, 
 select set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true) as _;
 set role authenticated;
 
--- 34
+-- 54
 with d as (
   delete from public.projects where id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' returning id
 )

@@ -258,3 +258,209 @@ create unique index if not exists material_movements_supply_line_key
 
 comment on column public.material_movements.supply_delivery_line_id is
   'Строка поставки (УПД), по которой оприходован приход; только для kind = receipt';
+
+-- ================= RPC =================
+-- Коды исключений — стабильные строки, приложение переводит их в понятные
+-- сообщения (lib/errors.ts, mapSupplyError).
+--
+-- Создание документа вместе со строками — одной транзакцией (CLAUDE.md §23).
+-- security invoker: вставки проходят через RLS, как обычные запросы; функция
+-- даёт только атомарность. Невидимый по RLS родитель — supply_parent_not_found.
+
+create or replace function public.create_supply_request(
+  p_project_id uuid,
+  p_number text,
+  p_request_date date,
+  p_description text,
+  p_items jsonb
+)
+returns uuid
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_request_id uuid;
+begin
+  insert into public.supply_requests (project_id, number, request_date, description, created_by)
+  values (p_project_id, btrim(p_number), p_request_date, nullif(btrim(p_description), ''), (select auth.uid()))
+  returning id into v_request_id;
+
+  insert into public.supply_request_items (project_id, request_id, line_no, name, unit, quantity, note)
+  select p_project_id, v_request_id, x.line_no, btrim(x.name), btrim(x.unit), x.quantity, nullif(btrim(x.note), '')
+  from jsonb_to_recordset(coalesce(p_items, '[]'::jsonb))
+    as x(line_no int, name text, unit text, quantity numeric, note text);
+
+  return v_request_id;
+end;
+$$;
+
+create or replace function public.create_supply_invoice(
+  p_request_id uuid,
+  p_number text,
+  p_invoice_date date,
+  p_supplier text,
+  p_amount numeric,
+  p_paid_on date,
+  p_lines jsonb
+)
+returns uuid
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_project_id uuid;
+  v_invoice_id uuid;
+begin
+  select project_id into v_project_id from public.supply_requests where id = p_request_id;
+
+  if v_project_id is null then
+    raise exception 'supply_parent_not_found';
+  end if;
+
+  insert into public.supply_invoices
+    (project_id, request_id, number, invoice_date, supplier, amount, paid_on, created_by)
+  values
+    (v_project_id, p_request_id, btrim(p_number), p_invoice_date, btrim(p_supplier), p_amount, p_paid_on,
+     (select auth.uid()))
+  returning id into v_invoice_id;
+
+  -- Чужая позиция (другой заявки) отвергается FK supply_invoice_lines_item_fk.
+  insert into public.supply_invoice_lines
+    (project_id, invoice_id, request_id, request_item_id, line_no, name, unit, quantity)
+  select v_project_id, v_invoice_id, p_request_id, x.request_item_id, x.line_no, btrim(x.name), btrim(x.unit), x.quantity
+  from jsonb_to_recordset(coalesce(p_lines, '[]'::jsonb))
+    as x(line_no int, name text, unit text, quantity numeric, request_item_id uuid);
+
+  return v_invoice_id;
+end;
+$$;
+
+create or replace function public.create_supply_delivery(
+  p_invoice_id uuid,
+  p_number text,
+  p_delivery_date date,
+  p_lines jsonb
+)
+returns uuid
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_project_id uuid;
+  v_delivery_id uuid;
+begin
+  select project_id into v_project_id from public.supply_invoices where id = p_invoice_id;
+
+  if v_project_id is null then
+    raise exception 'supply_parent_not_found';
+  end if;
+
+  if p_lines is null or jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) = 0 then
+    raise exception 'supply_lines_empty';
+  end if;
+
+  insert into public.supply_deliveries (project_id, invoice_id, number, delivery_date, created_by)
+  values (v_project_id, p_invoice_id, btrim(p_number), p_delivery_date, (select auth.uid()))
+  returning id into v_delivery_id;
+
+  -- Строка другого счёта отвергается FK supply_delivery_lines_invoice_line_fk.
+  insert into public.supply_delivery_lines (project_id, delivery_id, invoice_id, invoice_line_id, quantity)
+  select v_project_id, v_delivery_id, p_invoice_id, x.invoice_line_id, x.quantity
+  from jsonb_to_recordset(p_lines) as x(invoice_line_id uuid, quantity numeric);
+
+  return v_delivery_id;
+end;
+$$;
+
+-- Оприходование строки поставки: приход на материал справочника в его
+-- единицах. security definer — вставка в material_movements без policy, как
+-- record_material_movement (0010); поэтому доступ проверяется явно. Отсутствие
+-- строки и отсутствие доступа к её проекту дают один код, чтобы нельзя было
+-- узнать, существует ли чужая строка.
+
+create or replace function public.receive_supply_delivery_line(
+  p_delivery_line_id uuid,
+  p_material_id uuid,
+  p_quantity numeric,
+  p_note text default null
+)
+returns public.material_movements
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_project_id uuid;
+  v_delivery_number text;
+  v_delivery_date date;
+  v_invoice_number text;
+  v_movement public.material_movements;
+begin
+  select dl.project_id, d.number, d.delivery_date, i.number
+    into v_project_id, v_delivery_number, v_delivery_date, v_invoice_number
+  from public.supply_delivery_lines dl
+  join public.supply_deliveries d on d.id = dl.delivery_id
+  join public.supply_invoices i on i.id = dl.invoice_id
+  where dl.id = p_delivery_line_id;
+
+  if v_project_id is null or public.project_access(v_project_id) is null then
+    raise exception 'supply_line_not_found';
+  end if;
+
+  if not public.project_can_edit(v_project_id) then
+    raise exception 'access_denied';
+  end if;
+
+  if not exists (
+    select 1 from public.materials m where m.id = p_material_id and m.project_id = v_project_id
+  ) then
+    raise exception 'material_not_found';
+  end if;
+
+  if p_quantity is null or p_quantity <= 0 then
+    raise exception 'invalid_quantity';
+  end if;
+
+  -- Блокировка строки поставки: второй одновременный вызов ждёт и видит
+  -- уже записанное движение. Уникальный индекс страхует то же самое.
+  perform 1 from public.supply_delivery_lines where id = p_delivery_line_id for update;
+
+  if exists (
+    select 1 from public.material_movements mm where mm.supply_delivery_line_id = p_delivery_line_id
+  ) then
+    raise exception 'already_received';
+  end if;
+
+  perform set_config('repair_planner.balance_update', 'on', true);
+
+  update public.materials
+    set current_balance = current_balance + p_quantity
+    where id = p_material_id;
+
+  insert into public.material_movements
+    (project_id, material_id, kind, quantity, note, supply_delivery_line_id, created_by)
+  values
+    (v_project_id, p_material_id, 'receipt', p_quantity,
+     coalesce(
+       nullif(btrim(p_note), ''),
+       'УПД №' || v_delivery_number || ' от ' || to_char(v_delivery_date, 'DD.MM.YYYY')
+         || ', счёт №' || v_invoice_number
+     ),
+     p_delivery_line_id, (select auth.uid()))
+  returning * into v_movement;
+
+  return v_movement;
+end;
+$$;
+
+revoke all on function public.create_supply_request(uuid, text, date, text, jsonb) from public, anon;
+grant execute on function public.create_supply_request(uuid, text, date, text, jsonb) to authenticated;
+revoke all on function public.create_supply_invoice(uuid, text, date, text, numeric, date, jsonb) from public, anon;
+grant execute on function public.create_supply_invoice(uuid, text, date, text, numeric, date, jsonb) to authenticated;
+revoke all on function public.create_supply_delivery(uuid, text, date, jsonb) from public, anon;
+grant execute on function public.create_supply_delivery(uuid, text, date, jsonb) to authenticated;
+revoke all on function public.receive_supply_delivery_line(uuid, uuid, numeric, text) from public, anon;
+grant execute on function public.receive_supply_delivery_line(uuid, uuid, numeric, text) to authenticated;

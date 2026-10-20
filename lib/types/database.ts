@@ -226,6 +226,7 @@ export type Database = {
           occurred_at: string
           project_id: string
           quantity: number
+          supply_delivery_line_id: string | null
           task_id: string | null
           task_material_id: string | null
         }
@@ -239,6 +240,7 @@ export type Database = {
           occurred_at?: string
           project_id: string
           quantity: number
+          supply_delivery_line_id?: string | null
           task_id?: string | null
           task_material_id?: string | null
         }
@@ -252,6 +254,7 @@ export type Database = {
           occurred_at?: string
           project_id?: string
           quantity?: number
+          supply_delivery_line_id?: string | null
           task_id?: string | null
           task_material_id?: string | null
         }
@@ -276,6 +279,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "projects"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_movements_supply_line_fk"
+            columns: ["supply_delivery_line_id", "project_id"]
+            isOneToOne: false
+            referencedRelation: "supply_delivery_lines"
+            referencedColumns: ["id", "project_id"]
           },
           {
             foreignKeyName: "material_movements_task_id_project_id_fkey"
@@ -537,6 +547,373 @@ export type Database = {
             columns: ["owner_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supply_deliveries: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          delivery_date: string
+          id: string
+          invoice_id: string
+          number: string
+          project_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          delivery_date: string
+          id?: string
+          invoice_id: string
+          number: string
+          project_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          delivery_date?: string
+          id?: string
+          invoice_id?: string
+          number?: string
+          project_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supply_deliveries_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supply_deliveries_invoice_fk"
+            columns: ["invoice_id", "project_id"]
+            isOneToOne: false
+            referencedRelation: "supply_invoices"
+            referencedColumns: ["id", "project_id"]
+          },
+          {
+            foreignKeyName: "supply_deliveries_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supply_delivery_lines: {
+        Row: {
+          created_at: string
+          delivery_id: string
+          id: string
+          invoice_id: string
+          invoice_line_id: string
+          project_id: string
+          quantity: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          delivery_id: string
+          id?: string
+          invoice_id: string
+          invoice_line_id: string
+          project_id: string
+          quantity: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          delivery_id?: string
+          id?: string
+          invoice_id?: string
+          invoice_line_id?: string
+          project_id?: string
+          quantity?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supply_delivery_lines_delivery_fk"
+            columns: ["delivery_id", "invoice_id"]
+            isOneToOne: false
+            referencedRelation: "supply_deliveries"
+            referencedColumns: ["id", "invoice_id"]
+          },
+          {
+            foreignKeyName: "supply_delivery_lines_invoice_fk"
+            columns: ["invoice_id", "project_id"]
+            isOneToOne: false
+            referencedRelation: "supply_invoices"
+            referencedColumns: ["id", "project_id"]
+          },
+          {
+            foreignKeyName: "supply_delivery_lines_invoice_line_fk"
+            columns: ["invoice_line_id", "invoice_id"]
+            isOneToOne: false
+            referencedRelation: "supply_invoice_lines"
+            referencedColumns: ["id", "invoice_id"]
+          },
+          {
+            foreignKeyName: "supply_delivery_lines_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supply_invoice_lines: {
+        Row: {
+          created_at: string
+          id: string
+          invoice_id: string
+          line_no: number
+          name: string
+          project_id: string
+          quantity: number
+          request_id: string
+          request_item_id: string | null
+          unit: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          invoice_id: string
+          line_no: number
+          name: string
+          project_id: string
+          quantity: number
+          request_id: string
+          request_item_id?: string | null
+          unit: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          invoice_id?: string
+          line_no?: number
+          name?: string
+          project_id?: string
+          quantity?: number
+          request_id?: string
+          request_item_id?: string | null
+          unit?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supply_invoice_lines_invoice_fk"
+            columns: ["invoice_id", "request_id"]
+            isOneToOne: false
+            referencedRelation: "supply_invoices"
+            referencedColumns: ["id", "request_id"]
+          },
+          {
+            foreignKeyName: "supply_invoice_lines_item_fk"
+            columns: ["request_item_id", "request_id"]
+            isOneToOne: false
+            referencedRelation: "supply_request_items"
+            referencedColumns: ["id", "request_id"]
+          },
+          {
+            foreignKeyName: "supply_invoice_lines_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supply_invoice_lines_request_fk"
+            columns: ["request_id", "project_id"]
+            isOneToOne: false
+            referencedRelation: "supply_requests"
+            referencedColumns: ["id", "project_id"]
+          },
+        ]
+      }
+      supply_invoices: {
+        Row: {
+          amount: number | null
+          created_at: string
+          created_by: string | null
+          id: string
+          invoice_date: string
+          number: string
+          paid_on: string | null
+          project_id: string
+          request_id: string
+          supplier: string
+          updated_at: string
+        }
+        Insert: {
+          amount?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoice_date: string
+          number: string
+          paid_on?: string | null
+          project_id: string
+          request_id: string
+          supplier: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoice_date?: string
+          number?: string
+          paid_on?: string | null
+          project_id?: string
+          request_id?: string
+          supplier?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supply_invoices_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supply_invoices_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supply_invoices_request_fk"
+            columns: ["request_id", "project_id"]
+            isOneToOne: false
+            referencedRelation: "supply_requests"
+            referencedColumns: ["id", "project_id"]
+          },
+        ]
+      }
+      supply_request_items: {
+        Row: {
+          cancelled_at: string | null
+          created_at: string
+          id: string
+          line_no: number
+          material_id: string | null
+          name: string
+          note: string | null
+          project_id: string
+          quantity: number
+          request_id: string
+          unit: string
+          updated_at: string
+        }
+        Insert: {
+          cancelled_at?: string | null
+          created_at?: string
+          id?: string
+          line_no: number
+          material_id?: string | null
+          name: string
+          note?: string | null
+          project_id: string
+          quantity: number
+          request_id: string
+          unit: string
+          updated_at?: string
+        }
+        Update: {
+          cancelled_at?: string | null
+          created_at?: string
+          id?: string
+          line_no?: number
+          material_id?: string | null
+          name?: string
+          note?: string | null
+          project_id?: string
+          quantity?: number
+          request_id?: string
+          unit?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supply_request_items_material_fk"
+            columns: ["material_id", "project_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
+            referencedColumns: ["id", "project_id"]
+          },
+          {
+            foreignKeyName: "supply_request_items_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supply_request_items_request_fk"
+            columns: ["request_id", "project_id"]
+            isOneToOne: false
+            referencedRelation: "supply_requests"
+            referencedColumns: ["id", "project_id"]
+          },
+        ]
+      }
+      supply_requests: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          number: string
+          project_id: string
+          request_date: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          number: string
+          project_id: string
+          request_date: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          number?: string
+          project_id?: string
+          request_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supply_requests_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supply_requests_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
@@ -914,6 +1291,37 @@ export type Database = {
           token: string
         }[]
       }
+      create_supply_delivery: {
+        Args: {
+          p_delivery_date: string
+          p_invoice_id: string
+          p_lines: Json
+          p_number: string
+        }
+        Returns: string
+      }
+      create_supply_invoice: {
+        Args: {
+          p_amount: number
+          p_invoice_date: string
+          p_lines: Json
+          p_number: string
+          p_paid_on: string
+          p_request_id: string
+          p_supplier: string
+        }
+        Returns: string
+      }
+      create_supply_request: {
+        Args: {
+          p_description: string
+          p_items: Json
+          p_number: string
+          p_project_id: string
+          p_request_date: string
+        }
+        Returns: string
+      }
       get_project_invitation: {
         Args: { p_token: string }
         Returns: {
@@ -983,6 +1391,34 @@ export type Database = {
           user_id: string
         }[]
       }
+      receive_supply_delivery_line: {
+        Args: {
+          p_delivery_line_id: string
+          p_material_id: string
+          p_note?: string
+          p_quantity: number
+        }
+        Returns: {
+          created_at: string
+          created_by: string | null
+          id: string
+          kind: Database["public"]["Enums"]["movement_kind"]
+          material_id: string
+          note: string | null
+          occurred_at: string
+          project_id: string
+          quantity: number
+          supply_delivery_line_id: string | null
+          task_id: string | null
+          task_material_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "material_movements"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       record_material_movement: {
         Args: {
           p_kind: Database["public"]["Enums"]["movement_kind"]
@@ -1000,6 +1436,7 @@ export type Database = {
           occurred_at: string
           project_id: string
           quantity: number
+          supply_delivery_line_id: string | null
           task_id: string | null
           task_material_id: string | null
         }
@@ -1050,6 +1487,7 @@ export type Database = {
           occurred_at: string
           project_id: string
           quantity: number
+          supply_delivery_line_id: string | null
           task_id: string | null
           task_material_id: string | null
         }
