@@ -58,3 +58,12 @@ export function suggestItemId(
   }
   return best?.id ?? null;
 }
+
+/**
+ * Одна ли единица в строке счёта и у материала справочника («Шт.» = «шт»,
+ * «м²» = «м2»): тогда кол-во оприходования по умолчанию — привезённое.
+ */
+export function unitsMatch(a: string, b: string): boolean {
+  const normalize = (unit: string) => unit.toLowerCase().replace(/²/g, "2").replace(/[\s.]/g, "");
+  return normalize(a) === normalize(b);
+}

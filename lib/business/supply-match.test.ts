@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { matchScore, suggestItemId } from "./supply-match";
+import { matchScore, suggestItemId, unitsMatch } from "./supply-match";
 
 // Позиции из заявки «ТМЦ октябрь 2026 (кабмех)».
 const items = [
@@ -46,5 +46,19 @@ describe("matchScore", () => {
 
   it("is 0 for an empty item name", () => {
     expect(matchScore("", "Подвес")).toBe(0);
+  });
+});
+
+describe("unitsMatch", () => {
+  it.each([
+    ["шт", "Шт."],
+    [" м2 ", "м²"],
+    ["пог. м", "пог.м"],
+  ])("%j = %j", (a, b) => {
+    expect(unitsMatch(a, b)).toBe(true);
+  });
+
+  it("tells упак from шт", () => {
+    expect(unitsMatch("упак", "шт")).toBe(false);
   });
 });

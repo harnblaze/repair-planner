@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { toast } from "sonner";
 
 import { PencilIcon, PlusIcon } from "lucide-react";
 
@@ -9,10 +10,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { filterSupplyRequests } from "@/lib/business/supply-filter";
 import { summarizeRequest } from "@/lib/business/supply-status";
-import type { SupplyInvoiceLineView, SupplyInvoiceView, SupplyItemView, SupplyRequestView } from "@/lib/types/supply";
+import type {
+  SupplyDeliveryLineView,
+  SupplyDeliveryView,
+  SupplyInvoiceLineView,
+  SupplyInvoiceView,
+  SupplyItemView,
+  SupplyRequestView,
+} from "@/lib/types/supply";
 import { cn } from "@/lib/utils";
 
-import { InvoicesList } from "./documents-list";
+import { deleteSupplyDeliveryAction } from "./actions";
+import { DeliveryDialog, DeliveryLineDialog, ReceiveDialog } from "./delivery-dialogs";
+import { DeliveriesList, InvoicesList, LineDeliveries } from "./documents-list";
 import { InvoiceDialog, InvoiceLineDialog, InvoiceLinesDialog, PaidDialog } from "./invoice-dialogs";
 import { RequestBlock } from "./request-block";
 import { ItemDialog, ItemsDialog, RequestDialog } from "./request-dialogs";
@@ -34,11 +44,29 @@ type OpenDialog =
   | { kind: "invoice"; request: SupplyRequestView; invoice: SupplyInvoiceView | null }
   | { kind: "invoice-lines"; request: SupplyRequestView; invoice: SupplyInvoiceView }
   | { kind: "paid"; invoice: SupplyInvoiceView }
-  | { kind: "line"; request: SupplyRequestView; line: SupplyInvoiceLineView };
+  | { kind: "line"; request: SupplyRequestView; line: SupplyInvoiceLineView }
+  | { kind: "delivery"; request: SupplyRequestView }
+  | {
+      kind: "delivery-line" | "receive";
+      request: SupplyRequestView;
+      line: SupplyInvoiceLineView;
+      deliveryLine: SupplyDeliveryLineView;
+      delivery: SupplyDeliveryView;
+    };
 
 export function SupplyBoard({ projectId, requests, materials, canEdit, today }: SupplyBoardProps) {
   const [dialog, setDialog] = useState<OpenDialog | null>(null);
   const closeDialog = () => setDialog(null);
+  const [, startDeleting] = useTransition();
+
+  const deleteDelivery = (delivery: SupplyDeliveryView) => {
+    if (!window.confirm(`Удалить поставку УПД №${delivery.number}?`)) return;
+    startDeleting(async () => {
+      const result = await deleteSupplyDeliveryAction(projectId, delivery.id);
+      if (result.ok) toast.success("Поставка удалена.");
+      else toast.error(result.error);
+    });
+  };
   const [query, setQuery] = useState("");
   const [onlyActive, setOnlyActive] = useState(true);
   // Явно раскрытые/свёрнутые мастером; остальные — по умолчанию (§6.1).
@@ -104,6 +132,23 @@ export function SupplyBoard({ projectId, requests, materials, canEdit, today }: 
             onToggle={() => setToggled((t) => ({ ...t, [request.id]: !isOpen(request.id) }))}
             onItemClick={canEdit ? (item) => setDialog({ kind: "item", item }) : undefined}
             onLineClick={canEdit ? (line) => setDialog({ kind: "line", request, line }) : undefined}
+            renderDeliveries={(line) => (
+              <LineDeliveries
+                line={line}
+                deliveries={new Map(request.deliveries.map((d) => [d.id, d]))}
+                onEdit={
+                  canEdit
+                    ? (deliveryLine, delivery) =>
+                        setDialog({ kind: "delivery-line", request, line, deliveryLine, delivery })
+                    : undefined
+                }
+                onReceive={
+                  canEdit
+                    ? (deliveryLine, delivery) => setDialog({ kind: "receive", request, line, deliveryLine, delivery })
+                    : undefined
+                }
+              />
+            )}
             menu={
               canEdit && (
                 <Button
@@ -131,6 +176,7 @@ export function SupplyBoard({ projectId, requests, materials, canEdit, today }: 
                       : undefined
                   }
                 />
+                <DeliveriesList request={request} onDelete={canEdit ? deleteDelivery : undefined} />
                 {canEdit && (
                   <div className="flex flex-wrap gap-2 pt-1">
                     <Button type="button" variant="outline" size="sm" onClick={() => setDialog({ kind: "items", request })}>
@@ -146,6 +192,12 @@ export function SupplyBoard({ projectId, requests, materials, canEdit, today }: 
                       <PlusIcon />
                       Счёт
                     </Button>
+                    {request.invoices.length > 0 && (
+                      <Button type="button" variant="outline" size="sm" onClick={() => setDialog({ kind: "delivery", request })}>
+                        <PlusIcon />
+                        Поставка
+                      </Button>
+                    )}
                   </div>
                 )}
               </>
@@ -169,6 +221,31 @@ export function SupplyBoard({ projectId, requests, materials, canEdit, today }: 
       )}
       {dialog?.kind === "line" && (
         <InvoiceLineDialog projectId={projectId} request={dialog.request} line={dialog.line} onClose={closeDialog} />
+      )}
+      {dialog?.kind === "delivery" && (
+        <DeliveryDialog projectId={projectId} request={dialog.request} today={today} onClose={closeDialog} />
+      )}
+      {dialog?.kind === "delivery-line" && (
+        <DeliveryLineDialog
+          projectId={projectId}
+          line={dialog.line}
+          deliveryLine={dialog.deliveryLine}
+          delivery={dialog.delivery}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.kind === "receive" && (
+        <ReceiveDialog
+          projectId={projectId}
+          line={dialog.line}
+          deliveryLine={dialog.deliveryLine}
+          delivery={dialog.delivery}
+          defaultMaterialId={
+            dialog.request.items.find((i) => i.id === dialog.line.requestItemId)?.materialId ?? null
+          }
+          materials={materials}
+          onClose={closeDialog}
+        />
       )}
       {dialog?.kind === "item" && (
         <ItemDialog projectId={projectId} item={dialog.item} materials={materials} onClose={closeDialog} />

@@ -3,21 +3,27 @@
 import { revalidatePath } from "next/cache";
 import type { z } from "zod";
 
-import { mapSupplyError } from "@/lib/errors";
+import { isUniqueViolation, mapSupplyError } from "@/lib/errors";
 import { requireProjectEdit } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
+import { materialSchema } from "@/lib/validation/reference-data";
 import {
+  positiveQuantity,
+  supplyDeliverySchema,
   supplyInvoiceLineSchema,
   supplyInvoiceLinesSchema,
   supplyInvoiceSchema,
   supplyItemEditSchema,
   supplyItemsSchema,
+  supplyReceiveSchema,
   supplyRequestSchema,
+  type SupplyDeliveryInput,
   type SupplyInvoiceInput,
   type SupplyInvoiceLineInput,
   type SupplyItemEditInput,
   type SupplyItemInput,
+  type SupplyReceiveInput,
   type SupplyRequestInput,
 } from "@/lib/validation/supply";
 
@@ -376,4 +382,139 @@ export async function deleteSupplyInvoiceLineAction(projectId: string, lineId: s
     .select("id");
 
   return affected("deleteSupplyInvoiceLineAction", projectId, result);
+}
+
+// ================= Поставки (УПД) =================
+
+export async function createSupplyDeliveryAction(
+  projectId: string,
+  invoiceId: string,
+  input: SupplyDeliveryInput,
+): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const parsed = supplyDeliverySchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("create_supply_delivery", {
+    p_invoice_id: invoiceId,
+    p_number: parsed.data.number,
+    p_delivery_date: parsed.data.deliveryDate,
+    p_lines: parsed.data.lines.map((l) => ({ invoice_line_id: l.invoiceLineId, quantity: l.quantity })),
+  });
+
+  if (error) return failed("createSupplyDeliveryAction", error);
+  revalidateSupply(projectId);
+  return { ok: true };
+}
+
+export async function updateSupplyDeliveryLineAction(
+  projectId: string,
+  deliveryLineId: string,
+  quantity: number | string,
+): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const parsed = positiveQuantity.safeParse(quantity);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? INVALID_FORM };
+
+  const supabase = await createClient();
+  const result = await supabase
+    .from("supply_delivery_lines")
+    .update({ quantity: parsed.data })
+    .eq("id", deliveryLineId)
+    .eq("project_id", projectId)
+    .select("id");
+
+  return affected("updateSupplyDeliveryLineAction", projectId, result);
+}
+
+export async function deleteSupplyDeliveryLineAction(projectId: string, deliveryLineId: string): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const supabase = await createClient();
+  const result = await supabase
+    .from("supply_delivery_lines")
+    .delete()
+    .eq("id", deliveryLineId)
+    .eq("project_id", projectId)
+    .select("id");
+
+  return affected("deleteSupplyDeliveryLineAction", projectId, result);
+}
+
+export async function deleteSupplyDeliveryAction(projectId: string, deliveryId: string): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const supabase = await createClient();
+  const result = await supabase
+    .from("supply_deliveries")
+    .delete()
+    .eq("id", deliveryId)
+    .eq("project_id", projectId)
+    .select("id");
+
+  return affected("deleteSupplyDeliveryAction", projectId, result);
+}
+
+// ================= Оприходование на остаток =================
+
+export async function receiveSupplyDeliveryLineAction(
+  projectId: string,
+  deliveryLineId: string,
+  input: SupplyReceiveInput,
+): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const parsed = supplyReceiveSchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("receive_supply_delivery_line", {
+    p_delivery_line_id: deliveryLineId,
+    p_material_id: parsed.data.materialId,
+    p_quantity: parsed.data.quantity,
+    p_note: parsed.data.note ?? "",
+  });
+
+  if (error) return failed("receiveSupplyDeliveryLineAction", error);
+  revalidateSupply(projectId);
+  // Остаток вырос — обновить и «Материалы» (вместе со страницами материалов).
+  revalidatePath(`/${projectId}/materials`, "layout");
+  return { ok: true };
+}
+
+/** Материал справочника прямо из окна оприходования; минимальный остаток — 0. */
+export async function createSupplyMaterialAction(
+  projectId: string,
+  input: { name: string; unit: string },
+): Promise<{ ok: true; materialId: string } | { ok: false; error: string }> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return { ok: false, error: denied.ok ? "" : denied.error };
+
+  const parsed = materialSchema.safeParse({ ...input, minimumBalance: 0 });
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? INVALID_FORM };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("materials")
+    .insert({ project_id: projectId, name: parsed.data.name, unit: parsed.data.unit, minimum_balance: 0 })
+    .select("id")
+    .single();
+
+  if (error) {
+    if (isUniqueViolation(error)) return { ok: false, error: "Материал с таким названием уже есть." };
+    console.error("createSupplyMaterialAction:", error);
+    return { ok: false, error: "Не удалось добавить материал. Попробуйте ещё раз." };
+  }
+
+  revalidateSupply(projectId);
+  revalidatePath(`/${projectId}/materials`, "layout");
+  return { ok: true, materialId: data.id };
 }
