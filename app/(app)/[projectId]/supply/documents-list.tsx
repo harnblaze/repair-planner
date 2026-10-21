@@ -83,10 +83,12 @@ export function InvoicesList({
 
 export function DeliveriesList({
   request,
+  onEdit,
   onDelete,
 }: {
   request: SupplyRequestView;
   /** Нет — только просмотр. */
+  onEdit?: (delivery: SupplyDeliveryView) => void;
   onDelete?: (delivery: SupplyDeliveryView) => void;
 }) {
   if (request.deliveries.length === 0) return null;
@@ -102,6 +104,17 @@ export function DeliveriesList({
             <span className="text-meta">
               от {formatDateShort(delivery.deliveryDate)} · счёт №{invoiceNumber.get(delivery.invoiceId)}
             </span>
+            {onEdit && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label={`Изменить поставку УПД №${delivery.number}`}
+                onClick={() => onEdit(delivery)}
+              >
+                <PencilIcon />
+              </Button>
+            )}
             {onDelete && (
               <Button
                 type="button"

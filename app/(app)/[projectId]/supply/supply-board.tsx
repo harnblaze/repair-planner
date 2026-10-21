@@ -21,7 +21,7 @@ import type {
 import { cn } from "@/lib/utils";
 
 import { deleteSupplyDeliveryAction } from "./actions";
-import { DeliveryDialog, DeliveryLineDialog, ReceiveDialog } from "./delivery-dialogs";
+import { DeliveryDialog, DeliveryHeaderDialog, DeliveryLineDialog, ReceiveDialog } from "./delivery-dialogs";
 import { DeliveriesList, InvoicesList, LineDeliveries } from "./documents-list";
 import { InvoiceDialog, InvoiceLineDialog, InvoiceLinesDialog, PaidDialog } from "./invoice-dialogs";
 import { RequestBlock } from "./request-block";
@@ -46,6 +46,7 @@ type OpenDialog =
   | { kind: "paid"; invoice: SupplyInvoiceView }
   | { kind: "line"; request: SupplyRequestView; line: SupplyInvoiceLineView }
   | { kind: "delivery"; request: SupplyRequestView }
+  | { kind: "delivery-header"; delivery: SupplyDeliveryView }
   | {
       kind: "delivery-line" | "receive";
       request: SupplyRequestView;
@@ -176,7 +177,11 @@ export function SupplyBoard({ projectId, requests, materials, canEdit, today }: 
                       : undefined
                   }
                 />
-                <DeliveriesList request={request} onDelete={canEdit ? deleteDelivery : undefined} />
+                <DeliveriesList
+                  request={request}
+                  onEdit={canEdit ? (delivery) => setDialog({ kind: "delivery-header", delivery }) : undefined}
+                  onDelete={canEdit ? deleteDelivery : undefined}
+                />
                 {canEdit && (
                   <div className="flex flex-wrap gap-2 pt-1">
                     <Button type="button" variant="outline" size="sm" onClick={() => setDialog({ kind: "items", request })}>
@@ -224,6 +229,9 @@ export function SupplyBoard({ projectId, requests, materials, canEdit, today }: 
       )}
       {dialog?.kind === "delivery" && (
         <DeliveryDialog projectId={projectId} request={dialog.request} today={today} onClose={closeDialog} />
+      )}
+      {dialog?.kind === "delivery-header" && (
+        <DeliveryHeaderDialog projectId={projectId} delivery={dialog.delivery} onClose={closeDialog} />
       )}
       {dialog?.kind === "delivery-line" && (
         <DeliveryLineDialog

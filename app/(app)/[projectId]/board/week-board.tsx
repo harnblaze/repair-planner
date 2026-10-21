@@ -66,6 +66,7 @@ import { Panel, PanelEmpty, PanelHeader } from "./panel";
 import { ExecutorsMenu, StatusMenu, type DirectoryExecutor } from "./quick-edit-menus";
 import { TaskChip, TaskRow, type BoardTask } from "./task-chip";
 import { patchTask, toggleExecutor, type TaskExecutor } from "./task-updates";
+import { useDoneStackOpen } from "./use-done-stack-open";
 
 // Неделя доски и панели очередей текущих заявок в одном DndContext: задачу
 // можно запланировать, сменить ей день, упорядочить внутри дня или очереди,
@@ -590,8 +591,8 @@ function DayColumn({
   const { setNodeRef } = useDroppable({ id: `day:${date}`, data: { container: date } satisfies DragData });
   // Стопка «Сделано» — только отображение: порядок в состоянии и позиции не трогаем.
   const { active, done, stacked } = splitDayTasks(tasks);
-  // Раскрытие стопки — в памяти колонки (колонка с key=дата переживает router.refresh()).
-  const [doneOpen, setDoneOpen] = useState(false);
+  // Раскрытие стопки запоминается в браузере по проекту и дате.
+  const [doneOpen, toggleDoneOpen] = useDoneStackOpen(projectId, date);
   // В SortableContext — только реально показанные карточки, в порядке показа.
   const shown = stacked && !doneOpen ? active : [...active, ...done];
   const renderChip = (task: DayTask) => (
@@ -666,7 +667,7 @@ function DayColumn({
               {active.map(renderChip)}
               {stacked ? (
                 // Свёрнутая строка не входит в SortableContext; раскрытые карточки — входят.
-                <DoneStack count={done.length} open={doneOpen} onToggle={() => setDoneOpen((v) => !v)}>
+                <DoneStack count={done.length} open={doneOpen} onToggle={toggleDoneOpen}>
                   {done.map(renderChip)}
                 </DoneStack>
               ) : (

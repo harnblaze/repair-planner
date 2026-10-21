@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { executorsInitials, executorsSummary } from "./executor-names";
+import { executorChanges, executorsInitials, executorsSummary } from "./executor-names";
 
 describe("executorsSummary", () => {
   it("says nobody is assigned when the list is empty", () => {
@@ -37,5 +37,15 @@ describe("executorsInitials", () => {
     expect(executorsInitials(["Иванов Иван", "Петров Пётр", "Сидоров Сидор", "Кузнецов Олег"])).toBe(
       "Иванов И., Петров П. +2",
     );
+  });
+});
+
+describe("executorChanges", () => {
+  it("lists executors to assign and to unassign", () => {
+    expect(executorChanges(["a", "b"], ["b", "c"])).toEqual({ added: ["c"], removed: ["a"] });
+  });
+
+  it("is empty when the selection did not change", () => {
+    expect(executorChanges(["a", "b"], ["b", "a"])).toEqual({ added: [], removed: [] });
   });
 });

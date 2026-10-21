@@ -89,7 +89,11 @@ export function PasteRows({
         id={textId}
         value={text}
         rows={3}
-        placeholder="Выделите строки в Excel (наименование, ед., кол-во), скопируйте и вставьте сюда"
+        placeholder={
+          mode === "invoice"
+            ? "Выделите в Excel колонки «Наименование», «Кол-во», «Ед.» (без цены и суммы), скопируйте и вставьте сюда"
+            : "Выделите строки в Excel (наименование, ед., кол-во), скопируйте и вставьте сюда"
+        }
         className="w-full resize-y rounded-[7px] border border-control bg-surface px-2.5 py-1.5 text-[12px] text-ink outline-none placeholder:text-placeholder focus-visible:border-brand"
         onChange={(e) => setText(e.target.value)}
         onPaste={(e) => {
@@ -101,6 +105,8 @@ export function PasteRows({
         }}
       />
       <p className="text-[11px] text-meta">
+        {mode === "invoice" &&
+          "Колонки «Цена» и «Сумма» не копируйте: количеством считается последнее число в строке. "}
         Из PDF строки копируются без колонок — сначала вставьте их в Excel, затем скопируйте оттуда.
       </p>
       <div className="flex flex-wrap gap-2">
@@ -222,9 +228,14 @@ export function PasteRows({
       )}
 
       {invalidCount > 0 && (
-        <p className="text-[11.5px] text-status-alert-fg">
-          Не распознано строк: {invalidCount}. Исправьте или удалите их — подсвечены красным.
-        </p>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <p className="text-[11.5px] text-status-alert-fg">
+            Не распознано строк: {invalidCount}. Исправьте или удалите их — подсвечены красным.
+          </p>
+          <Button type="button" variant="ghost" size="sm" onClick={() => onChange(rows.filter(rowIsValid))}>
+            Удалить нераспознанные
+          </Button>
+        </div>
       )}
     </div>
   );

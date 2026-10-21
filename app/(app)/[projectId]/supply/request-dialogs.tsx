@@ -40,12 +40,12 @@ interface DialogProps {
 }
 
 /** Проверка строк предпросмотра перед отправкой; null — показана ошибка. */
-function checkedItems(rows: EditableRow[], after: number) {
+function checkedItems(rows: EditableRow[], taken: number[]) {
   if (rows.some((r) => !rowIsValid(r))) {
     toast.error("Есть нераспознанные строки — исправьте или удалите их.");
     return null;
   }
-  const parsed = supplyItemsSchema.safeParse(numberRows(toRowInputs(rows), after));
+  const parsed = supplyItemsSchema.safeParse(numberRows(toRowInputs(rows), taken));
   if (!parsed.success) {
     toast.error("Проверьте строки: наименование, единицу и количество.");
     return null;
@@ -77,7 +77,7 @@ export function RequestDialog({
   });
 
   const onSubmit = handleSubmit((data) => {
-    const items = request ? [] : rows.length === 0 ? [] : checkedItems(rows, 0);
+    const items = request ? [] : rows.length === 0 ? [] : checkedItems(rows, []);
     if (items === null) return;
     startTransition(async () => {
       const result = request
@@ -150,10 +150,12 @@ export function RequestDialog({
 export function ItemsDialog({ projectId, request, onClose }: DialogProps & { request: SupplyRequestView }) {
   const [pending, startTransition] = useTransition();
   const [rows, setRows] = useState<EditableRow[]>([]);
-  const after = request.items.reduce((max, i) => Math.max(max, i.lineNo), 0);
 
   const onSave = () => {
-    const items = checkedItems(rows, after);
+    const items = checkedItems(
+      rows,
+      request.items.map((i) => i.lineNo),
+    );
     if (items === null) return;
     startTransition(async () => {
       const result = await addSupplyItemsAction(projectId, request.id, items);

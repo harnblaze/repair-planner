@@ -67,3 +67,24 @@ export function unitsMatch(a: string, b: string): boolean {
   const normalize = (unit: string) => unit.toLowerCase().replace(/²/g, "2").replace(/[\s.]/g, "");
   return normalize(a) === normalize(b);
 }
+
+/** Совпадают ли названия материалов так же, как их сравнивает уникальный индекс (lower(name)). */
+export function sameMaterialName(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+/**
+ * Поиск в списке материалов окна оприходования: каждое слово запроса есть в
+ * названии (регистр и «ё» не важны). Выбранный материал остаётся в списке,
+ * иначе <select> молча покажет другой.
+ */
+export function filterMaterialOptions<T extends { id: string; name: string }>(
+  options: T[],
+  query: string,
+  selectedId: string | null,
+): T[] {
+  const normalize = (text: string) => text.toLowerCase().replace(/ё/g, "е");
+  const words = normalize(query).split(/\s+/).filter(Boolean);
+  if (words.length === 0) return options;
+  return options.filter((m) => m.id === selectedId || words.every((w) => normalize(m.name).includes(w)));
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { matchScore, suggestItemId, unitsMatch } from "./supply-match";
+import { filterMaterialOptions, matchScore, sameMaterialName, suggestItemId, unitsMatch } from "./supply-match";
 
 // Позиции из заявки «ТМЦ октябрь 2026 (кабмех)».
 const items = [
@@ -70,5 +70,33 @@ describe("case-insensitive matching", () => {
     ["Электроды МР-3", "ЭЛЕКТРОДЫ МР-3"],
   ])("%s ~ %s → 1", (item, line) => {
     expect(matchScore(item, line)).toBe(1);
+  });
+});
+
+describe("filterMaterialOptions", () => {
+  const materials = [
+    { id: "m1", name: "Саморез по дереву 3,8х51", unit: "шт" },
+    { id: "m2", name: "Ёрш сантехнический", unit: "шт" },
+    { id: "m3", name: "Линолеум Centra", unit: "м2" },
+  ];
+
+  it("returns everything for an empty query", () => {
+    expect(filterMaterialOptions(materials, "  ", null)).toEqual(materials);
+  });
+
+  it("matches every word of the query anywhere in the name, ignoring case and ё", () => {
+    expect(filterMaterialOptions(materials, "дерев САМОРЕЗ", null).map((m) => m.id)).toEqual(["m1"]);
+    expect(filterMaterialOptions(materials, "ерш", null).map((m) => m.id)).toEqual(["m2"]);
+  });
+
+  it("keeps the selected material visible even when it does not match", () => {
+    expect(filterMaterialOptions(materials, "линолеум", "m2").map((m) => m.id)).toEqual(["m2", "m3"]);
+  });
+});
+
+describe("sameMaterialName", () => {
+  it("compares names like the unique index of materials: trimmed, case-insensitive", () => {
+    expect(sameMaterialName(" Болт М12 ", "болт м12")).toBe(true);
+    expect(sameMaterialName("Болт М12", "Болт М10")).toBe(false);
   });
 });

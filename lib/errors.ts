@@ -96,6 +96,8 @@ export function mapSupplyError(error: { code?: string; message?: string } | null
   const message = error?.message ?? "";
   if (SUPPLY_ERROR_MESSAGES[message]) return SUPPLY_ERROR_MESSAGES[message];
   if (error?.code === "23503" && message.includes("material_movements_supply_line_fk")) {
+    // Вставка прихода: строку поставки удалили, пока её оприходовали.
+    if (message.startsWith("insert")) return SUPPLY_ERROR_MESSAGES.supply_line_not_found;
     return SUPPLY_RECEIVED_DELETE_MESSAGE;
   }
   if (error?.code === "23503" && message.includes("supply_invoice_lines_item_fk")) {

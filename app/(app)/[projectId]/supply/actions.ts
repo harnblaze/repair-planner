@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { z } from "zod";
 
+import { sameMaterialName } from "@/lib/business/supply-match";
 import { isUniqueViolation, mapSupplyError } from "@/lib/errors";
 import { requireProjectEdit } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
@@ -10,6 +11,7 @@ import type { ActionResult } from "@/lib/types/action-result";
 import { materialSchema } from "@/lib/validation/reference-data";
 import {
   positiveQuantity,
+  supplyDeliveryHeaderSchema,
   supplyDeliverySchema,
   supplyInvoiceLineSchema,
   supplyInvoiceLinesSchema,
@@ -18,6 +20,7 @@ import {
   supplyItemsSchema,
   supplyReceiveSchema,
   supplyRequestSchema,
+  type SupplyDeliveryHeaderInput,
   type SupplyDeliveryInput,
   type SupplyInvoiceInput,
   type SupplyInvoiceLineInput,
@@ -26,6 +29,8 @@ import {
   type SupplyReceiveInput,
   type SupplyRequestInput,
 } from "@/lib/validation/supply";
+
+import type { SupplyMaterialOption } from "./supply-data";
 
 // Снабжение (docs/superpowers/specs/2026-10-20-supply-tracking-design.md §6.2).
 // Гарантию прав даёт RLS; requireProjectEdit нужен, чтобы отфильтрованный
@@ -410,6 +415,29 @@ export async function createSupplyDeliveryAction(
   return { ok: true };
 }
 
+/** № и дата УПД; приход, уже записанный по поставке, хранит прежний текст комментария. */
+export async function updateSupplyDeliveryAction(
+  projectId: string,
+  deliveryId: string,
+  input: SupplyDeliveryHeaderInput,
+): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const parsed = supplyDeliveryHeaderSchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+
+  const supabase = await createClient();
+  const result = await supabase
+    .from("supply_deliveries")
+    .update({ number: parsed.data.number, delivery_date: parsed.data.deliveryDate })
+    .eq("id", deliveryId)
+    .eq("project_id", projectId)
+    .select("id");
+
+  return affected("updateSupplyDeliveryAction", projectId, result);
+}
+
 export async function updateSupplyDeliveryLineAction(
   projectId: string,
   deliveryLineId: string,
@@ -490,11 +518,15 @@ export async function receiveSupplyDeliveryLineAction(
   return { ok: true };
 }
 
-/** Материал справочника прямо из окна оприходования; минимальный остаток — 0. */
+/**
+ * Материал справочника прямо из окна оприходования; минимальный остаток — 0.
+ * Если такое название уже есть у материала в архиве, возвращает его в
+ * `archived` — окно предложит вернуть его вместо создания дубля.
+ */
 export async function createSupplyMaterialAction(
   projectId: string,
   input: { name: string; unit: string },
-): Promise<{ ok: true; materialId: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; materialId: string } | { ok: false; error: string; archived?: SupplyMaterialOption }> {
   const denied = await requireProjectEdit(projectId);
   if (denied) return { ok: false, error: denied.ok ? "" : denied.error };
 
@@ -509,7 +541,11 @@ export async function createSupplyMaterialAction(
     .single();
 
   if (error) {
-    if (isUniqueViolation(error)) return { ok: false, error: "Материал с таким названием уже есть." };
+    if (isUniqueViolation(error)) {
+      const archived = await findArchivedMaterial(projectId, parsed.data.name);
+      if (archived) return { ok: false, error: `«${archived.name}» есть в архиве материалов.`, archived };
+      return { ok: false, error: "Материал с таким названием уже есть." };
+    }
     console.error("createSupplyMaterialAction:", error);
     return { ok: false, error: "Не удалось добавить материал. Попробуйте ещё раз." };
   }
@@ -517,4 +553,38 @@ export async function createSupplyMaterialAction(
   revalidateSupply(projectId);
   revalidatePath(`/${projectId}/materials`, "layout");
   return { ok: true, materialId: data.id };
+}
+
+/** Архивный материал с тем же названием (как его сравнивает уникальный индекс). */
+async function findArchivedMaterial(projectId: string, name: string): Promise<SupplyMaterialOption | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("materials")
+    .select("id, name, unit")
+    .eq("project_id", projectId)
+    .eq("is_active", false);
+
+  if (error) {
+    console.error("findArchivedMaterial:", error);
+    return null;
+  }
+  return data.find((m) => sameMaterialName(m.name, name)) ?? null;
+}
+
+/** Вернуть архивный материал в справочник из окна оприходования. */
+export async function restoreSupplyMaterialAction(projectId: string, materialId: string): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const supabase = await createClient();
+  const result = await supabase
+    .from("materials")
+    .update({ is_active: true })
+    .eq("id", materialId)
+    .eq("project_id", projectId)
+    .select("id");
+
+  const outcome = affected("restoreSupplyMaterialAction", projectId, result);
+  if (outcome.ok) revalidatePath(`/${projectId}/materials`, "layout");
+  return outcome;
 }

@@ -55,12 +55,12 @@ function useRun(onClose: () => void) {
   return { pending, run };
 }
 
-function checkedLines(rows: EditableRow[], after: number) {
+function checkedLines(rows: EditableRow[], taken: number[]) {
   if (rows.some((r) => !rowIsValid(r))) {
     toast.error("Есть нераспознанные строки — исправьте или удалите их.");
     return null;
   }
-  const parsed = supplyInvoiceLinesSchema.safeParse(numberRows(toRowInputs(rows), after));
+  const parsed = supplyInvoiceLinesSchema.safeParse(numberRows(toRowInputs(rows), taken));
   if (!parsed.success) {
     toast.error("Проверьте строки: наименование, единицу и количество.");
     return null;
@@ -68,8 +68,7 @@ function checkedLines(rows: EditableRow[], after: number) {
   return parsed.data;
 }
 
-const maxLineNo = (invoice: SupplyInvoiceView | null) =>
-  invoice ? invoice.lines.reduce((max, l) => Math.max(max, l.lineNo), 0) : 0;
+const takenLineNos = (invoice: SupplyInvoiceView | null) => (invoice ? invoice.lines.map((l) => l.lineNo) : []);
 
 // ================= Счёт: создание со строками, правка шапки =================
 
@@ -101,7 +100,7 @@ export function InvoiceDialog({
       run(() => updateSupplyInvoiceAction(projectId, invoice.id, data), "Счёт сохранён.");
       return;
     }
-    const lines = rows.length === 0 ? [] : checkedLines(rows, 0);
+    const lines = rows.length === 0 ? [] : checkedLines(rows, []);
     if (lines === null) return;
     run(() => createSupplyInvoiceAction(projectId, request.id, data, lines), "Счёт добавлен.");
   });
@@ -189,7 +188,7 @@ export function InvoiceLinesDialog({
   const [rows, setRows] = useState<EditableRow[]>([]);
 
   const onSave = () => {
-    const lines = checkedLines(rows, maxLineNo(invoice));
+    const lines = checkedLines(rows, takenLineNos(invoice));
     if (lines === null) return;
     run(
       () => addSupplyInvoiceLinesAction(projectId, request.id, invoice.id, lines),

@@ -28,3 +28,12 @@ export function splitDayTasks<T extends DayTaskLike>(
   for (const task of tasks) (isDoneOnDay(task) ? done : active).push(task);
   return { active, done, stacked: done.length >= DONE_STACK_MIN };
 }
+
+/** Сколько раскрытых дней помнить: старые выпадают, хранилище не растёт. */
+export const OPEN_DAYS_LIMIT = 30;
+
+/** Список дней с раскрытой стопкой после нажатия; последний раскрытый — в конце. */
+export function rememberOpenDay(days: string[], date: string, open: boolean): string[] {
+  const rest = days.filter((d) => d !== date);
+  return open ? [...rest, date].slice(-OPEN_DAYS_LIMIT) : rest;
+}

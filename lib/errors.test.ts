@@ -85,6 +85,16 @@ describe("mapSupplyError", () => {
     ).toBe("Нельзя удалить: материалы из этой поставки уже оприходованы. Исправьте остаток пересчётом в «Материалах».");
   });
 
+  it("reports a delivery line deleted while it was being received", () => {
+    expect(
+      mapSupplyError({
+        code: "23503",
+        message:
+          'insert or update on table "material_movements" violates foreign key constraint "material_movements_supply_line_fk"',
+      }),
+    ).toBe("Строка поставки не найдена. Обновите страницу.");
+  });
+
   it("explains a link to an item of another request", () => {
     expect(
       mapSupplyError({

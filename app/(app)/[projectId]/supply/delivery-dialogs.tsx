@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { formatDateShort } from "@/lib/business/dates";
-import { unitsMatch } from "@/lib/business/supply-match";
+import { filterMaterialOptions, sameMaterialName, unitsMatch } from "@/lib/business/supply-match";
 import { collectQuantities } from "@/lib/business/supply-paste";
 import { lineProgress, remainingToDeliver } from "@/lib/business/supply-status";
 import type {
@@ -20,6 +20,7 @@ import type {
   SupplyRequestView,
 } from "@/lib/types/supply";
 import {
+  supplyDeliveryHeaderSchema,
   supplyDeliverySchema,
   supplyReceiveSchema,
   type SupplyReceiveFormValues,
@@ -31,6 +32,8 @@ import {
   createSupplyMaterialAction,
   deleteSupplyDeliveryLineAction,
   receiveSupplyDeliveryLineAction,
+  restoreSupplyMaterialAction,
+  updateSupplyDeliveryAction,
   updateSupplyDeliveryLineAction,
 } from "./actions";
 import { formatDocDate, formatQuantity } from "./format";
@@ -205,6 +208,51 @@ export function DeliveryDialog({
   );
 }
 
+// ================= Поставка: правка № и даты УПД =================
+
+export function DeliveryHeaderDialog({ projectId, delivery, onClose }: DialogProps & { delivery: SupplyDeliveryView }) {
+  const { pending, run } = useRun(onClose);
+  const [number, setNumber] = useState(delivery.number);
+  const [date, setDate] = useState(delivery.deliveryDate);
+
+  const onSubmit = () => {
+    const parsed = supplyDeliveryHeaderSchema.safeParse({ number, deliveryDate: date });
+    if (!parsed.success) {
+      toast.error(parsed.error.issues[0]?.message ?? "Проверьте поля поставки.");
+      return;
+    }
+    run(() => updateSupplyDeliveryAction(projectId, delivery.id, parsed.data), "Поставка сохранена.");
+  };
+
+  return (
+    <SupplyDialog open onOpenChange={(o) => !o && onClose()} title={`УПД №${delivery.number}`}>
+      <form
+        className="flex flex-col gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSubmit();
+        }}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="delivery-edit-number">№ УПД</Label>
+            <Input id="delivery-edit-number" autoFocus value={number} onChange={(e) => setNumber(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="delivery-edit-date">Дата</Label>
+            <Input id="delivery-edit-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+        </div>
+        <div className="flex justify-end">
+          <Button type="submit" disabled={pending}>
+            Сохранить
+          </Button>
+        </div>
+      </form>
+    </SupplyDialog>
+  );
+}
+
 // ================= Строка поставки: правка количества и удаление =================
 
 export function DeliveryLineDialog({
@@ -284,6 +332,8 @@ export function ReceiveDialog({
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState(line.name);
   const [newUnit, setNewUnit] = useState(line.unit);
+  const [archived, setArchived] = useState<SupplyMaterialOption | null>(null);
+  const [query, setQuery] = useState("");
   const [creatingPending, startCreating] = useTransition();
   const options = [...materials, ...created.filter((c) => !materials.some((m) => m.id === c.id))];
 
@@ -308,20 +358,46 @@ export function ReceiveDialog({
   const material = options.find((m) => m.id === materialId);
 
   const materialField = register("materialId");
+  const visible = filterMaterialOptions(options, query, materialId || null);
 
-  const onCreate = () =>
+  const choose = (option: SupplyMaterialOption) => {
+    if (!options.some((m) => m.id === option.id)) setCreated((c) => [...c, option]);
+    setCreating(false);
+    setArchived(null);
+    setQuery("");
+    setValue("materialId", option.id);
+    setValue("quantity", unitsMatch(option.unit, line.unit) ? asInput(deliveryLine.quantity) : "");
+  };
+
+  const onCreate = () => {
+    // Такой материал уже в списке (название отличается регистром или пробелами) — просто выбрать его.
+    const existing = options.find((m) => sameMaterialName(m.name, newName));
+    if (existing) {
+      choose(existing);
+      toast.info(`«${existing.name}» уже есть в справочнике — выбран.`);
+      return;
+    }
     startCreating(async () => {
       const result = await createSupplyMaterialAction(projectId, { name: newName, unit: newUnit });
+      if (!result.ok) {
+        if (result.archived) setArchived(result.archived);
+        else toast.error(result.error);
+        return;
+      }
+      choose({ id: result.materialId, name: newName.trim(), unit: newUnit.trim() });
+      toast.success("Материал добавлен в справочник.");
+    });
+  };
+
+  const onRestore = (option: SupplyMaterialOption) =>
+    startCreating(async () => {
+      const result = await restoreSupplyMaterialAction(projectId, option.id);
       if (!result.ok) {
         toast.error(result.error);
         return;
       }
-      const option = { id: result.materialId, name: newName.trim(), unit: newUnit.trim() };
-      setCreated((c) => [...c, option]);
-      setCreating(false);
-      setValue("materialId", option.id);
-      setValue("quantity", unitsMatch(option.unit, line.unit) ? asInput(deliveryLine.quantity) : "");
-      toast.success("Материал добавлен в справочник.");
+      choose(option);
+      toast.success("Материал возвращён из архива.");
     });
 
   return (
@@ -339,6 +415,13 @@ export function ReceiveDialog({
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="receive-material">Материал справочника</Label>
+          <Input
+            type="search"
+            aria-label="Поиск материала"
+            placeholder="Поиск по названию"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
           <NativeSelect
             id="receive-material"
             aria-invalid={!!errors.materialId}
@@ -351,8 +434,8 @@ export function ReceiveDialog({
               setValue("quantity", defaultQuantity(e.target.value || null));
             }}
           >
-            <option value="">— выберите —</option>
-            {options.map((m) => (
+            <option value="">{visible.length === 0 ? "— ничего не найдено —" : "— выберите —"}</option>
+            {visible.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.name} ({m.unit})
               </option>
@@ -370,17 +453,40 @@ export function ReceiveDialog({
           ) : (
             <div className="flex flex-col gap-2 rounded-[7px] bg-page p-2">
               <div className="grid grid-cols-[1fr_90px] gap-2">
-                <Input aria-label="Название нового материала" value={newName} onChange={(e) => setNewName(e.target.value)} />
+                <Input
+                  aria-label="Название нового материала"
+                  value={newName}
+                  onChange={(e) => {
+                    setNewName(e.target.value);
+                    setArchived(null);
+                  }}
+                />
                 <Input aria-label="Единица нового материала" value={newUnit} onChange={(e) => setNewUnit(e.target.value)} />
               </div>
-              <div className="flex gap-2">
-                <Button type="button" size="sm" disabled={creatingPending} onClick={onCreate}>
-                  Добавить в справочник
-                </Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setCreating(false)}>
-                  Отмена
-                </Button>
-              </div>
+              {archived ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-[11.5px] text-ink-soft">
+                    «{archived.name}» ({archived.unit}) есть в архиве материалов. Вернуть его в справочник и выбрать?
+                  </p>
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" disabled={creatingPending} onClick={() => onRestore(archived)}>
+                      Вернуть из архива
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setArchived(null)}>
+                      Отмена
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" disabled={creatingPending} onClick={onCreate}>
+                    Добавить в справочник
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setCreating(false)}>
+                    Отмена
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>

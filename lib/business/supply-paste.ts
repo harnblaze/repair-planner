@@ -138,15 +138,20 @@ function parseCells(rawCells: string[]): PastedRow {
 
 /**
  * № п/п строкам без номера: следующий после наибольшего встреченного
- * (среди уже сохранённых строк документа — `after` — и вставленных выше).
+ * (среди уже сохранённых строк документа — `taken` — и вставленных выше).
+ * Если исходные номера пачки повторяются между собой или с `taken`
+ * (вставили в непустую заявку с нумерацией документа), вся пачка
+ * нумеруется заново после последней строки — без дублей № п/п.
  */
 export function numberRows<T extends { lineNo: number | null }>(
   rows: T[],
-  after: number,
+  taken: number[],
 ): (Omit<T, "lineNo"> & { lineNo: number })[] {
-  let max = after;
+  const given = rows.flatMap((row) => (row.lineNo === null ? [] : [row.lineNo]));
+  const clash = new Set(given).size < given.length || given.some((n) => taken.includes(n));
+  let max = Math.max(0, ...taken);
   return rows.map((row) => {
-    const lineNo = row.lineNo ?? max + 1;
+    const lineNo = clash || row.lineNo === null ? max + 1 : row.lineNo;
     max = Math.max(max, lineNo);
     return { ...row, lineNo };
   });

@@ -234,59 +234,6 @@ export async function setTaskPlannedDateAction(
   return { ok: true };
 }
 
-export async function setTaskExecutorsAction(
-  projectId: string,
-  taskId: string,
-  executorIds: string[],
-): Promise<ActionResult> {
-  const denied = await requireProjectEdit(projectId);
-  if (denied) return denied;
-
-  const supabase = await createClient();
-
-  // Убеждаемся, что задача действительно в этом проекте, прежде чем менять
-  // назначения — иначе при отсутствии доступа проверка не сработает молча.
-  const { data: task } = await supabase
-    .from("tasks")
-    .select("id")
-    .eq("id", taskId)
-    .eq("project_id", projectId)
-    .maybeSingle();
-
-  if (!task) {
-    return { ok: false, error: "Заявка не найдена." };
-  }
-
-  const { error: deleteError } = await supabase
-    .from("task_executors")
-    .delete()
-    .eq("task_id", taskId)
-    .eq("project_id", projectId);
-
-  if (deleteError) {
-    console.error("setTaskExecutorsAction (delete):", deleteError);
-    return { ok: false, error: "Не удалось изменить исполнителей. Попробуйте ещё раз." };
-  }
-
-  if (executorIds.length > 0) {
-    const { error: insertError } = await supabase.from("task_executors").insert(
-      executorIds.map((executorId) => ({
-        task_id: taskId,
-        executor_id: executorId,
-        project_id: projectId,
-      })),
-    );
-
-    if (insertError) {
-      console.error("setTaskExecutorsAction (insert):", insertError);
-      return { ok: false, error: "Не удалось изменить исполнителей. Попробуйте ещё раз." };
-    }
-  }
-
-  revalidateTask(projectId, taskId);
-  return { ok: true };
-}
-
 const EXECUTORS_ERROR: ActionResult = {
   ok: false,
   error: "Не удалось изменить исполнителей. Попробуйте ещё раз.",
@@ -295,9 +242,9 @@ const EXECUTORS_ERROR: ActionResult = {
 const validIds = (...ids: string[]) => ids.every((id) => idSchema.safeParse(id).success);
 
 /**
- * Назначение одного исполнителя с доски — один INSERT … ON CONFLICT DO NOTHING:
- * атомарно и не мешает параллельным галочкам других исполнителей (в отличие от
- * setTaskExecutorsAction, который заменяет весь список). Что задача и исполнитель
+ * Назначение одного исполнителя (доска, страница заявки) — один INSERT … ON
+ * CONFLICT DO NOTHING: атомарно и не мешает параллельным галочкам других
+ * исполнителей. Что задача и исполнитель
  * из этого проекта, гарантируют составные FK task_executors (0004), доступ — RLS.
  */
 export async function assignTaskExecutorAction(
@@ -329,7 +276,7 @@ export async function assignTaskExecutorAction(
   return { ok: true };
 }
 
-/** Снятие одного исполнителя с доски; уже снятый — не ошибка. */
+/** Снятие одного исполнителя (доска, страница заявки); уже снятый — не ошибка. */
 export async function unassignTaskExecutorAction(
   projectId: string,
   taskId: string,

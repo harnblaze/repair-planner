@@ -104,6 +104,11 @@ export const supplyDeliverySchema = z.object({
 });
 
 export type SupplyDeliveryInput = z.output<typeof supplyDeliverySchema>;
+
+/** Правка шапки записанной поставки: № и дата УПД. */
+export const supplyDeliveryHeaderSchema = supplyDeliverySchema.pick({ number: true, deliveryDate: true });
+
+export type SupplyDeliveryHeaderInput = z.output<typeof supplyDeliveryHeaderSchema>;
 export type SupplyDeliveryFormValues = z.input<typeof supplyDeliverySchema>;
 
 export const supplyReceiveSchema = z.object({

@@ -13,9 +13,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { executorsSummary } from "@/lib/business/executor-names";
+import { executorChanges, executorsSummary } from "@/lib/business/executor-names";
 
-import { setTaskExecutorsAction } from "./actions";
+import { assignTaskExecutorAction, unassignTaskExecutorAction } from "./actions";
 import { PropertyField } from "./property-field";
 
 type Executor = { id: string; name: string; position: string | null; is_active: boolean };
@@ -40,15 +40,30 @@ export function ExecutorsPicker({
   const inactive = executors.filter((e) => !e.is_active);
   const nameById = new Map(executors.map((e) => [e.id, e.name]));
 
+  // Каждое изменение — отдельное атомарное назначение/снятие; при ошибке
+  // откатывается только то, что не сохранилось.
   const onValueChange = (next: string[]) => {
-    const previous = selected;
+    const { added, removed } = executorChanges(selected, next);
     setSelected(next);
     startTransition(async () => {
-      const result = await setTaskExecutorsAction(projectId, taskId, next);
-      if (!result.ok) {
-        setSelected(previous);
-        toast.error(result.error);
-      }
+      const results = await Promise.all([
+        ...added.map(async (id) => ({ id, assign: true, result: await assignTaskExecutorAction(projectId, taskId, id) })),
+        ...removed.map(async (id) => ({
+          id,
+          assign: false,
+          result: await unassignTaskExecutorAction(projectId, taskId, id),
+        })),
+      ]);
+      const failed = results.filter((r) => !r.result.ok);
+      if (failed.length === 0) return;
+      setSelected((current) =>
+        failed.reduce(
+          (ids, f) => (f.assign ? ids.filter((id) => id !== f.id) : ids.includes(f.id) ? ids : [...ids, f.id]),
+          current,
+        ),
+      );
+      const first = failed[0].result;
+      toast.error(first.ok ? "Не удалось изменить исполнителей. Попробуйте ещё раз." : first.error);
     });
   };
 

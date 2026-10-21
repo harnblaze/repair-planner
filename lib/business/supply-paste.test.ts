@@ -102,12 +102,28 @@ describe("parsePastedRows", () => {
 
 describe("numberRows", () => {
   it("keeps given numbers and continues after the largest one", () => {
-    const rows = numberRows([{ lineNo: 4 }, { lineNo: null }, { lineNo: 2 }, { lineNo: null }], 0);
+    const rows = numberRows([{ lineNo: 4 }, { lineNo: null }, { lineNo: 2 }, { lineNo: null }], []);
     expect(rows.map((r) => r.lineNo)).toEqual([4, 5, 2, 6]);
   });
 
   it("starts after existing lines of the document", () => {
-    expect(numberRows([{ lineNo: null }, { lineNo: null }], 34).map((r) => r.lineNo)).toEqual([35, 36]);
+    expect(numberRows([{ lineNo: null }, { lineNo: null }], [1, 34]).map((r) => r.lineNo)).toEqual([35, 36]);
+  });
+
+  it("keeps original numbers that do not clash with existing lines", () => {
+    expect(numberRows([{ lineNo: 4 }, { lineNo: 5 }], [1, 2, 3]).map((r) => r.lineNo)).toEqual([4, 5]);
+  });
+
+  it("renumbers the whole batch after existing lines when original numbers clash", () => {
+    expect(
+      numberRows([{ lineNo: 1 }, { lineNo: 2 }, { lineNo: 3 }, { lineNo: 4 }], [1, 2, 3]).map((r) => r.lineNo),
+    ).toEqual([4, 5, 6, 7]);
+  });
+
+  it("renumbers a batch pasted twice with the same numbering", () => {
+    expect(
+      numberRows([{ lineNo: 1 }, { lineNo: 2 }, { lineNo: 1 }, { lineNo: 2 }], []).map((r) => r.lineNo),
+    ).toEqual([1, 2, 3, 4]);
   });
 });
 

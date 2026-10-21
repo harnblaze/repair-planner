@@ -27,3 +27,14 @@ export function executorsInitials(names: string[], visible = 2): string {
   const rest = names.length - visible;
   return rest > 0 ? `${label} +${rest}` : label;
 }
+
+/**
+ * Что изменилось в выборе исполнителей: страница заявки назначает и снимает
+ * их поштучно (как доска), а не заменяет весь список двумя запросами.
+ */
+export function executorChanges(previous: string[], next: string[]): { added: string[]; removed: string[] } {
+  return {
+    added: next.filter((id) => !previous.includes(id)),
+    removed: previous.filter((id) => !next.includes(id)),
+  };
+}
