@@ -26,7 +26,7 @@ export default async function SupplyPage({ params }: PageProps<"/[projectId]/sup
   const today = todayInTimezone(project?.timezone ?? "Europe/Moscow");
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-5 pt-6 pb-7">
+    <main className="mx-auto flex w-full max-w-[1920px] flex-col gap-4 px-5 pt-6 pb-7">
       <h1 className="text-[17px] font-semibold text-ink">Снабжение</h1>
       {requests === null ? (
         <p className="text-[12.5px] text-status-alert-fg">Не удалось загрузить заявки на ТМЦ. Обновите страницу.</p>
