@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 
+import { PullToRefresh } from "@/components/common/pull-to-refresh";
 import { ServiceWorkerRegistration } from "@/components/common/service-worker-registration";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {children}
         <Toaster position="bottom-center" />
         <ServiceWorkerRegistration />
+        <PullToRefresh />
       </body>
     </html>
   );

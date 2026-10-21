@@ -12,7 +12,9 @@ import {
   type ScreenReaderInstructions,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
+
+import { DRAG_ACTIVE_ATTRIBUTE } from "@/lib/business/pull-to-refresh";
 
 // Общие настройки drag-and-drop доски: дни недели, «Текущие заявки» и
 // дополнительные списки (docs/architecture.md §7).
@@ -91,15 +93,22 @@ export function dragListeners(listeners: DraggableSyntheticListeners) {
 export function useSuppressClickAfterDrag() {
   const dragging = useRef(false);
 
+  // Метка на <html>: пока идёт перетаскивание, жест «потяни — обновить»
+  // (components/common/pull-to-refresh.tsx) не начинается и прерывается.
   const onDragStart = useCallback(() => {
     dragging.current = true;
+    document.documentElement.setAttribute(DRAG_ACTIVE_ATTRIBUTE, "");
   }, []);
 
   const onDragFinish = useCallback(() => {
+    document.documentElement.removeAttribute(DRAG_ACTIVE_ATTRIBUTE);
     setTimeout(() => {
       dragging.current = false;
     }, 0);
   }, []);
+
+  // Доска ушла со страницы посреди перетаскивания — метку не оставляем.
+  useEffect(() => () => document.documentElement.removeAttribute(DRAG_ACTIVE_ATTRIBUTE), []);
 
   const onClickCapture = useCallback((event: React.MouseEvent) => {
     if (dragging.current) {

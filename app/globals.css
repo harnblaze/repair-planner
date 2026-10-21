@@ -178,4 +178,13 @@
   textarea::placeholder {
     color: var(--color-placeholder);
   }
+
+  /* Установленное приложение: убираем «резинку» iOS и нативное обновление Android,
+     чтобы они не спорили с жестом components/common/pull-to-refresh.tsx. */
+  @media (display-mode: standalone) {
+    html,
+    body {
+      overscroll-behavior-y: none;
+    }
+  }
 }
