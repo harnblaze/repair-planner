@@ -11,7 +11,7 @@ import { formatDocDate } from "./format";
 import { RequestTable, type RequestTableSlots } from "./request-table";
 
 // Сворачиваемый блок заявки на ТМЦ (спека §6.1): шапка со счётчиками,
-// таблица позиций и счетов, под ней — счета, поставки и действия.
+// действия, счета и поставки, под ними — таблица позиций и счетов.
 
 export function RequestBlock({
   request,
@@ -19,7 +19,7 @@ export function RequestBlock({
   open,
   onToggle,
   menu,
-  footer,
+  documents,
   ...tableSlots
 }: {
   request: SupplyRequestView;
@@ -28,8 +28,8 @@ export function RequestBlock({
   onToggle: () => void;
   /** Меню действий заявки в шапке (только при праве редактирования). */
   menu?: ReactNode;
-  /** Строки «Счета», «Поставки» и кнопки под таблицей. */
-  footer?: ReactNode;
+  /** Кнопки действий, строки «Счета» и «Поставки» — над таблицей. */
+  documents?: ReactNode;
 } & RequestTableSlots) {
   const delivered = summary.status === "delivered";
 
@@ -52,12 +52,13 @@ export function RequestBlock({
           type="button"
           onClick={onToggle}
           aria-expanded={open}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
+          // basis 14rem: на узком экране сводка переносится под номер, а не налезает на него.
+          className="flex min-w-0 flex-[1_1_14rem] cursor-pointer items-center gap-2 text-left"
         >
           <ChevronDownIcon className={cn("flex-none text-meta-dim transition-transform", !open && "-rotate-90")} />
           <span className="text-[13px] font-semibold text-ink">№{request.number}</span>
           <span className="text-[12px] text-meta">{formatDocDate(request.requestDate)}</span>
-          {request.description && <span className="truncate text-[12.5px] text-ink-soft">{request.description}</span>}
+          {request.description && <span className="min-w-0 truncate text-[12.5px] text-ink-soft">{request.description}</span>}
         </button>
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-meta">
@@ -82,12 +83,12 @@ export function RequestBlock({
 
       {open && (
         <div className="flex flex-col gap-2 px-1 pb-3">
+          {documents && <div className="flex flex-col gap-1.5 px-2 pt-1 empty:hidden">{documents}</div>}
           {request.items.length === 0 && request.invoices.length === 0 ? (
             <p className="px-2 py-2 text-[12px] text-faint">В заявке пока нет позиций.</p>
           ) : (
             <RequestTable request={request} summary={summary} {...tableSlots} />
           )}
-          {footer && <div className="flex flex-col gap-1.5 px-2">{footer}</div>}
         </div>
       )}
     </section>

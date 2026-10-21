@@ -163,27 +163,10 @@ export function SupplyBoard({ projectId, requests, materials, canEdit, today }: 
                 </Button>
               )
             }
-            footer={
+            documents={
               <>
-                <InvoicesList
-                  request={request}
-                  actions={
-                    canEdit
-                      ? {
-                          onEdit: (invoice) => setDialog({ kind: "invoice", request, invoice }),
-                          onPaid: (invoice) => setDialog({ kind: "paid", invoice }),
-                          onAddLines: (invoice) => setDialog({ kind: "invoice-lines", request, invoice }),
-                        }
-                      : undefined
-                  }
-                />
-                <DeliveriesList
-                  request={request}
-                  onEdit={canEdit ? (delivery) => setDialog({ kind: "delivery-header", delivery }) : undefined}
-                  onDelete={canEdit ? deleteDelivery : undefined}
-                />
                 {canEdit && (
-                  <div className="flex flex-wrap gap-2 pt-1">
+                  <div className="flex flex-wrap gap-2">
                     <Button type="button" variant="outline" size="sm" onClick={() => setDialog({ kind: "items", request })}>
                       <PlusIcon />
                       Позиции
@@ -205,6 +188,23 @@ export function SupplyBoard({ projectId, requests, materials, canEdit, today }: 
                     )}
                   </div>
                 )}
+                <InvoicesList
+                  request={request}
+                  actions={
+                    canEdit
+                      ? {
+                          onEdit: (invoice) => setDialog({ kind: "invoice", request, invoice }),
+                          onPaid: (invoice) => setDialog({ kind: "paid", invoice }),
+                          onAddLines: (invoice) => setDialog({ kind: "invoice-lines", request, invoice }),
+                        }
+                      : undefined
+                  }
+                />
+                <DeliveriesList
+                  request={request}
+                  onEdit={canEdit ? (delivery) => setDialog({ kind: "delivery-header", delivery }) : undefined}
+                  onDelete={canEdit ? deleteDelivery : undefined}
+                />
               </>
             }
           />

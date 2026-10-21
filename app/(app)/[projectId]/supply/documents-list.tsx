@@ -14,7 +14,7 @@ import type {
 
 import { formatMoney, formatQuantity } from "./format";
 
-// Строки «Счета» и «Поставки» под таблицей заявки (спека §6.1).
+// Строки «Счета» и «Поставки» над таблицей заявки (спека §6.1).
 
 export interface InvoiceActions {
   onEdit: (invoice: SupplyInvoiceView) => void;
@@ -99,7 +99,7 @@ export function DeliveriesList({
       <span className="text-[11px] font-semibold text-ink-header">Поставки</span>
       <div className="flex flex-wrap gap-x-4 gap-y-1">
         {request.deliveries.map((delivery) => (
-          <span key={delivery.id} className="inline-flex items-center gap-1.5">
+          <span key={delivery.id} className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
             <span className="font-medium text-ink">УПД №{delivery.number}</span>
             <span className="text-meta">
               от {formatDateShort(delivery.deliveryDate)} · счёт №{invoiceNumber.get(delivery.invoiceId)}
