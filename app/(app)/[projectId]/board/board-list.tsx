@@ -3,7 +3,8 @@
 import { DndContext, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useId, useOptimistic, useTransition } from "react";
+import { FileSpreadsheetIcon } from "lucide-react";
+import { useId, useOptimistic, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -15,6 +16,7 @@ import { boardItemSchema, type BoardItemInput } from "@/lib/validation/board-ite
 import { createBoardItemAction, moveBoardItemAction } from "./actions";
 import { BoardItemRow, type BoardItem } from "./board-item-row";
 import { BOARD_ACCESSIBILITY, useBoardSensors, useSuppressClickAfterDrag } from "./dnd";
+import { OmtsDialog } from "./omts-dialog";
 import { PANEL_FORM_CLASS, Panel, PanelEmpty, PanelHeader } from "./panel";
 
 // Иконка и текст пустого состояния стандартных списков подбираются по названию:
@@ -50,6 +52,10 @@ export function BoardList({
 }) {
   const [pending, startTransition] = useTransition();
   const { icon, empty } = presentation(name, isSystem);
+  // Заявка в ОМТС — только у системного списка «Материалы к заказу».
+  const isOrderList = isSystem && /материал/i.test(name);
+  const [omtsOpen, setOmtsOpen] = useState(false);
+  const hasOpenItems = items.some((item) => !item.is_done);
 
   // Порядок записей — перетаскиванием внутри списка (board_items.position).
   const dndId = useId();
@@ -95,7 +101,26 @@ export function BoardList({
 
   return (
     <Panel>
-      <PanelHeader icon={icon} title={name} />
+      <PanelHeader
+        icon={icon}
+        title={name}
+        action={
+          isOrderList ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={!hasOpenItems}
+              aria-label="Заявка в ОМТС"
+              title="Заявка в ОМТС"
+              onClick={() => setOmtsOpen(true)}
+            >
+              <FileSpreadsheetIcon />
+              <span className="hidden 2xl:inline">Заявка в ОМТС</span>
+            </Button>
+          ) : undefined
+        }
+      />
       {canEdit ? (
         <form onSubmit={onSubmit} className={PANEL_FORM_CLASS} noValidate>
           <div className="flex gap-2">
@@ -136,6 +161,16 @@ export function BoardList({
           </SortableContext>
         </DndContext>
       )}
+      {omtsOpen ? (
+        <OmtsDialog
+          projectId={projectId}
+          listId={listId}
+          items={items}
+          today={today}
+          open
+          onOpenChange={setOmtsOpen}
+        />
+      ) : null}
     </Panel>
   );
 }

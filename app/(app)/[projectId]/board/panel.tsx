@@ -22,10 +22,13 @@ export function PanelHeader({
   icon,
   title,
   count,
+  action,
 }: {
   icon: React.ReactNode;
   title: string;
   count?: number;
+  /** Кнопка справа в шапке (после счётчика). */
+  action?: React.ReactNode;
 }) {
   return (
     <div className="flex items-center gap-[7px] border-b border-line-subtle px-2.5 py-[11px] xl:px-3.5">
@@ -34,6 +37,7 @@ export function PanelHeader({
       {count ? (
         <span className="ml-auto shrink-0 font-mono text-[11px] text-counter">{count}</span>
       ) : null}
+      {action ? <div className={cn("shrink-0", count ? "" : "ml-auto")}>{action}</div> : null}
     </div>
   );
 }
