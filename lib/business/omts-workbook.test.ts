@@ -54,7 +54,24 @@ describe("buildOmtsWorkbook", () => {
     // Количество — обычное число без особого формата.
     expect(ws.getCell("G12").numFmt).not.toBe("0.###");
     expect(typeof ws.getCell("G12").value).toBe("number");
-    expect(ws.getColumn("G").width).toBe(12);
+    expect(ws.getColumn("G").width).toBe(15);
+  });
+
+  it("кегли: таблица 14, текст вокруг 18, «ЗАЯВКА» 22", async () => {
+    const wb = await load(header, [["Петли - 30 шт", "срочно"]]);
+    const ws = wb.worksheets[0];
+    for (const addr of ["A11", "B11", "H11", "A12", "B12", "F12", "G12", "H12", "K12"]) {
+      expect(ws.getCell(addr).font?.size, addr).toBe(14);
+    }
+    for (const addr of ["B2", "H4", "A8", "A9", "C15", "H15"]) {
+      expect(ws.getCell(addr).font?.size, addr).toBe(18);
+    }
+    expect(ws.getCell("A7").font?.size).toBe(22);
+    expect(ws.getCell("A7").font?.bold).toBe(true);
+    // Строки под крупный кегль выше стандартных 15 пт.
+    expect(ws.getRow(7).height).toBeGreaterThanOrEqual(28);
+    expect(ws.getRow(8).height).toBeGreaterThanOrEqual(23);
+    expect(ws.getRow(15).height).toBeGreaterThanOrEqual(23);
   });
 
   it("высота строки растёт с длиной наименования и примечания", async () => {
@@ -64,9 +81,9 @@ describe("buildOmtsWorkbook", () => {
       ["Гвозди - 5 кг", "п".repeat(100)],
     ]);
     const ws = wb.worksheets[0];
-    expect(ws.getRow(12).height).toBeGreaterThan(15);
-    expect(ws.getRow(13).height).toBe(15);
-    expect(ws.getRow(14).height).toBeGreaterThan(15);
+    expect(ws.getRow(12).height).toBeGreaterThan(19);
+    expect(ws.getRow(13).height).toBe(19);
+    expect(ws.getRow(14).height).toBeGreaterThan(19);
     expect(ws.getRow(12).height).toBeLessThanOrEqual(409);
   });
 
