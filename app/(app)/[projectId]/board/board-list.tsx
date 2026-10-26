@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { BellIcon, BoxIcon, ClockIcon, ListIcon, PlusIcon } from "@/components/common/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { isOrderList } from "@/lib/business/order-list";
 import { boardItemSchema, type BoardItemInput } from "@/lib/validation/board-item";
 
 import { createBoardItemAction, moveBoardItemAction } from "./actions";
@@ -25,7 +26,7 @@ import { PANEL_FORM_CLASS, Panel, PanelEmpty, PanelHeader } from "./panel";
 // «Материалы для отчёта» не выглядели как «Материалы к заказу».
 function presentation(name: string, isSystem: boolean): { icon: React.ReactNode; empty: string } {
   if (isSystem) {
-    if (/материал/i.test(name)) return { icon: <BoxIcon />, empty: "Нет материалов к заказу" };
+    if (isOrderList(name, isSystem)) return { icon: <BoxIcon />, empty: "Нет материалов к заказу" };
     if (/напомин/i.test(name)) return { icon: <BellIcon />, empty: "Нет напоминаний" };
     if (/мероприят/i.test(name)) return { icon: <ClockIcon />, empty: "Нет мероприятий" };
   }
@@ -53,7 +54,7 @@ export function BoardList({
   const [pending, startTransition] = useTransition();
   const { icon, empty } = presentation(name, isSystem);
   // Заявка в ОМТС — только у системного списка «Материалы к заказу».
-  const isOrderList = isSystem && /материал/i.test(name);
+  const orderList = isOrderList(name, isSystem);
   const [omtsOpen, setOmtsOpen] = useState(false);
   const hasOpenItems = items.some((item) => !item.is_done);
 
@@ -105,7 +106,7 @@ export function BoardList({
         icon={icon}
         title={name}
         action={
-          isOrderList ? (
+          orderList ? (
             <Button
               type="button"
               variant="ghost"

@@ -1,12 +1,13 @@
 // Состояние остатка материала (CLAUDE.md §25: остаток ≤ минимума — предупреждение)
 // и фильтр списка материалов. Один источник правды для бейджа и фильтра «Мало».
+// Минимум 0 — материал не отслеживается: «низкого остатка» у него не бывает.
 
 export type BalanceState = "negative" | "low" | "ok";
 
 /** Отрицательный — допустимое бизнес-состояние, а не ошибка (docs/redesign.md §6). */
 export function balanceState(balance: number, minimumBalance: number): BalanceState {
   if (balance < 0) return "negative";
-  if (balance <= minimumBalance) return "low";
+  if (minimumBalance > 0 && balance <= minimumBalance) return "low";
   return "ok";
 }
 

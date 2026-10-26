@@ -76,3 +76,13 @@ export const materialCountSchema = z.object({
 
 export type MaterialCountInput = z.output<typeof materialCountSchema>;
 export type MaterialCountFormValues = z.input<typeof materialCountSchema>;
+
+// «В заказ» из списка материалов: количество пункта в списке «Материалы к заказу».
+export const materialOrderSchema = z.object({
+  quantity: requiredNumber().pipe(
+    z.number().gt(0, "Должно быть больше нуля").max(MAX_QUANTITY, "Слишком большое число"),
+  ),
+});
+
+export type MaterialOrderInput = z.output<typeof materialOrderSchema>;
+export type MaterialOrderFormValues = z.input<typeof materialOrderSchema>;

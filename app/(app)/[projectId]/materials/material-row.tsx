@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArchiveIcon, ArchiveRestoreIcon, PackagePlusIcon, PencilIcon } from "lucide-react";
+import { ArchiveIcon, ArchiveRestoreIcon, PackagePlusIcon, PencilIcon, ShoppingCartIcon } from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatQuantity } from "@/lib/business/material-report";
 import { balanceState } from "@/lib/business/material-stock";
+import { suggestedOrderQuantity } from "@/lib/business/order-list";
 import { cn } from "@/lib/utils";
 import {
   materialSchema,
@@ -20,6 +21,7 @@ import {
 } from "@/lib/validation/reference-data";
 
 import { ReceiptForm } from "./[materialId]/receipt-form";
+import { OrderForm } from "./order-form";
 import { setMaterialActiveAction, updateMaterialAction } from "./actions";
 
 /**
@@ -27,7 +29,7 @@ import { setMaterialActiveAction, updateMaterialAction } from "./actions";
  * состояние, действия. Общие для строки и шапки (materials-list.tsx).
  */
 export const MATERIAL_ROW_GRID =
-  "sm:grid sm:grid-cols-[minmax(0,1fr)_6.5rem_4.5rem_8.5rem_5.75rem] sm:gap-x-3";
+  "sm:grid sm:grid-cols-[minmax(0,1fr)_6.5rem_4.5rem_8.5rem_7.5rem] sm:gap-x-3";
 
 export type Material = {
   id: string;
@@ -42,13 +44,17 @@ export function MaterialRow({
   projectId,
   material,
   canEdit,
+  inOrder,
 }: {
   projectId: string;
   material: Material;
   canEdit: boolean;
+  /** Материал уже стоит невыполненным пунктом в списке «Материалы к заказу». */
+  inOrder: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [receiving, setReceiving] = useState(false);
+  const [ordering, setOrdering] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const {
@@ -117,6 +123,7 @@ export function MaterialRow({
   }
 
   const state = balanceState(material.current_balance, material.minimum_balance);
+  const canOrder = canEdit && material.is_active && state !== "ok" && !inOrder;
 
   return (
     <div className="py-2 sm:py-1.5">
@@ -150,10 +157,11 @@ export function MaterialRow({
           <span className="sm:hidden">мин. </span>
           {formatQuantity(material.minimum_balance)}
         </span>
-        <span className="order-6 flex sm:order-none">
+        <span className="order-6 flex flex-col items-start gap-0.5 sm:order-none">
           {material.is_active ? (
             <BalanceBadge balance={material.current_balance} minimumBalance={material.minimum_balance} />
           ) : null}
+          {material.is_active && inOrder && state !== "ok" ?<span className="text-[11px] text-meta">в заказе</span> : null}
         </span>
         {canEdit ? (
           <span className="order-2 -my-1 ml-auto flex items-center justify-end sm:order-none sm:my-0">
@@ -167,10 +175,30 @@ export function MaterialRow({
                   title="Приход"
                   aria-expanded={receiving}
                   className={receiving ? "text-brand" : undefined}
-                  onClick={() => setReceiving((open) => !open)}
+                  onClick={() => {
+                    setReceiving((open) => !open);
+                    setOrdering(false);
+                  }}
                 >
                   <PackagePlusIcon />
                 </Button>
+                {canOrder ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`В заказ «${material.name}»`}
+                    title="В заказ"
+                    aria-expanded={ordering}
+                    className={ordering ? "text-brand" : undefined}
+                    onClick={() => {
+                      setOrdering((open) => !open);
+                      setReceiving(false);
+                    }}
+                  >
+                    <ShoppingCartIcon />
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   variant="ghost"
@@ -205,6 +233,17 @@ export function MaterialRow({
             unit={material.unit}
             compact
             onDone={() => setReceiving(false)}
+          />
+        </div>
+      ) : null}
+      {ordering && canOrder ? (
+        <div className="mt-1.5 rounded-[8px] bg-surface-today p-2">
+          <OrderForm
+            projectId={projectId}
+            materialId={material.id}
+            unit={material.unit}
+            suggested={suggestedOrderQuantity(material.current_balance, material.minimum_balance)}
+            onDone={() => setOrdering(false)}
           />
         </div>
       ) : null}

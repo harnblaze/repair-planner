@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { isMaterialInOrder, isOrderList, orderItemTitle } from "@/lib/business/order-list";
 import { isUniqueViolation, mapMaterialMovementError } from "@/lib/errors";
 import { requireProjectEdit } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
@@ -9,13 +10,17 @@ import type { ActionResult } from "@/lib/types/action-result";
 import {
   createMaterialSchema,
   materialCountSchema,
+  materialOrderSchema,
   materialReceiptSchema,
   materialSchema,
   type CreateMaterialInput,
   type MaterialCountInput,
   type MaterialInput,
+  type MaterialOrderInput,
   type MaterialReceiptInput,
 } from "@/lib/validation/reference-data";
+
+import { createBoardItemAction } from "../board/actions";
 
 function revalidateMaterials(projectId: string) {
   // "layout" — вместе со страницами отдельных материалов.
@@ -225,6 +230,81 @@ export async function setMaterialBalanceAction(
     console.error("setMaterialBalanceAction:", error);
     return { ok: false, error: mapMaterialMovementError(error.message) };
   }
+
+  revalidateMaterials(projectId);
+  return { ok: true };
+}
+
+/** «В заказ» из списка материалов: пункт в конец списка доски «Материалы к заказу». */
+export async function addMaterialToOrderAction(
+  projectId: string,
+  materialId: string,
+  input: MaterialOrderInput,
+): Promise<ActionResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return denied;
+
+  const parsed = materialOrderSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Проверьте правильность заполнения формы.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
+  }
+
+  const failed = { ok: false, error: "Не удалось добавить в заказ. Попробуйте ещё раз." } as const;
+  const supabase = await createClient();
+
+  const { data: material, error: materialError } = await supabase
+    .from("materials")
+    .select("name, unit")
+    .eq("id", materialId)
+    .eq("project_id", projectId)
+    .maybeSingle();
+
+  if (materialError) {
+    console.error("addMaterialToOrderAction:", materialError);
+    return failed;
+  }
+  if (!material) return { ok: false, error: "Материал не найден." };
+
+  const { data: lists, error: listsError } = await supabase
+    .from("board_lists")
+    .select("id, name, is_system")
+    .eq("project_id", projectId)
+    .order("sort_order")
+    .order("created_at");
+
+  if (listsError) {
+    console.error("addMaterialToOrderAction:", listsError);
+    return failed;
+  }
+
+  const list = (lists ?? []).find((l) => isOrderList(l.name, l.is_system));
+  if (!list) return { ok: false, error: "Список «Материалы к заказу» не найден на доске." };
+
+  const { data: openItems, error: itemsError } = await supabase
+    .from("board_items")
+    .select("title")
+    .eq("project_id", projectId)
+    .eq("list_id", list.id)
+    .eq("is_done", false);
+
+  if (itemsError) {
+    console.error("addMaterialToOrderAction:", itemsError);
+    return failed;
+  }
+
+  if (isMaterialInOrder(material.name, (openItems ?? []).map((item) => item.title))) {
+    return { ok: false, error: "Этот материал уже есть в списке к заказу." };
+  }
+
+  const created = await createBoardItemAction(projectId, list.id, {
+    title: orderItemTitle(material.name, parsed.data.quantity, material.unit),
+  });
+  if (!created.ok) return created;
 
   revalidateMaterials(projectId);
   return { ok: true };

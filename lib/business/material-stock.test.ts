@@ -18,8 +18,13 @@ describe("balanceState", () => {
     expect(balanceState(1, 2)).toBe("low");
   });
 
-  it("is low at zero even when the minimum is zero", () => {
-    expect(balanceState(0, 0)).toBe("low");
+  it("is not tracked when the minimum is zero", () => {
+    expect(balanceState(0, 0)).toBe("ok");
+    expect(balanceState(5, 0)).toBe("ok");
+  });
+
+  it("is still negative below zero when the minimum is zero", () => {
+    expect(balanceState(-1, 0)).toBe("negative");
   });
 
   it("is ok above the minimum", () => {

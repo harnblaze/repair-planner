@@ -16,15 +16,19 @@ export function MaterialsList({
   projectId,
   materials,
   canEdit,
+  inOrderIds,
 }: {
   projectId: string;
   /** Отсортированы по названию на сервере. */
   materials: Material[];
   canEdit: boolean;
+  /** Материалы, уже стоящие в списке «Материалы к заказу». */
+  inOrderIds: string[];
 }) {
   const [query, setQuery] = useState("");
   const [onlyRestock, setOnlyRestock] = useState(false);
   const [creating, setCreating] = useState(false);
+  const inOrder = new Set(inOrderIds);
 
   const active = materials.filter((m) => m.is_active);
   const inactive = materials.filter((m) => !m.is_active);
@@ -115,7 +119,13 @@ export function MaterialsList({
             </EmptyState>
           ) : (
             shownActive.map((material) => (
-              <MaterialRow key={material.id} projectId={projectId} material={material} canEdit={canEdit} />
+              <MaterialRow
+                key={material.id}
+                projectId={projectId}
+                material={material}
+                canEdit={canEdit}
+                inOrder={inOrder.has(material.id)}
+              />
             ))
           )}
         </div>
@@ -126,7 +136,13 @@ export function MaterialsList({
           <summary className="cursor-pointer text-[12px] text-meta">Неактивные ({shownInactive.length})</summary>
           <div className="flex flex-col divide-y divide-line-subtle pt-1">
             {shownInactive.map((material) => (
-              <MaterialRow key={material.id} projectId={projectId} material={material} canEdit={canEdit} />
+              <MaterialRow
+                key={material.id}
+                projectId={projectId}
+                material={material}
+                canEdit={canEdit}
+                inOrder={inOrder.has(material.id)}
+              />
             ))}
           </div>
         </details>
