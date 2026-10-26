@@ -85,10 +85,11 @@ export function StatusMenu({
       >
         <span className="truncate">{label}</span>
         {/* Стрелка — подсказка, что бейдж нажимается: на компьютере при наведении
-            на карточку, на телефоне всегда. */}
+            на карточку, на телефоне всегда. Место под неё занято всегда (прозрачность,
+            а не display), иначе бейдж меняет ширину при наведении. */}
         <ChevronDownIcon
           size={9}
-          className="-mr-px hidden shrink-0 opacity-70 group-hover:inline group-focus-visible/status:inline group-data-[popup-open]/status:inline [@media(hover:none)]:inline"
+          className="-mr-px shrink-0 opacity-0 group-hover:opacity-70 group-focus-visible/status:opacity-70 group-data-[popup-open]/status:opacity-70 [@media(hover:none)]:opacity-70"
         />
       </Menu.Trigger>
       <Popup onKeyDown={onKeyDown}>
