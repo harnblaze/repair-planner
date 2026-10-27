@@ -134,13 +134,13 @@ export function BoardItemRow({
       {...(canEdit ? dragAttributes(attributes) : {})}
       {...(canEdit ? dragListeners(listeners) : {})}
       className={cn(
-        "group relative flex touch-manipulation items-center gap-2.5 rounded-[7px] bg-surface px-[9px] py-2 transition-colors duration-120 select-none hover:bg-row-hover",
+        "group relative flex touch-manipulation flex-wrap items-start gap-x-2.5 gap-y-1 rounded-[7px] bg-surface px-[9px] py-2 transition-colors duration-120 select-none hover:bg-row-hover",
         isDragging && "z-10 shadow-[0_6px_16px_rgba(20,30,50,0.14)]",
       )}
     >
       <input
         type="checkbox"
-        className="size-3.5 shrink-0 cursor-pointer accent-[var(--color-brand)] disabled:cursor-default"
+        className="mt-[3px] size-3.5 shrink-0 cursor-pointer accent-[var(--color-brand)] disabled:cursor-default"
         checked={item.is_done}
         disabled={pending || !canEdit}
         aria-label={
@@ -148,26 +148,26 @@ export function BoardItemRow({
         }
         onChange={toggleDone}
       />
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <div className="flex min-w-[100px] flex-1 flex-col gap-0.5">
         <span
           className={cn(
-            "truncate text-[12.5px] font-semibold text-ink",
+            "text-[12.5px] font-semibold break-words text-ink",
             item.is_done && "text-meta-alt line-through",
           )}
         >
           {item.title}
         </span>
-        {meta ? <span className="truncate text-[11px] text-meta-alt">{meta}</span> : null}
+        {meta ? <span className="text-[11px] break-words text-meta-alt">{meta}</span> : null}
       </div>
       {isOverdue ? (
-        <span className={cn(BADGE_BASE, "bg-status-alert-bg text-status-alert-fg")}>
+        <span className={cn(BADGE_BASE, "mt-px bg-status-alert-bg text-status-alert-fg")}>
           просрочено
         </span>
       ) : null}
       {/* Действия перекрывают строку, а не занимают её ширину: в панели шириной
           ~150px иначе не остаётся места под название (docs/redesign.md §6). */}
       {canEdit ? (
-        <div className="absolute inset-y-0 right-1 flex items-center gap-0.5 rounded-[7px] bg-row-hover pl-3 opacity-0 transition-opacity duration-120 group-focus-within:opacity-100 group-hover:opacity-100">
+        <div className="absolute inset-y-0 right-1 flex items-start gap-0.5 rounded-[7px] bg-row-hover pt-1.5 pl-3 opacity-0 transition-opacity duration-120 group-focus-within:opacity-100 group-hover:opacity-100">
           <Button type="button" variant="ghost" size="xs" onClick={() => setEditing(true)}>
             Изменить
           </Button>

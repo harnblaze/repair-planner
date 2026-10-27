@@ -143,21 +143,21 @@ export function TaskRow({
       draggable={false}
       {...rest}
       className={cn(
-        "flex items-center gap-2.5 rounded-[7px] px-[9px] py-2 transition-colors duration-120 hover:bg-row-hover",
+        "flex flex-wrap items-start gap-x-2.5 gap-y-1 rounded-[7px] px-[9px] py-2 transition-colors duration-120 hover:bg-row-hover",
         className,
       )}
     >
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-[12.5px] font-semibold text-ink">{task.title}</span>
-        {meta ? <span className="truncate text-[11px] text-meta-alt">{meta}</span> : null}
+      <span className="flex min-w-[110px] flex-1 flex-col gap-0.5">
+        <span className="text-[12.5px] font-semibold break-words text-ink">{task.title}</span>
+        {meta ? <span className="text-[11px] break-words text-meta-alt">{meta}</span> : null}
       </span>
       {task.photoCount ? (
-        <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-meta-alt" title={`Фото: ${task.photoCount}`}>
+        <span className="mt-px inline-flex shrink-0 items-center gap-1 text-[11px] text-meta-alt" title={`Фото: ${task.photoCount}`}>
           <CameraIcon size={11} className="shrink-0" />
           {task.photoCount}
         </span>
       ) : null}
-      <StatusBadge status={task.status} />
+      <StatusBadge status={task.status} className="mt-px" />
     </Link>
   );
 }
