@@ -423,6 +423,53 @@ RPC (все `set search_path = ''`, `EXECUTE` отозван у `public, anon`):
 
 Добавление строк в существующие заявку/счёт, правки и удаления — обычные запросы через RLS. Триггер `supply_delivery_lines_guard_received` (функция `private.guard_received_supply_delivery_line`) не даёт изменить количество оприходованной строки поставки — `already_received`: иначе документ разошёлся бы с приходом.
 
+### 5.17 `project_activity` — лента проекта (0032)
+
+Журнал значимых изменений проекта: кто, что, когда. Пишется **только триггерами** — у таблицы нет политик на INSERT/UPDATE/DELETE, единственный путь записи `private.activity_write` (`security definer`). Так событие нельзя забыть в новом экшене и нельзя подделать с клиента.
+
+| Поле | Тип | Примечание |
+|---|---|---|
+| `id` | bigint identity PK | |
+| `project_id` | uuid not null | FK → `projects(id)` on delete cascade |
+| `actor_id` | uuid null | FK → `profiles(id)` on delete set null; `auth.uid()`; в SQL-импортах null |
+| `kind` | text not null | `task.created`, `material.moved`, … — плоский список, не enum: новый вид события не требует миграции |
+| `entity_type` | text not null | `task`, `material`, `board_item`, `project_member`, … |
+| `entity_id` | uuid null | id сущности; **внешнего ключа нет** — сущность может быть удалена, а событие остаётся |
+| `payload` | jsonb not null default `{}` | **снимок** названий на момент события (`title`, `name`, `full_name`) |
+| `created_at` | timestamptz not null default now() | |
+
+Индекс: `(project_id, created_at desc)` — лента читается сверху вниз по проекту.
+
+**Снимок, а не ссылка.** Название кладётся в `payload` при событии: переименование заявки или исполнителя задним числом не переписывает историю. Обратная сторона — в `payload` бывает старое имя, и это правильно.
+
+**RLS:** SELECT — участник проекта (`project_access(project_id) is not null`). Политик на INSERT/UPDATE/DELETE нет вообще: писать может только `security definer` функция, а `private` схема наружу не отдаётся PostgREST. Функции триггеров тоже `security definer`: снимок названий не должен зависеть от того, что видит вызывающий.
+
+**Виды событий** (все — `after` триггеры, `drop trigger if exists` для идемпотентности):
+
+| Группа | `kind` | Payload |
+|---|---|---|
+| Заявки | `task.created` | `title` |
+| | `task.status` | `title`, `from`, `to` |
+| | `task.returned_to_backlog` | `title` |
+| | `task.executor.added` / `.removed` | `task`, `executor` |
+| | `task.carried_over` | `task`, `from_date`, `to_date` (предыдущий день заявки, не «вчера») |
+| Списки | `item.created` / `.deleted` | `title`, `list` |
+| | `item.done` / `.reopened` | `title`, `list` |
+| | `list.created` / `.renamed` / `.deleted` | `name` (`renamed` — ещё `from`) |
+| Очереди | `queue.created` / `.renamed` / `.deleted` | `name` |
+| Материалы | `material.moved` | `material`, `kind`, `quantity`, `task?` |
+| | `material.created` / `.archived` / `.restored` | `name` |
+| Справочники | `category.*`, `executor.*` | `name` |
+| Календарь | `calendar.day_added` / `.day_removed` | `day`, `kind` |
+| Участники | `member.joined` / `.left` / `.role_changed` | `full_name`, `role`, `from?` |
+| Приглашения | `invitation.created` / `.revoked` | `role` |
+
+Триггеры висят на `update of <колонка>` с `when`-условием: правка `updated_at` или `description` события не порождает — журнал только про значимое.
+
+`private.activity_write` пропускает вставку, если проекта уже нет: при каскадном удалении проекта триггеры детей срабатывают, когда строки `projects` не осталось, и без этой проверки удаление упало бы на внешнем ключе.
+
+**Чистка.** `public.purge_project_activity(p_keep interval default '6 months') returns integer` — `security definer`, удаляет строки старше срока и возвращает число. `EXECUTE` отозван у `public, anon, authenticated` (иначе любой участник мог бы вычистить историю), оставлен `service_role`. Планировщик — `pg_cron` в блоке `do $$ … exception when others … $$`: на локальной базе расширение ставится, на проде может отсутствовать — тогда миграция не падает, а чистка выполняется вручную.
+
 ## 6. RLS
 
 ### 6.1 Проблема рекурсии и её решение
