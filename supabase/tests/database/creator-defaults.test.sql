@@ -18,8 +18,9 @@ insert into auth.users (id, email) values
 insert into public.projects (id, owner_id, name) values
   ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '11111111-1111-1111-1111-111111111111', 'Project A');
 
+-- Владельца в project_members не вставляем: его добавляет триггер при
+-- создании проекта (как и в остальных тестах).
 insert into public.project_members (project_id, user_id, role) values
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '11111111-1111-1111-1111-111111111111', 'owner'),
   ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '22222222-2222-2222-2222-222222222222', 'member');
 
 insert into public.board_lists (id, project_id, name) values
