@@ -97,6 +97,11 @@ export function ChatWidget({
 
   const persistOpen = useCallback(
     (next: boolean) => {
+      // Свернули панель — всплывающие окна не должны ждать следующего открытия.
+      if (!next) {
+        setEmojiOpen(false);
+        setReactionPickerFor(null);
+      }
       setOpen(next);
       openRef.current = next;
     },
@@ -275,11 +280,37 @@ export function ChatWidget({
     return rest > 0 ? `${names.join(", ")} и ещё ${rest}` : names.join(", ");
   }, [live, othersOnline]);
 
+  // Оба всплывающих окна (пикер эмодзи и полоска реакций) закрываются по клику
+  // мимо и по Esc. Без этого пикер эмодзи висит поверх поля ввода и после
+  // отправки закрывает ленту — а закрывать его руками никто не станет.
+  useEffect(() => {
+    if (!emojiOpen && !reactionPickerFor) return;
+
+    const closeAll = () => {
+      setEmojiOpen(false);
+      setReactionPickerFor(null);
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-chat-popover], [data-chat-popover-toggle]")) return;
+      closeAll();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeAll();
+    };
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [emojiOpen, reactionPickerFor]);
+
   const react = useCallback(
     async (messageId: string, emoji: string) => {
       if (!canPost) return;
-      setReactionPickerFor(null);
-      // Оптимистично: счётчик меняется сразу, ответ экшена только подтверждает.
+      setReactionPickerFor(null);      // Оптимистично: счётчик меняется сразу, ответ экшена только подтверждает.
       const previous = reactions;
       setReactions((current) => toggleReaction(current, messageId, emoji, userId));
       try {
@@ -299,6 +330,10 @@ export function ChatWidget({
   const send = useCallback(async () => {
     const body = normalizeBody(text);
     if (!canSend(body) || sending || !canPost) return;
+
+    // Отправили — всплывающие окна больше не нужны: они закрывали бы ленту.
+    setEmojiOpen(false);
+    setReactionPickerFor(null);
 
     const id = crypto.randomUUID();
     const optimistic: ChatMessage = {
@@ -475,7 +510,10 @@ export function ChatWidget({
                       ))}
                       {canPost ? (
                         reactionPickerFor === message.id ? (
-                          <div className="flex items-center gap-0.5 rounded-full border border-line-strong bg-surface px-1 py-0.5 shadow-[0_4px_14px_rgba(20,30,50,0.14)]">
+                          <div
+                            data-chat-popover
+                            className="flex items-center gap-0.5 rounded-full border border-line-strong bg-surface px-1 py-0.5 shadow-[0_4px_14px_rgba(20,30,50,0.14)]"
+                          >
                             {REACTION_EMOJI.map((emoji) => (
                               <button
                                 key={emoji}
@@ -492,11 +530,13 @@ export function ChatWidget({
                           <button
                             type="button"
                             aria-label="Поставить реакцию"
-                            onClick={() =>
+                            data-chat-popover-toggle
+                            onClick={() => {
+                              setEmojiOpen(false);
                               setReactionPickerFor((current) =>
                                 current === message.id ? null : message.id,
-                              )
-                            }
+                              );
+                            }}
                             className="flex size-[18px] items-center justify-center rounded-full border border-line-strong bg-surface text-[12px] leading-none text-meta transition-opacity hover:bg-page md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100 md:group-focus-within:opacity-100"
                           >
                             +
@@ -518,7 +558,10 @@ export function ChatWidget({
       {canPost ? (
         <div className="relative flex shrink-0 items-end gap-1.5 border-t border-line-strong px-2 py-2">
           {emojiOpen ? (
-            <div className="absolute right-2 bottom-[calc(100%-2px)] z-10 w-[286px] rounded-lg border border-line-strong bg-surface p-2 shadow-[0_10px_30px_rgba(20,30,50,0.18)]">
+            <div
+              data-chat-popover
+              className="absolute right-2 bottom-[calc(100%-2px)] z-10 w-[286px] rounded-lg border border-line-strong bg-surface p-2 shadow-[0_10px_30px_rgba(20,30,50,0.18)]"
+            >
               <div className="mb-1.5 flex flex-wrap gap-1">
                 {recent.length > 0 ? (
                   <button
@@ -561,7 +604,12 @@ export function ChatWidget({
             variant="ghost"
             size="icon-sm"
             aria-label="Эмодзи"
-            onClick={() => setEmojiOpen((value) => !value)}
+            data-chat-popover-toggle
+            onClick={() => {
+              // Открывая один, закрываем другой: два окна друг на друге не нужны.
+              setReactionPickerFor(null);
+              setEmojiOpen((value) => !value);
+            }}
           >
             <span className="text-[15px] leading-none">🙂</span>
           </Button>
