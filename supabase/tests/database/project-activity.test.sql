@@ -185,9 +185,13 @@ update public.tasks set status = 'in_progress'
 
 reset role;
 
+-- Запросы ниже обязательно сужены проектом теста: в базе могут лежать живые
+-- события других проектов, и без фильтра скалярный подзапрос вернул бы
+-- несколько строк.
 select is(
   (select actor_id from public.project_activity
-    where kind = 'task.status' and payload->>'to' = 'in_progress'),
+    where kind = 'task.status' and payload->>'to' = 'in_progress'
+      and project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
   '22222222-2222-2222-2222-222222222222'::uuid,
   'событие участника записано с ним в actor_id'
 );
@@ -197,22 +201,27 @@ select is(
 -- Свежее событие — то, что только что записано действием участника.
 update public.project_activity
    set created_at = now() - interval '7 months'
- where kind = 'task.created';
+ where kind = 'task.created'
+   and project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 
-select is(
-  public.purge_project_activity(),
-  1,
+-- Чистка глобальная (по всем проектам), поэтому возврат проверяем как «хотя бы
+-- одно»: в базе могут быть и другие старые события.
+select ok(
+  public.purge_project_activity() >= 1,
   'purge_project_activity возвращает число удалённых'
 );
 
 select is(
-  (select count(*)::int from public.project_activity where kind = 'task.created'),
+  (select count(*)::int from public.project_activity
+    where kind = 'task.created' and project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
   0,
   'чистка удаляет событие старше полугода'
 );
 
 select is(
-  (select count(*)::int from public.project_activity where kind = 'task.status' and payload->>'to' = 'in_progress'),
+  (select count(*)::int from public.project_activity
+    where kind = 'task.status' and payload->>'to' = 'in_progress'
+      and project_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
   1,
   'чистка не трогает свежее событие'
 );
