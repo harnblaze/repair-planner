@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { CalendarIcon } from "@/components/common/icons";
 import { toPhotoCount } from "@/lib/business/attachments";
+import { authorLabel, toAuthorMap } from "@/lib/business/author";
 import { formatDateShort, todayInTimezone } from "@/lib/business/dates";
 import { describeOccurrence, isUndoableCarryOver, lastWorkDate, type ScheduleDay } from "@/lib/business/task-planning";
 import { canEditProject } from "@/lib/business/project-roles";
@@ -80,6 +81,7 @@ export default async function BoardPage({
     { data: boardItems },
     { data: taskQueues },
     { data: executors },
+    { data: members },
   ] = await Promise.all([
     getProjectRole(projectId),
     supabase
@@ -128,7 +130,7 @@ export default async function BoardPage({
       .order("created_at", { ascending: true }),
     supabase
       .from("board_items")
-      .select("id, list_id, title, note, is_done, due_date")
+      .select("id, list_id, title, note, is_done, due_date, created_by")
       .eq("project_id", projectId)
       .order("position", { ascending: true })
       .order("created_at", { ascending: true }),
@@ -145,7 +147,14 @@ export default async function BoardPage({
       .select("id, name, position, is_active")
       .eq("project_id", projectId)
       .order("name", { ascending: true }),
+    // Имена участников на всю страницу: profiles закрыт RLS на свою строку,
+    // поэтому чужие имена приходят только через security definer функцию (0012).
+    supabase.rpc("project_member_list", { p_project_id: projectId }),
   ]);
+
+  const authorNames = toAuthorMap(members);
+  // Автора нет у старых строк и импортов — тогда подписи просто не будет.
+  const authorOf = (userId: string | null) => authorLabel(authorNames, userId);
 
   const calendar = buildWorkCalendar(calendarDays ?? []);
   const weekDates = weekBoardDays(
@@ -188,7 +197,16 @@ export default async function BoardPage({
   const itemsByList = new Map<string, BoardItem[]>();
   for (const item of boardItems ?? []) {
     const list = itemsByList.get(item.list_id) ?? [];
-    list.push(item);
+    // Поля перечисляем явно: в строке из БД есть created_by, а BoardItem
+    // отдаёт готовую подпись автора.
+    list.push({
+      id: item.id,
+      title: item.title,
+      note: item.note,
+      is_done: item.is_done,
+      due_date: item.due_date,
+      createdByName: authorOf(item.created_by),
+    });
     itemsByList.set(item.list_id, list);
   }
 

@@ -217,7 +217,7 @@ RPC (`SECURITY DEFINER`, `search_path = ''`, `EXECUTE` только у `authenti
 | `planned_date` | date null | **кеш** — последняя дата из `task_schedule` (null, если последний день отложен), поддерживается триггером |
 | `completed_at` | timestamptz null | |
 | `cancelled_at` | timestamptz null | дата отмены (0023) |
-| `created_by` | uuid | FK → `profiles(id)` |
+| `created_by` | uuid | FK → `profiles(id)`; `default auth.uid()`, значение ставит триггер (0031) |
 | `created_at`, `updated_at` | timestamptz | |
 
 Ограничения: `completed_at is not null` тогда и только тогда, когда `status = 'completed'`; `cancelled_at is not null` тогда и только тогда, когда `status = 'cancelled'` (`tasks_cancelled_at_matches_status`, 0023). `completed_at` выставляет `setTaskStatusAction` вместе со статусом; `cancelled_at` ставит и снимает триггер `tasks_sync_cancelled_at` (`private.sync_task_cancelled_at`, 0023): при отмене — `coalesce(cancelled_at, now())`, при любом другом статусе — `null`; правка отменённой заявки дату сохраняет. Так старый код, не знающий о колонке, отменяет заявки без ошибки. Миграция 0023 заполнила `cancelled_at` у уже отменённых заявок значением `updated_at` — точной даты отмены у них нет.
@@ -342,7 +342,7 @@ PK: `(task_id, executor_id)`. Составные FK на `tasks` и `executors`.
 `board_lists`: `id`, `project_id`, `name`, `sort_order`, `is_system boolean`, timestamps.
 Создаются триггером при создании проекта: «Материалы к заказу», «Напоминания», «Мероприятия». Системные списки нельзя удалить, можно переименовать.
 
-`board_items`: `id`, `project_id`, `list_id` (составной FK), `title`, `note`, `is_done boolean default false`, `due_date date null`, `position int`, `created_by`, timestamps.
+`board_items`: `id`, `project_id`, `list_id` (составной FK), `title`, `note`, `is_done boolean default false`, `due_date date null`, `position int`, `created_by` (`default auth.uid()`, значение ставит триггер — 0031), timestamps.
 Индексы: `(project_id, list_id, position)`.
 
 Пользовательские списки (этап 17) — строки `board_lists` с `is_system = false`; новая таблица не понадобилась. Миграция `0014` закрепляет в БД то, что раньше держалось только на отсутствии UI:

@@ -23,6 +23,8 @@ export type BoardItem = {
   note: string | null;
   is_done: boolean;
   due_date: string | null;
+  /** Кто завёл пункт, «Иванов И. И.» (lib/business/author.ts); null — автора не записали. */
+  createdByName?: string | null;
 };
 
 export function BoardItemRow({
@@ -93,7 +95,11 @@ export function BoardItemRow({
   };
 
   const isOverdue = !item.is_done && !!item.due_date && item.due_date < today;
-  const meta = [item.note, item.due_date ? `до ${formatDateShort(item.due_date)}` : null]
+  const meta = [
+    item.note,
+    item.due_date ? `до ${formatDateShort(item.due_date)}` : null,
+    item.createdByName,
+  ]
     .filter(Boolean)
     .join(" · ");
 

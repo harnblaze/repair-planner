@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { BackLink } from "@/components/common/back-link";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { authorFullName, authorLabel, toAuthorMap } from "@/lib/business/author";
 import { canEditProject } from "@/lib/business/project-roles";
 import { canReturnToBacklog } from "@/lib/business/task-planning";
 import { addDays, nextWorkingDay } from "@/lib/business/working-days";
@@ -44,11 +45,12 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
     { data: taskMaterials },
     { data: attachments },
     { data: queues },
+    { data: members },
   ] = await Promise.all([
     getProjectRole(projectId),
     supabase
       .from("tasks")
-      .select("id, title, description, category_id, queue_id, status, planned_date")
+      .select("id, title, description, category_id, queue_id, status, planned_date, created_by")
       .eq("id", taskId)
       .eq("project_id", projectId)
       .maybeSingle(),
@@ -88,11 +90,20 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true })
       .order("id", { ascending: true }),
+    // Имена участников: profiles закрыт RLS на свою строку, поэтому чужие имена
+    // приходят только через security definer функцию (0012).
+    supabase.rpc("project_member_list", { p_project_id: projectId }),
   ]);
 
   if (!task) {
     notFound();
   }
+
+  // Автора ставит база (0031_task_author_defaults). Имена участников взяты
+  // одним запросом выше: profiles закрыт RLS на свою строку.
+  const authorNames = toAuthorMap(members);
+  const authorName = authorLabel(authorNames, task.created_by);
+  const authorFull = authorFullName(authorNames, task.created_by);
 
   const assignedExecutorIds = assigned?.map((a) => a.executor_id) ?? [];
   const canEdit = canEditProject(role);
@@ -182,6 +193,15 @@ export default async function TaskPage({ params }: PageProps<"/[projectId]/tasks
               disabled={!canEdit}
             />
           </div>
+
+          {/* Автор — факт, а не поле формы: его пишет база (0031). В сетку полей
+              не ставим, иначе рядом с редактируемыми он читается как поле. */}
+          <p className="text-[11px] text-meta">
+            Создал:{" "}
+            <span className="text-ink" title={authorFull ?? undefined}>
+              {authorName ?? "—"}
+            </span>
+          </p>
 
           {/* Обёртка — только когда кнопки видны, иначе пустой блок добавит отступ. */}
           {canEdit && task.planned_date && canReturnToBacklog(task.status) ? (
