@@ -470,6 +470,37 @@ RPC (все `set search_path = ''`, `EXECUTE` отозван у `public, anon`):
 
 **Чистка.** `public.purge_project_activity(p_keep interval default '6 months') returns integer` — `security definer`, удаляет строки старше срока и возвращает число. `EXECUTE` отозван у `public, anon, authenticated` (иначе любой участник мог бы вычистить историю), оставлен `service_role`. Планировщик — `pg_cron` в блоке `do $$ … exception when others … $$`: на локальной базе расширение ставится, на проде может отсутствовать — тогда миграция не падает, а чистка выполняется вручную.
 
+### 5.18 `project_messages` и `project_message_reads` — чат проекта (0033)
+
+Переписка участников проекта и отметка «дочитал до». Первая пара таблиц, которую клиент читает и пишет **напрямую** (Supabase Realtime минует серверный код), поэтому единственная граница доступа здесь — RLS.
+
+**`project_messages`**
+
+| Поле | Тип | Примечание |
+|---|---|---|
+| `id` | uuid PK | **без default**: id генерирует клиент, чтобы оптимистичная вставка и событие Realtime совпали по id и сообщение не задвоилось |
+| `project_id` | uuid not null | FK → `projects(id)` on delete cascade |
+| `author_id` | uuid not null | FK → `profiles(id)` on delete cascade; `default auth.uid()` + триггер `private.set_message_author` |
+| `body` | text not null | CHECK `length(btrim(body)) between 1 and 2000` |
+| `created_at` | timestamptz not null default now() | |
+
+Индекс: `(project_id, created_at desc)`.
+
+**`project_message_reads`**: `project_id` + `user_id` (оба FK, cascade), `last_read_at timestamptz not null default now()`, PK `(project_id, user_id)` — одна строка на участника.
+
+**Авторство.** `author_id` ставит база: `default auth.uid()` и `before insert` триггер с `coalesce(auth.uid(), author_id)` — тот же приём, что в `0031`: из клиента автор всегда перезаписывается на вошедшего, а SQL-импорт без `auth.uid()` сохраняет явно переданного.
+
+**RLS:**
+
+| Таблица | SELECT | INSERT | UPDATE | DELETE |
+|---|---|---|---|---|
+| `project_messages` | участник проекта | `project_can_edit` **и** `author_id = auth.uid()` | нет политики — правка сообщений не входит в этап | только своё сообщение, при членстве в проекте |
+| `project_message_reads` | только своя строка (`user_id = auth.uid()`) | только своя строка | только своя строка | нет политики |
+
+**Realtime.** `project_messages` добавлена в публикацию `supabase_realtime` (идемпотентно, с проверкой `pg_publication_tables` и `exception`-фолбэком). Публикация только включает поток изменений: RLS продолжает действовать и на Realtime — подписчик получает лишь строки, которые ему разрешено читать.
+
+**Чистка.** `public.purge_project_messages(p_keep interval default '12 months') returns integer` — `security definer`, `EXECUTE` только у `service_role`; расписание `pg_cron` (jobname `purge-project-messages`), при отсутствии расширения — вручную.
+
 ## 6. RLS
 
 ### 6.1 Проблема рекурсии и её решение
