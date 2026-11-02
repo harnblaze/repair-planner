@@ -15,6 +15,7 @@ const SECTIONS = [
   { segment: "materials", label: "Материалы" },
   { segment: "supply", label: "Снабжение" },
   { segment: "reports", label: "Отчёты" },
+  { segment: "activity", label: "Лента" },
   { segment: "settings", label: "Настройки" },
 ] as const;
 

@@ -368,6 +368,54 @@ export type Database = {
         }
         Relationships: []
       }
+      project_activity: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          entity_id: string | null
+          entity_type: string
+          id: number
+          kind: string
+          payload: Json
+          project_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_type: string
+          id?: never
+          kind: string
+          payload?: Json
+          project_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string
+          id?: never
+          kind?: string
+          payload?: Json
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_activity_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_activity_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_calendar_days: {
         Row: {
           created_at: string
@@ -1391,6 +1439,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      purge_project_activity: { Args: { p_keep?: string }; Returns: number }
       receive_supply_delivery_line: {
         Args: {
           p_delivery_line_id: string
