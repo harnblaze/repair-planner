@@ -81,13 +81,18 @@ select is(
   'чужое сообщение изменить нельзя'
 );
 
--- Пустое тело отклоняет CHECK из 0033 — правка не должна его обходить.
+-- С 0037 тело может быть пустым при наличии фото, поэтому «пусто без фото»
+-- держит отложенный триггер: переводим его в immediate для проверки.
+set constraints project_messages_body_or_attachment immediate;
+
 select throws_ok(
   $$ update public.project_messages set body = '   ' where id = 'e1000000-0000-4000-8000-0000000000c1' $$,
   '23514',
   null,
-  'пустое тело после правки отклоняется'
+  'пустая правка без вложений отклоняется'
 );
+
+set constraints project_messages_body_or_attachment deferred;
 
 -- Чужое удалить нельзя.
 delete from public.project_messages where id = 'e1000000-0000-4000-8000-0000000000a1';

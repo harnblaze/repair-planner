@@ -531,6 +531,30 @@ RPC (все `set search_path = ''`, `EXECUTE` отозван у `public, anon`):
 
 **Каскад.** При удалении сообщения реакции уходят вместе с ним; при удалении профиля — тоже (FK `on delete cascade`).
 
+### 5.20 `project_message_attachments` — фото к сообщениям чата (0037)
+
+Устроено как `task_attachments` (0017): приватный bucket `chat-attachments` (10 МБ, только `image/jpeg`), путь `{project_id}/{message_id}/{uuid}.jpg`, доступ двумя слоями.
+
+| Поле | Тип | Примечание |
+|---|---|---|
+| `id` | uuid PK | `default gen_random_uuid()` |
+| `project_id` | uuid not null | FK → `projects(id)` on delete cascade |
+| `message_id` | uuid not null | составной FK `(message_id, project_id)` → `project_messages(id, project_id)` on delete cascade |
+| `storage_path` | text not null unique | CHECK: путь принадлежит **этому** сообщению этого проекта и оканчивается `{uuid}.jpg` |
+| `size_bytes`, `width`, `height` | integer not null | CHECK `> 0` |
+| `created_by` | uuid | `default auth.uid()` → `profiles(id)` on delete set null |
+| `created_at` | timestamptz not null default now() | |
+
+Составной FK требует `unique (id, project_id)` на `project_messages` — миграция добавляет его идемпотентно.
+
+**RLS таблицы:** SELECT — участнику проекта; INSERT/DELETE — `project_can_edit` (для INSERT ещё и `exists` по сообщению); UPDATE-политики нет. **RLS `storage.objects`:** три политики (select/insert/delete) по первой папке пути через `private.attachment_project_id(name)` из 0017; объект вне папки своего проекта недоступен.
+
+**Сообщение без текста.** CHECK тела в `project_messages` ослаблен до `0…2000`, потому что фото само может быть сообщением. «Пусто и без вложений» ловит **отложенный** constraint-триггер `project_messages_body_or_attachment` (`deferrable initially deferred`): он проверяет наличие вложения на коммите, когда строки вложений уже вставлены. Так сообщение и фото пишутся одной транзакцией, и правило нельзя обойти ни через RPC, ни прямой вставкой.
+
+**RPC `create_chat_message(p_project_id, p_id, p_body, p_attachments jsonb default '[]')`** — `security invoker`, `set search_path = ''`: проверяет, что вложения — массив объектов не больше четырёх, что есть `path/size_bytes/width/height` с положительными размерами, что путь принадлежит этому проекту и сообщению, и что «пусто и без фото» не пришло (`message_empty`); вставляет сообщение и вложения одной транзакцией. `EXECUTE` только у `authenticated`.
+
+**Сироты.** `chat_attachment_orphans(p_project_id, p_limit)` — копия `task_attachment_orphans` (0026): файлы старше суток без строки в таблице, `security invoker`, грант `authenticated`.
+
 ## 6. RLS
 
 ### 6.1 Проблема рекурсии и её решение
@@ -708,5 +732,12 @@ update materials set current_balance = current_balance + delta where id = p_mate
 Каждая миграция идемпотентна там, где это уместно (`if not exists`, `create or replace`), не удаляет данные и применяется локально через Supabase CLI до применения на удалённой базе.
 
 30. `0030_supply_tracking` — снабжение: шесть таблиц `supply_*` с RLS и составными FK, `material_movements.supply_delivery_line_id`, RPC `create_supply_request`, `create_supply_invoice`, `create_supply_delivery`, `receive_supply_delivery_line` (§5.16). Тест — `supabase/tests/database/supply-tracking.test.sql` (55).
+31. `0031_task_author_defaults` — `tasks.created_by` и `board_items.created_by`: `default auth.uid()`, триггер на insert, бэкфилл владельцем проекта; триггеры `updated_at` на время бэкфилла отключены (§5.7, §5.12).
+32. `0032_project_activity` — журнал значимых событий `project_activity` (28 триггеров), RLS только на чтение, `purge_project_activity`, расписание через `pg_cron` с фолбэком (§5.17).
+33. `0033_project_chat` — `project_messages` и `project_message_reads`, публикация `supabase_realtime`, `purge_project_messages` (§5.18).
+34. `0034_chat_activity_policies_authenticated` — политики журнала и чата ограничены ролью `authenticated`: без роли их проверял и аноним, у которого нет `EXECUTE` на `project_access()` (401 вместо пустого списка).
+35. `0035_message_reactions` — `project_message_reactions` с закрытым набором эмодзи, RLS и публикацией Realtime (§5.19).
+36. `0036_message_edit` — `project_messages.edited_at` с триггером и UPDATE-политика «только своё».
+37. `0037_chat_attachments` — `project_message_attachments`, bucket `chat-attachments`, `unique (id, project_id)` на сообщениях, отложенный триггер «пусто и без фото», RPC `create_chat_message`, `chat_attachment_orphans` (§5.20).
 
-Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/*.test.sql` (12 файлов) — `supabase test db`, 401/401 успешно (2026-10-20). TypeScript-типы сгенерированы в `lib/types/database.ts`.
+Миграции применены на локальном стеке и покрыты pgTAP-тестами RLS и RPC в `supabase/tests/database/*.test.sql` (18 файлов) — `supabase test db`, 479/479 успешно (2026-11-03). TypeScript-типы сгенерированы в `lib/types/database.ts`.

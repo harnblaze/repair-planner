@@ -91,20 +91,26 @@ select is(
 );
 
 -- ================= Ограничения тела сообщения =================
+-- С 0037 тело может быть пустым, если у сообщения есть фото: «пусто и без
+-- вложений» отклоняет отложенный constraint-триггер. В тесте транзакция
+-- откатывается и отложенная проверка не выполнилась бы — переводим в immediate.
+set constraints project_messages_body_or_attachment immediate;
 
 select throws_ok(
   $$ insert into public.project_messages (id, project_id, body)
      values ('e0000000-0000-4000-8000-0000000000d1', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '') $$,
   '23514', null,
-  'пустое тело отклоняется CHECK'
+  'пустое тело без вложений отклоняется отложенным триггером'
 );
 
 select throws_ok(
   $$ insert into public.project_messages (id, project_id, body)
      values ('e0000000-0000-4000-8000-0000000000d3', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '   ') $$,
   '23514', null,
-  'тело из одних пробелов отклоняется: btrim обнуляет длину'
+  'тело из одних пробелов без вложений отклоняется'
 );
+
+set constraints project_messages_body_or_attachment deferred;
 
 select throws_ok(
   $$ insert into public.project_messages (id, project_id, body)
