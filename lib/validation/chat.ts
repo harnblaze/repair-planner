@@ -51,16 +51,32 @@ export const reactionSchema = z.object({
 export type ReactionInput = z.infer<typeof reactionSchema>;
 
 /**
- * Сообщение с фото: тело может быть пустым — фото само по себе сообщение
- * (RPC 0037 разрешает пустое тело только при наличии вложений). Проверка
- * «есть текст или есть фото» повторяется здесь, чтобы клиент получал ответ
- * до запроса в базу.
+ * Сообщение с вложениями: тело может быть пустым — фото или документ само по
+ * себе сообщение (RPC 0038 разрешает пустое тело только при наличии вложений).
+ * Размеры обязательны у фото и запрещены у документа: у PDF их не существует.
  */
-export const chatAttachmentSchema = z.object({
-  path: z.string().min(1),
-  width: z.number().int().min(1).max(20000),
-  height: z.number().int().min(1).max(20000),
-});
+export const CHAT_ATTACHMENT_KINDS = ["image", "document"] as const;
+
+export const chatAttachmentSchema = z
+  .object({
+    path: z.string().min(1),
+    kind: z.enum(CHAT_ATTACHMENT_KINDS).default("image"),
+    mimeType: z.string().min(1).max(255),
+    fileName: z.string().min(1).max(255),
+    // Размер сверяется с метаданными Storage в экшене; здесь только форма.
+    sizeBytes: z.number().int().positive(),
+    width: z.number().int().min(1).max(20000).nullable().optional(),
+    height: z.number().int().min(1).max(20000).nullable().optional(),
+  })
+  .superRefine((value, ctx) => {
+    const hasSize = typeof value.width === "number" && typeof value.height === "number";
+    if (value.kind === "image" && !hasSize) {
+      ctx.addIssue({ code: "custom", message: "У фото нужны ширина и высота", path: ["width"] });
+    }
+    if (value.kind === "document" && (value.width != null || value.height != null)) {
+      ctx.addIssue({ code: "custom", message: "У документа не бывает размеров", path: ["width"] });
+    }
+  });
 
 export type ChatAttachmentInput = z.infer<typeof chatAttachmentSchema>;
 
@@ -75,7 +91,7 @@ export const chatMessageWithAttachmentsSchema = z
     attachments: z.array(chatAttachmentSchema).min(1).max(4),
   })
   .refine((value) => value.body.length > 0 || value.attachments.length > 0, {
-    message: "Добавьте текст или фото",
+    message: "Добавьте текст или приложите файл",
     path: ["body"],
   });
 

@@ -3,13 +3,18 @@ import { describe, expect, it } from "vitest";
 import {
   CHAT_ATTACHMENT_MESSAGES,
   MAX_ATTACHMENTS_PER_MESSAGE,
+  MAX_DOCUMENT_BYTES,
   MAX_SIDE,
   MAX_SOURCE_BYTES,
   attachmentFolder,
   buildAttachmentPath,
+  attachmentKindForFile,
   canAddAttachment,
   chatAttachmentPath,
+  documentExtensionFor,
+  documentMimeFor,
   firstAttachmentError,
+  formatFileSize,
   fitWithin,
   isValidAttachmentPath,
   isValidChatAttachmentPath,
@@ -147,15 +152,21 @@ describe("toPhotoCount", () => {
   });
 });
 
-describe("фото в чате", () => {
+describe("вложения чата", () => {
   const projectId = "5eed0000-0000-4000-8000-000000000002";
   const messageId = "0b6f4c9e-1a2b-4c3d-8e9f-0a1b2c3d4e5f";
   const fileId = "11111111-2222-3333-4444-555555555555";
 
-  it("путь собирается из проекта, сообщения и имени файла", () => {
+  it("путь фото собирается с расширением jpg по умолчанию", () => {
     expect(chatAttachmentPath(projectId, messageId, fileId)).toBe(
       `${projectId}/${messageId}/${fileId}.jpg`,
     );
+  });
+
+  it("путь документа — с расширением из MIME", () => {
+    const path = chatAttachmentPath(projectId, messageId, fileId, "pdf");
+    expect(path).toBe(`${projectId}/${messageId}/${fileId}.pdf`);
+    expect(isValidChatAttachmentPath(path, projectId, messageId)).toBe(true);
   });
 
   it("приводит путь к нижнему регистру, как Postgres печатает uuid", () => {
@@ -170,9 +181,10 @@ describe("фото в чате", () => {
     expect(isValidChatAttachmentPath(path, "5eed0000-0000-4000-8000-000000000003", messageId)).toBe(false);
   });
 
-  it("не принимает лишние сегменты и не-.jpg", () => {
+  it("не принимает лишние сегменты, неразрешённые расширения и обход пути", () => {
     const prefix = `${projectId}/${messageId}`;
     expect(isValidChatAttachmentPath(`${prefix}/${fileId}.png`, projectId, messageId)).toBe(false);
+    expect(isValidChatAttachmentPath(`${prefix}/${fileId}.exe`, projectId, messageId)).toBe(false);
     expect(isValidChatAttachmentPath(`${prefix}/../${fileId}.jpg`, projectId, messageId)).toBe(false);
   });
 
@@ -182,17 +194,43 @@ describe("фото в чате", () => {
     expect(canAddAttachment(4)).toBe(false);
   });
 
+  it("определяет тип файла: фото, документ или отказ", () => {
+    expect(attachmentKindForFile({ type: "image/png", name: "a.png" })).toBe("image");
+    expect(attachmentKindForFile({ type: "application/pdf", name: "смета.pdf" })).toBe("document");
+    expect(attachmentKindForFile({ type: "", name: "смета.docx" })).toBe("document");
+    expect(attachmentKindForFile({ type: "application/octet-stream", name: "a.xlsx" })).toBe("document");
+    expect(attachmentKindForFile({ type: "application/zip", name: "a.zip" })).toBeNull();
+  });
+
+  it("переводит расширение в MIME и обратно", () => {
+    expect(documentMimeFor("СМЕТА.PDF")).toBe("application/pdf");
+    expect(documentMimeFor("a.exe")).toBeNull();
+    expect(documentExtensionFor("application/pdf")).toBe("pdf");
+    expect(documentExtensionFor("application/zip")).toBeNull();
+  });
+
   it("объясняет, почему файл не приложить", () => {
-    const ok = { type: "image/jpeg", size: 1024 };
-    expect(firstAttachmentError(ok, 0)).toBeNull();
-    expect(firstAttachmentError({ type: "application/pdf", size: 1024 }, 0)).toBe(
-      CHAT_ATTACHMENT_MESSAGES.unsupported,
-    );
-    expect(firstAttachmentError({ type: "image/jpeg", size: MAX_SOURCE_BYTES + 1 }, 0)).toBe(
-      CHAT_ATTACHMENT_MESSAGES.tooLarge,
-    );
-    expect(firstAttachmentError(ok, MAX_ATTACHMENTS_PER_MESSAGE)).toBe(
+    expect(firstAttachmentError({ type: "image/jpeg", size: 1024 }, 0)).toBeNull();
+    expect(
+      firstAttachmentError({ type: "application/pdf", size: 1024, name: "смета.pdf" }, 0),
+    ).toBeNull();
+    expect(
+      firstAttachmentError({ type: "image/jpeg", size: MAX_SOURCE_BYTES + 1 }, 0),
+    ).toBe(CHAT_ATTACHMENT_MESSAGES.tooLarge);
+    expect(
+      firstAttachmentError({ type: "application/pdf", size: MAX_DOCUMENT_BYTES + 1, name: "a.pdf" }, 0),
+    ).toBe(CHAT_ATTACHMENT_MESSAGES.documentTooLarge);
+    expect(
+      firstAttachmentError({ type: "application/zip", size: 1024, name: "a.zip" }, 0),
+    ).toBe(CHAT_ATTACHMENT_MESSAGES.unsupported);
+    expect(firstAttachmentError({ type: "image/jpeg", size: 1024 }, MAX_ATTACHMENTS_PER_MESSAGE)).toBe(
       CHAT_ATTACHMENT_MESSAGES.limitReached,
     );
+  });
+
+  it("пишет размер файла по-человечески", () => {
+    expect(formatFileSize(512)).toBe("512 Б");
+    expect(formatFileSize(1024)).toBe("1 КБ");
+    expect(formatFileSize(2.4 * 1024 * 1024)).toBe("2,4 МБ");
   });
 });

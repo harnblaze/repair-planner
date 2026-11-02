@@ -4,12 +4,19 @@ import { randomUUID } from "node:crypto";
 
 import {
   CHAT_ATTACHMENTS_BUCKET,
+  CHAT_ATTACHMENT_MESSAGES,
+  CHAT_DOCUMENT_TYPES,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  MAX_DOCUMENT_BYTES,
   SIGNED_URL_TTL_SECONDS,
   chatAttachmentPath,
+  documentExtensionFor,
+  documentMimeFor,
   isValidChatAttachmentPath,
   isValidDimension,
 } from "@/lib/business/attachments";
 import type { ChatAttachment, ChatMessage, ChatReaction } from "@/lib/business/chat";
+import { canEditProject } from "@/lib/business/project-roles";
 import { getProjectRole, requireProjectEdit } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 import { CHAT_PAGE_SIZE } from "@/lib/business/chat";
@@ -31,7 +38,7 @@ const INVALID: { ok: false; error: string } = {
   error: "Проверьте сообщение: оно не должно быть пустым и длиннее 2000 символов.",
 };
 
-/** Строка сообщения с вложенными реакциями и фото: так их отдаёт PostgREST. */
+/** Строка сообщения с вложенными реакциями и файлами: так их отдаёт PostgREST. */
 type MessageRow = {
   id: string;
   project_id: string;
@@ -41,7 +48,16 @@ type MessageRow = {
   edited_at: string | null;
   project_message_reactions: { user_id: string; emoji: string }[] | null;
   project_message_attachments:
-    | { id: string; storage_path: string; width: number; height: number }[]
+    | {
+        id: string;
+        storage_path: string;
+        kind: string;
+        mime_type: string | null;
+        file_name: string | null;
+        size_bytes: number;
+        width: number | null;
+        height: number | null;
+      }[]
     | null;
 };
 
@@ -58,12 +74,16 @@ function toReactions(row: MessageRow): ChatReaction[] {
   }));
 }
 
-/** Фото строки + ссылки, подписанные на весь список сообщений одним запросом. */
+/** Вложения строки + ссылки, подписанные на весь список сообщений одним запросом. */
 function toAttachments(row: MessageRow, urlByPath: Map<string, string>): ChatAttachment[] {
   return (row.project_message_attachments ?? []).map((attachment) => ({
     id: attachment.id,
     message_id: row.id,
     storage_path: attachment.storage_path,
+    kind: attachment.kind === "document" ? "document" : "image",
+    mime_type: attachment.mime_type,
+    file_name: attachment.file_name,
+    size_bytes: attachment.size_bytes,
     width: attachment.width,
     height: attachment.height,
     url: urlByPath.get(attachment.storage_path) ?? null,
@@ -152,7 +172,7 @@ export async function loadMessagesAction(projectId: string): Promise<ChatLoadRes
   const { data, error } = await supabase
     .from("project_messages")
     .select(
-      "id, project_id, author_id, body, created_at, edited_at, project_message_reactions(user_id, emoji), project_message_attachments(id, storage_path, width, height)",
+      "id, project_id, author_id, body, created_at, edited_at, project_message_reactions(user_id, emoji), project_message_attachments(id, storage_path, kind, mime_type, file_name, size_bytes, width, height)",
     )
     .eq("project_id", projectId)
     .order("created_at", { ascending: false })
@@ -165,6 +185,11 @@ export async function loadMessagesAction(projectId: string): Promise<ChatLoadRes
 
   const rows = (data ?? []) as MessageRow[];
   const urlByPath = await signAttachments(supabase, rows);
+
+  // Уборка «сирот» по активности: не чаще раза в сутки на проект. Ошибки
+  // глушатся внутри — чат не должен зависеть от уборки.
+  if (canEditProject(role)) await maybeCleanupChatOrphans(projectId);
+
   return {
     ok: true,
     messages: rows.map(toMessage).reverse(),
@@ -369,15 +394,35 @@ export type ChatUploadStart =
   | { ok: true; path: string; signedUrl: string }
   | { ok: false; error: string };
 
-const CHAT_UPLOAD_FAILED = "Не удалось загрузить фото. Попробуйте ещё раз.";
+const CHAT_UPLOAD_FAILED = "Не удалось загрузить файл. Попробуйте ещё раз.";
+
+/** Что клиент знает о файле до загрузки: тип и настоящее имя (для документов). */
+export type ChatUploadMeta = {
+  kind: "image" | "document";
+  mimeType: string;
+  fileName: string;
+};
 
 /**
- * Ссылка на загрузку одного фото. id сообщения генерирует клиент и присылает
+ * Расширение пути по метаданным: фото всегда jpg (его сжимает браузер), у
+ * документа — по MIME, с запасом по имени файла (у .txt MIME бывает пустым).
+ */
+function uploadExtension(meta: ChatUploadMeta): string | null {
+  if (meta.kind === "image") return "jpg";
+  const byMime = documentExtensionFor(meta.mimeType);
+  if (byMime) return byMime;
+  const mime = documentMimeFor(meta.fileName);
+  return mime ? documentExtensionFor(mime) : null;
+}
+
+/**
+ * Ссылка на загрузку одного файла. id сообщения генерирует клиент и присылает
  * заранее: путь должен содержать его, чтобы RLS Storage проверил проект.
  */
 export async function startChatAttachmentUploadAction(
   projectId: string,
   messageId: string,
+  meta: ChatUploadMeta,
 ): Promise<ChatUploadStart> {
   const denied = await requireProjectEdit(projectId);
   if (denied) return { ok: false, error: denied.ok ? "Недостаточно прав." : denied.error };
@@ -386,8 +431,11 @@ export async function startChatAttachmentUploadAction(
     return { ok: false, error: CHAT_UPLOAD_FAILED };
   }
 
+  const extension = uploadExtension(meta);
+  if (!extension) return { ok: false, error: CHAT_ATTACHMENT_MESSAGES.documentUnsupported };
+
   const supabase = await createClient();
-  const path = chatAttachmentPath(projectId, messageId, randomUUID());
+  const path = chatAttachmentPath(projectId, messageId, randomUUID(), extension);
   const { data, error } = await supabase.storage
     .from(CHAT_ATTACHMENTS_BUCKET)
     .createSignedUploadUrl(path);
@@ -405,13 +453,28 @@ export type ChatSendWithAttachmentsResult =
   | { ok: false; error: string };
 
 const RPC_ERRORS: Record<string, string> = {
-  message_empty: "Добавьте текст или фото.",
-  attachments_too_many: "К сообщению можно приложить не больше 4 фото.",
+  message_empty: "Добавьте текст или приложите файл.",
+  attachments_too_many: `К сообщению можно приложить не больше ${MAX_ATTACHMENTS_PER_MESSAGE} файлов.`,
   attachment_path_mismatch: CHAT_UPLOAD_FAILED,
   attachments_invalid: CHAT_UPLOAD_FAILED,
+  attachment_kind_unknown: CHAT_ATTACHMENT_MESSAGES.unsupported,
+  attachment_image_size_missing: "Не удалось определить размеры фото. Попробуйте другое фото.",
+  attachment_document_has_size: CHAT_UPLOAD_FAILED,
+  attachment_mime_mismatch: CHAT_ATTACHMENT_MESSAGES.unsupported,
 };
 
-/** Сообщение с фото: тела может не быть, размеры файлов берём из Storage, а не от клиента. */
+/** Вложение в том виде, в каком его ждёт RPC (0038): ключи jsonb. */
+type RpcAttachment = {
+  path: string;
+  kind: "image" | "document";
+  mime_type: string;
+  file_name: string;
+  size_bytes: number;
+  width: number | null;
+  height: number | null;
+};
+
+/** Сообщение с файлами: тела может не быть, размер берём из Storage, а не от клиента. */
 export async function sendMessageWithAttachmentsAction(
   projectId: string,
   input: ChatMessageWithAttachmentsInput,
@@ -421,7 +484,7 @@ export async function sendMessageWithAttachmentsAction(
 
   const parsed = chatMessageWithAttachmentsSchema.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, error: "Добавьте текст или фото — и не больше 4 фото." };
+    return { ok: false, error: "Добавьте текст или файл — и не больше четырёх." };
   }
 
   const supabase = await createClient();
@@ -432,15 +495,24 @@ export async function sendMessageWithAttachmentsAction(
 
   const bucket = supabase.storage.from(CHAT_ATTACHMENTS_BUCKET);
   const folder = parsed.data.id.toLowerCase();
-  const attachments: { path: string; width: number; height: number; size_bytes: number }[] = [];
+  const attachments: RpcAttachment[] = [];
 
   for (const attachment of parsed.data.attachments) {
-    if (
-      !isValidChatAttachmentPath(attachment.path, projectId, parsed.data.id) ||
-      !isValidDimension(attachment.width) ||
-      !isValidDimension(attachment.height)
-    ) {
+    if (!isValidChatAttachmentPath(attachment.path, projectId, parsed.data.id)) {
       return { ok: false, error: CHAT_UPLOAD_FAILED };
+    }
+
+    if (attachment.kind === "image") {
+      if (!isValidDimension(attachment.width) || !isValidDimension(attachment.height)) {
+        return { ok: false, error: CHAT_UPLOAD_FAILED };
+      }
+    } else {
+      // MIME документа выводим из расширения пути: он уже проверен сервером при
+      // выдаче ссылки, и RPC сверит mime с расширением — расходиться нельзя.
+      const extension = attachment.path.split(".").pop()?.toLowerCase() ?? "";
+      if (!CHAT_DOCUMENT_TYPES.some((type) => type.extension === extension)) {
+        return { ok: false, error: CHAT_ATTACHMENT_MESSAGES.documentUnsupported };
+      }
     }
 
     const prefix = chatAttachmentPath(projectId, parsed.data.id, "");
@@ -457,11 +529,21 @@ export async function sendMessageWithAttachmentsAction(
       return { ok: false, error: CHAT_UPLOAD_FAILED };
     }
 
+    if (attachment.kind === "document" && size > MAX_DOCUMENT_BYTES) {
+      return { ok: false, error: CHAT_ATTACHMENT_MESSAGES.documentTooLarge };
+    }
+
+    const extension = attachment.path.split(".").pop()?.toLowerCase() ?? "";
+    const known = CHAT_DOCUMENT_TYPES.find((type) => type.extension === extension);
+
     attachments.push({
       path: attachment.path,
-      width: attachment.width,
-      height: attachment.height,
+      kind: attachment.kind,
+      mime_type: attachment.kind === "image" ? "image/jpeg" : (known?.mime ?? attachment.mimeType),
+      file_name: attachment.fileName,
       size_bytes: size,
+      width: attachment.kind === "image" ? (attachment.width ?? null) : null,
+      height: attachment.kind === "image" ? (attachment.height ?? null) : null,
     });
   }
 
@@ -480,7 +562,7 @@ export async function sendMessageWithAttachmentsAction(
 
   const { data: rows, error: rowsError } = await supabase
     .from("project_message_attachments")
-    .select("id, storage_path, width, height")
+    .select("id, storage_path, kind, mime_type, file_name, size_bytes, width, height")
     .eq("message_id", parsed.data.id)
     .eq("project_id", projectId);
 
@@ -502,9 +584,57 @@ export async function sendMessageWithAttachmentsAction(
       id: row.id,
       message_id: parsed.data.id,
       storage_path: row.storage_path,
+      kind: row.kind === "document" ? "document" : "image",
+      mime_type: row.mime_type,
+      file_name: row.file_name,
+      size_bytes: row.size_bytes,
       width: row.width,
       height: row.height,
       url: urlByPath.get(row.storage_path) ?? null,
     })),
   };
+}
+
+/**
+ * Уборка файлов-«сирот»: старше суток и без строки в таблице. Крона на хостинге
+ * нет, поэтому уборка идёт по активности — не чаще раза в сутки на проект
+ * (claim_chat_cleanup), а при сбое отметка снимается, чтобы не ждать сутки.
+ *
+ * Сбой уборки не должен ломать чат: пользователь ничего не заметит, а причина
+ * останется в логе.
+ */
+export async function maybeCleanupChatOrphans(projectId: string): Promise<void> {
+  try {
+    const supabase = await createClient();
+    const { data: claimed, error: claimError } = await supabase.rpc("claim_chat_cleanup", {
+      p_project_id: projectId,
+    });
+    if (claimError) {
+      console.error("claim_chat_cleanup:", claimError);
+      return;
+    }
+    if (!claimed) return;
+
+    const { data: paths, error: listError } = await supabase.rpc("chat_attachment_orphans", {
+      p_project_id: projectId,
+      p_limit: 100,
+    });
+
+    if (listError) {
+      console.error("chat_attachment_orphans:", listError);
+      await supabase.rpc("release_chat_cleanup", { p_project_id: projectId });
+      return;
+    }
+
+    const orphans = (paths ?? []).filter((path): path is string => typeof path === "string");
+    if (orphans.length === 0) return;
+
+    const { error: removeError } = await supabase.storage.from(CHAT_ATTACHMENTS_BUCKET).remove(orphans);
+    if (removeError) {
+      console.error("maybeCleanupChatOrphans (remove):", removeError);
+      await supabase.rpc("release_chat_cleanup", { p_project_id: projectId });
+    }
+  } catch (error) {
+    console.error("maybeCleanupChatOrphans:", error);
+  }
 }

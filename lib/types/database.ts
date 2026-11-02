@@ -562,35 +562,44 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string | null
-          height: number
+          file_name: string | null
+          height: number | null
           id: string
+          kind: string
           message_id: string
+          mime_type: string | null
           project_id: string
           size_bytes: number
           storage_path: string
-          width: number
+          width: number | null
         }
         Insert: {
           created_at?: string
           created_by?: string | null
-          height: number
+          file_name?: string | null
+          height?: number | null
           id?: string
+          kind: string
           message_id: string
+          mime_type?: string | null
           project_id: string
           size_bytes: number
           storage_path: string
-          width: number
+          width?: number | null
         }
         Update: {
           created_at?: string
           created_by?: string | null
-          height?: number
+          file_name?: string | null
+          height?: number | null
           id?: string
+          kind?: string
           message_id?: string
+          mime_type?: string | null
           project_id?: string
           size_bytes?: number
           storage_path?: string
-          width?: number
+          width?: number | null
         }
         Relationships: [
           {
@@ -1488,6 +1497,7 @@ export type Database = {
         Args: { p_limit?: number; p_project_id: string }
         Returns: string[]
       }
+      claim_chat_cleanup: { Args: { p_project_id: string }; Returns: boolean }
       completed_works_report: {
         Args: { p_month: string; p_project_id: string }
         Returns: {
@@ -1691,6 +1701,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      release_chat_cleanup: {
+        Args: { p_project_id: string }
+        Returns: undefined
       }
       return_task_to_backlog: { Args: { p_task_id: string }; Returns: boolean }
       search_archive_tasks: {

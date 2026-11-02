@@ -321,16 +321,37 @@ export function jumboSize(body: string): string | null {
 
 // ── Вложения ─────────────────────────────────────────────────────────────────
 
-/** Фото сообщения в том виде, в каком его рисует лента. */
+/** Вложение сообщения в том виде, в каком его рисует лента: фото или документ. */
 export type ChatAttachment = {
   id: string;
   message_id: string;
   storage_path: string;
-  width: number;
-  height: number;
-  /** Подписанная ссылка на просмотр; null — подписать не удалось. */
+  /** image — миниатюра, document — карточка файла со скачиванием. */
+  kind: "image" | "document";
+  mime_type: string | null;
+  /** Имя файла для карточки; у фото его нет. */
+  file_name: string | null;
+  size_bytes: number;
+  /** Размеры есть только у фото: у документа их не существует. */
+  width: number | null;
+  height: number | null;
+  /** Подписанная ссылка на просмотр/скачивание; null — подписать не удалось. */
   url: string | null;
 };
+
+/** Фото отдельно от документов: в ленте они рисуются по-разному. */
+export function splitAttachments(list: readonly ChatAttachment[]): {
+  images: ChatAttachment[];
+  files: ChatAttachment[];
+} {
+  const images: ChatAttachment[] = [];
+  const files: ChatAttachment[] = [];
+  for (const item of list) {
+    if (item.kind === "document") files.push(item);
+    else images.push(item);
+  }
+  return { images, files };
+}
 
 /** Фото по сообщениям: одна проходка вместо поиска по массиву на каждую строку. */
 export function attachmentsByMessage(

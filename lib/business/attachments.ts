@@ -85,25 +85,89 @@ export const MAX_ATTACHMENTS_PER_MESSAGE = 4;
 
 /** Сообщения об ошибках вложений чата: не в lib/errors.ts, чтобы не было цикла импортов. */
 export const CHAT_ATTACHMENT_MESSAGES = {
-  limitReached: `К сообщению можно приложить не больше ${MAX_ATTACHMENTS_PER_MESSAGE} фото.`,
-  unsupported: "Этот формат фото не поддерживается. Сохраните его как JPEG.",
-  tooLarge: "Фото слишком большое.",
-  uploadFailed: "Не удалось загрузить фото. Попробуйте ещё раз.",
+  limitReached: `К сообщению можно приложить не больше ${MAX_ATTACHMENTS_PER_MESSAGE} файлов.`,
+  unsupported: "Этот формат не поддерживается.",
+  tooLarge: "Файл слишком большой.",
+  uploadFailed: "Не удалось загрузить файл. Попробуйте ещё раз.",
+  documentTooLarge: "Документ больше 25 МБ.",
+  documentUnsupported: "Такой документ приложить нельзя: PDF, Word, Excel, TXT или CSV.",
 } as const;
+
+/** Документы не сжимаются и размеров не имеют: только известные типы и свой лимит. */
+export const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
+
+/** Состав совпадает с bucket `chat-attachments` и CHECK из 0038 — разъехаться не должен. */
+export const CHAT_DOCUMENT_TYPES: ReadonlyArray<{ extension: string; mime: string }> = [
+  { extension: "pdf", mime: "application/pdf" },
+  { extension: "doc", mime: "application/msword" },
+  {
+    extension: "docx",
+    mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  },
+  { extension: "xls", mime: "application/vnd.ms-excel" },
+  {
+    extension: "xlsx",
+    mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  },
+  { extension: "txt", mime: "text/plain" },
+  { extension: "csv", mime: "text/csv" },
+];
+
+export type ChatAttachmentKind = "image" | "document";
+
+/** Имя файла в пути: uuid и разрешённое расширение. */
+const CHAT_ATTACHMENT_NAME_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|pdf|doc|docx|xls|xlsx|txt|csv)$/;
+
+/** MIME документа по расширению имени файла; null — расширение не разрешено. */
+export function documentMimeFor(fileName: string): string | null {
+  const extension = fileName.toLowerCase().split(".").pop() ?? "";
+  return CHAT_DOCUMENT_TYPES.find((item) => item.extension === extension)?.mime ?? null;
+}
+
+/** Расширение по MIME документа; null — такой тип не разрешён. */
+export function documentExtensionFor(mime: string): string | null {
+  return CHAT_DOCUMENT_TYPES.find((item) => item.mime === mime)?.extension ?? null;
+}
+
+/**
+ * Что это за вложение: фото или документ. Тип берём из MIME, но с запасом по
+ * имени файла: часть телефонов присылает пустой тип или octet-stream.
+ */
+export function attachmentKindForFile(file: {
+  type: string;
+  name?: string;
+}): ChatAttachmentKind | null {
+  if (file.type.startsWith("image/")) return "image";
+  if (documentExtensionFor(file.type)) return "document";
+  const byName = file.name ? documentMimeFor(file.name) : null;
+  const byType = file.type === "" || file.type === "application/octet-stream";
+  return byName && byType ? "document" : null;
+}
 
 /** Папка фото сообщения. Нижний регистр — как Postgres печатает uuid в CHECK пути. */
 export function chatAttachmentFolder(projectId: string, messageId: string): string {
   return `${projectId}/${messageId}`.toLowerCase();
 }
 
-export function chatAttachmentPath(projectId: string, messageId: string, fileId: string): string {
-  return `${chatAttachmentFolder(projectId, messageId)}/${fileId}.jpg`;
+/** Путь вложения: расширение по умолчанию jpg — так вызывали фото до документов. */
+export function chatAttachmentPath(
+  projectId: string,
+  messageId: string,
+  fileId: string,
+  extension = "jpg",
+): string {
+  return `${chatAttachmentFolder(projectId, messageId)}/${fileId}.${extension.toLowerCase()}`;
 }
 
-/** Путь ровно вида {projectId}/{messageId}/{uuid}.jpg — без лишних сегментов и `..`. */
-export function isValidChatAttachmentPath(path: string, projectId: string, messageId: string): boolean {
+/** Путь ровно вида {projectId}/{messageId}/{uuid}.{разрешённое расширение}. */
+export function isValidChatAttachmentPath(
+  path: string,
+  projectId: string,
+  messageId: string,
+): boolean {
   const prefix = `${chatAttachmentFolder(projectId, messageId)}/`;
-  return path.startsWith(prefix) && FILE_NAME_RE.test(path.slice(prefix.length));
+  return path.startsWith(prefix) && CHAT_ATTACHMENT_NAME_RE.test(path.slice(prefix.length));
 }
 
 export function canAddAttachment(count: number): boolean {
@@ -111,15 +175,36 @@ export function canAddAttachment(count: number): boolean {
 }
 
 /**
- * Почему файл нельзя приложить; null — можно. Проверки идут от самого частого:
- * формат, размер, лимит по числу — и текст говорит, что именно не так.
+ * Почему файл нельзя приложить; null — можно. У фото лимит исходника и сжатие,
+ * у документа — свой потолок и только разрешённые типы.
  */
 export function firstAttachmentError(
-  file: { type: string; size: number },
+  file: { type: string; size: number; name?: string },
   count: number,
 ): string | null {
-  if (!file.type.startsWith("image/")) return CHAT_ATTACHMENT_MESSAGES.unsupported;
-  if (file.size > MAX_SOURCE_BYTES) return CHAT_ATTACHMENT_MESSAGES.tooLarge;
   if (!canAddAttachment(count)) return CHAT_ATTACHMENT_MESSAGES.limitReached;
+
+  const kind = attachmentKindForFile(file);
+  if (kind === null) return CHAT_ATTACHMENT_MESSAGES.unsupported;
+
+  if (kind === "image") {
+    if (!file.type.startsWith("image/")) return CHAT_ATTACHMENT_MESSAGES.unsupported;
+    return file.size > MAX_SOURCE_BYTES ? CHAT_ATTACHMENT_MESSAGES.tooLarge : null;
+  }
+
+  // Документ: размер и тип. Тип берём из MIME, а если он пуст — из имени файла.
+  if (file.size > MAX_DOCUMENT_BYTES) return CHAT_ATTACHMENT_MESSAGES.documentTooLarge;
+  const known = documentExtensionFor(file.type) !== null || (!!file.name && documentMimeFor(file.name) !== null);
+  if (!known) return CHAT_ATTACHMENT_MESSAGES.documentUnsupported;
   return null;
+}
+
+/** «2,4 МБ», «740 КБ»: для карточки документа в ленте и превью. */
+export function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "—";
+  if (bytes < 1024) return `${bytes} Б`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${Math.round(kb)} КБ`;
+  const mb = kb / 1024;
+  return `${mb.toFixed(1).replace(".", ",")} МБ`;
 }

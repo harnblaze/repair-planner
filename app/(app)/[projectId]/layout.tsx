@@ -47,7 +47,7 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
     supabase
       .from("project_messages")
       .select(
-        "id, project_id, author_id, body, created_at, edited_at, project_message_reactions(user_id, emoji), project_message_attachments(id, storage_path, width, height)",
+        "id, project_id, author_id, body, created_at, edited_at, project_message_reactions(user_id, emoji), project_message_attachments(id, storage_path, kind, mime_type, file_name, size_bytes, width, height)",
       )
       .eq("project_id", projectId)
       .order("created_at", { ascending: false })
@@ -112,6 +112,10 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
       id: attachment.id,
       message_id: row.id,
       storage_path: attachment.storage_path,
+      kind: attachment.kind === "document" ? "document" : "image",
+      mime_type: attachment.mime_type,
+      file_name: attachment.file_name,
+      size_bytes: attachment.size_bytes,
       width: attachment.width,
       height: attachment.height,
       url: signedByPath.get(attachment.storage_path) ?? null,

@@ -23,6 +23,7 @@ import {
   normalizeBody,
   removeMessage,
   removeMessageAttachments,
+  splitAttachments,
   removeMessageReactions,
   removeReaction,
   shouldShowAuthor,
@@ -395,9 +396,32 @@ describe("вложения", () => {
     id,
     message_id: messageId,
     storage_path: `p/${messageId}/${id}.jpg`,
+    kind: "image",
+    mime_type: "image/jpeg",
+    file_name: `${id}.jpg`,
+    size_bytes: 1024,
     width: 100,
     height: 80,
     url: null,
+  });
+
+  const document = (messageId: string, id: string): ChatAttachment => ({
+    id,
+    message_id: messageId,
+    storage_path: `p/${messageId}/${id}.pdf`,
+    kind: "document",
+    mime_type: "application/pdf",
+    file_name: "смета.pdf",
+    size_bytes: 240_000,
+    width: null,
+    height: null,
+    url: null,
+  });
+
+  it("делит вложения на фото и документы", () => {
+    const { images, files } = splitAttachments([photo("m-1", "a"), document("m-1", "b")]);
+    expect(images.map((item) => item.id)).toEqual(["a"]);
+    expect(files.map((item) => item.id)).toEqual(["b"]);
   });
 
   it("группирует фото по сообщениям", () => {

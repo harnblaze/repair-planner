@@ -7,8 +7,12 @@ import { AttachIcon, ChatIcon, CloseIcon } from "@/components/common/icons";
 import { Button } from "@/components/ui/button";
 import {
   CHAT_ATTACHMENT_MESSAGES,
+  CHAT_DOCUMENT_TYPES,
   MAX_ATTACHMENTS_PER_MESSAGE,
+  attachmentKindForFile,
+  documentMimeFor,
   firstAttachmentError,
+  formatFileSize,
 } from "@/lib/business/attachments";
 import {
   CHAT_BODY_MAX,
@@ -27,6 +31,7 @@ import {
   mergeMessages,
   messageTime,
   normalizeBody,
+  splitAttachments,
   removeMessage,
   removeMessageAttachments,
   removeMessageReactions,
@@ -63,13 +68,17 @@ const REALTIME_TIMEOUT_MS = 8000;
 // Дозапрос, пока Realtime недоступен: сообщения приходят с задержкой, зато не теряются.
 const POLL_MS = 15000;
 
-/** Фото, выбранное, но ещё не отправленное: сжатый blob и превью из object URL. */
+/** Файл, выбранный но ещё не отправленный: байты, превью (только у фото) и тип. */
 type PendingAttachment = {
   key: string;
+  kind: "image" | "document";
+  mimeType: string;
+  fileName: string;
   blob: Blob;
-  previewUrl: string;
-  width: number;
-  height: number;
+  /** Только у фото: у документа превью-картинки нет. */
+  previewUrl: string | null;
+  width: number | null;
+  height: number | null;
 };
 
 type Props = {
@@ -521,10 +530,15 @@ export function ChatWidget({
     setSending(true);
 
     // Превью показываем сразу из локального файла: подписанных ссылок ещё нет.
+    // У документа превью нет — карточка рисует имя и размер.
     const previews: ChatAttachment[] = files.map((file) => ({
       id: `pending-${file.key}`,
       message_id: id,
       storage_path: "",
+      kind: file.kind,
+      mime_type: file.mimeType,
+      file_name: file.fileName,
+      size_bytes: file.blob.size,
       width: file.width,
       height: file.height,
       url: file.previewUrl,
@@ -542,19 +556,39 @@ export function ChatWidget({
 
       // Сначала байты в Storage, потом одна транзакция «сообщение + вложения».
       setAttachBusy(true);
-      const uploaded: { path: string; width: number; height: number }[] = [];
+      const uploaded: {
+        path: string;
+        kind: "image" | "document";
+        mimeType: string;
+        fileName: string;
+        sizeBytes: number;
+        width: number | null;
+        height: number | null;
+      }[] = [];
       for (const file of files) {
-        const start = await startChatAttachmentUploadAction(projectId, id);
+        const start = await startChatAttachmentUploadAction(projectId, id, {
+          kind: file.kind,
+          mimeType: file.mimeType,
+          fileName: file.fileName,
+        });
         if (!start.ok) throw new Error(start.error);
 
         const response = await fetch(start.signedUrl, {
           method: "PUT",
-          headers: { "content-type": "image/jpeg", "x-upsert": "false" },
+          headers: { "content-type": file.mimeType, "x-upsert": "false" },
           body: file.blob,
         });
         if (!response.ok) throw new Error(CHAT_ATTACHMENT_MESSAGES.uploadFailed);
 
-        uploaded.push({ path: start.path, width: file.width, height: file.height });
+        uploaded.push({
+          path: start.path,
+          kind: file.kind,
+          mimeType: file.mimeType,
+          fileName: file.fileName,
+          sizeBytes: file.blob.size,
+          width: file.width,
+          height: file.height,
+        });
       }
 
       const result = await sendMessageWithAttachmentsAction(projectId, {
@@ -569,7 +603,9 @@ export function ChatWidget({
         ...current.filter((item) => item.message_id !== id),
         ...result.attachments,
       ]);
-      for (const file of files) URL.revokeObjectURL(file.previewUrl);
+      for (const file of files) {
+        if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
+      }
     } catch (error) {
       // Откат: сообщения нет на сервере, превью убираем, текст и файлы возвращаем.
       knownIds.current.delete(id);
@@ -603,10 +639,41 @@ export function ChatWidget({
           toast.error(error);
           continue;
         }
+
+        const kind = attachmentKindForFile(file);
+        if (kind === null) {
+          toast.error(CHAT_ATTACHMENT_MESSAGES.unsupported);
+          continue;
+        }
+
+        // Документ не сжимаем: PDF и Excel сжимать нельзя, размер у него свой.
+        if (kind === "document") {
+          const mime = documentMimeFor(file.name);
+          if (!mime) {
+            toast.error(CHAT_ATTACHMENT_MESSAGES.documentUnsupported);
+            continue;
+          }
+          accepted.push({
+            key: crypto.randomUUID(),
+            kind: "document",
+            mimeType: mime,
+            fileName: file.name,
+            blob: file,
+            previewUrl: null,
+            width: null,
+            height: null,
+          });
+          count += 1;
+          continue;
+        }
+
         try {
           const compressed = await compressImage(file);
           accepted.push({
             key: crypto.randomUUID(),
+            kind: "image",
+            mimeType: "image/jpeg",
+            fileName: file.name || "photo.jpg",
             blob: compressed.blob,
             previewUrl: URL.createObjectURL(compressed.blob),
             width: compressed.width,
@@ -625,7 +692,7 @@ export function ChatWidget({
   const removePending = useCallback((key: string) => {
     setPending((current) => {
       const target = current.find((item) => item.key === key);
-      if (target) URL.revokeObjectURL(target.previewUrl);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
       return current.filter((item) => item.key !== key);
     });
   }, []);
@@ -723,9 +790,10 @@ export function ChatWidget({
                 // Имя — только над первой репликой подряд от одного человека:
                 // иначе в длинной переписке оно повторяется на каждой строке.
                 const showAuthor = shouldShowAuthor(previous, message, userId);
-                const photos = photosByMessage.get(message.id) ?? [];
-                // Крупный эмодзи — только когда фото нет: иначе шрифт боролся бы с картинкой.
-                const jumbo = photos.length > 0 ? null : jumboSize(message.body);
+                const messageFiles = photosByMessage.get(message.id) ?? [];
+                const { images, files: documents } = splitAttachments(messageFiles);
+                // Крупный эмодзи — только когда вложений нет: иначе шрифт боролся бы с картинкой.
+                const jumbo = messageFiles.length > 0 ? null : jumboSize(message.body);
                 const summary = summarizeReactions(reactionsByMessage.get(message.id) ?? [], userId);
                 return (
                   <div
@@ -782,17 +850,17 @@ export function ChatWidget({
                             : "items-start rounded-[12px] rounded-bl-[4px] bg-page text-ink",
                           jumbo ? "px-2 py-1" : "px-2.5 py-1.5 text-[12.5px]",
                           // Фото снимают внутренние отступы: картинка должна доходить до края.
-                          photos.length > 0 && "p-1",
+                          images.length > 0 && "p-1",
                         )}
                       >
-                        {photos.length > 0 ? (
+                        {images.length > 0 ? (
                           <div
                             className={cn(
                               "grid w-[228px] max-w-full gap-1",
-                              attachmentGridClass(photos.length),
+                              attachmentGridClass(images.length),
                             )}
                           >
-                            {photos.map((photo) => (
+                            {images.map((photo) => (
                               <button
                                 key={photo.id}
                                 type="button"
@@ -808,7 +876,7 @@ export function ChatWidget({
                                     alt="Фото в сообщении"
                                     className={cn(
                                       "w-full object-cover",
-                                      photos.length === 1 ? "max-h-[240px]" : "aspect-square",
+                                      images.length === 1 ? "max-h-[240px]" : "aspect-square",
                                     )}
                                   />
                                 ) : (
@@ -817,6 +885,34 @@ export function ChatWidget({
                                   </span>
                                 )}
                               </button>
+                            ))}
+                          </div>
+                        ) : null}
+                        {documents.length > 0 ? (
+                          <div className="flex w-[240px] max-w-full flex-col gap-1 px-1.5 pt-0.5">
+                            {documents.map((doc) => (
+                              <a
+                                key={doc.id}
+                                href={doc.url ?? undefined}
+                                download={doc.file_name ?? undefined}
+                                target="_blank"
+                                rel="noreferrer"
+                                className={cn(
+                                  "flex items-center gap-2 rounded-[8px] border px-2 py-1.5 text-[11.5px] transition-colors",
+                                  own
+                                    ? "border-white/30 text-white hover:bg-white/10"
+                                    : "border-line-strong bg-surface text-ink hover:bg-page",
+                                  !doc.url && "pointer-events-none opacity-60",
+                                )}
+                              >
+                                <span className="shrink-0 text-[14px] leading-none">📄</span>
+                                <span className="min-w-0 flex-1 truncate">
+                                  {doc.file_name ?? "Документ"}
+                                </span>
+                                <span className="shrink-0 text-[10.5px] opacity-70">
+                                  {formatFileSize(doc.size_bytes)}
+                                </span>
+                              </a>
                             ))}
                           </div>
                         ) : null}
@@ -964,20 +1060,29 @@ export function ChatWidget({
 
       {canPost ? (
         <div className="shrink-0 border-t border-line-strong px-2 py-2">
-          {/* Выбранные фото видны до отправки: можно убрать лишнее, пока не ушло. */}
+          {/* Выбранные файлы видны до отправки: можно убрать лишнее, пока не ушло. */}
           {pending.length > 0 ? (
             <div className="mb-1.5 flex flex-wrap gap-1.5">
               {pending.map((file) => (
                 <div key={file.key} className="relative">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- локальное превью из object URL */}
-                  <img
-                    src={file.previewUrl}
-                    alt="Выбранное фото"
-                    className="size-12 rounded-[6px] object-cover"
-                  />
+                  {file.kind === "document" || !file.previewUrl ? (
+                    <div className="flex h-12 w-[136px] flex-col justify-center rounded-[6px] border border-line-strong bg-surface px-1.5">
+                      <span className="truncate text-[10.5px] text-ink">
+                        {file.fileName}
+                      </span>
+                      <span className="text-[10px] text-meta">{formatFileSize(file.blob.size)}</span>
+                    </div>
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element -- локальное превью из object URL
+                    <img
+                      src={file.previewUrl}
+                      alt="Выбранное фото"
+                      className="size-12 rounded-[6px] object-cover"
+                    />
+                  )}
                   <button
                     type="button"
-                    aria-label="Убрать фото"
+                    aria-label={`Убрать ${file.kind === "document" ? "файл" : "фото"}`}
                     onClick={() => removePending(file.key)}
                     className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-status-alert-fg text-[9px] leading-none text-white"
                   >
@@ -1033,7 +1138,7 @@ export function ChatWidget({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept={`image/*,${CHAT_DOCUMENT_TYPES.map((type) => `.${type.extension}`).join(",")}`}
             multiple
             className="hidden"
             onChange={(event) => void pickFiles(event.target.files)}
