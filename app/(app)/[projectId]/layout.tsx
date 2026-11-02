@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { ProjectNav } from "@/components/common/project-nav";
 import { BADGE_BASE } from "@/components/common/status-badge";
+import type { ChatMessage, ChatReaction } from "@/lib/business/chat";
 import { canEditProject, projectRoleLabel } from "@/lib/business/project-roles";
 import { getProjectRole } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
@@ -44,7 +45,7 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
   const [{ data: recentMessages }, { data: readRow }, { data: members }] = await Promise.all([
     supabase
       .from("project_messages")
-      .select("id, project_id, author_id, body, created_at")
+      .select("id, project_id, author_id, body, created_at, project_message_reactions(user_id, emoji)")
       .eq("project_id", projectId)
       .order("created_at", { ascending: false })
       .limit(50),
@@ -63,6 +64,26 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
 
   const authorNames: Record<string, string | null> = Object.fromEntries(
     (members ?? []).map((member) => [member.user_id, member.full_name]),
+  );
+
+  // Реакции лежат вложенно в строках сообщений: отдельный запрос на них не нужен,
+  // а клиент не должен догружать их при открытии панели.
+  const messageRows = recentMessages ?? [];
+  const initialMessages: ChatMessage[] = messageRows
+    .map(({ id, project_id, author_id, body, created_at }) => ({
+      id,
+      project_id,
+      author_id,
+      body,
+      created_at,
+    }))
+    .reverse();
+  const initialReactions: ChatReaction[] = messageRows.flatMap((row) =>
+    (row.project_message_reactions ?? []).map((reaction) => ({
+      message_id: row.id,
+      user_id: reaction.user_id,
+      emoji: reaction.emoji,
+    })),
   );
 
   const lastReadAt = readRow?.last_read_at ?? null;
@@ -100,7 +121,8 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
           projectId={project.id}
           userId={user.id}
           canPost={canEditProject(role)}
-          initialMessages={(recentMessages ?? []).reverse()}
+          initialMessages={initialMessages}
+          initialReactions={initialReactions}
           initialUnread={unreadCount ?? 0}
           authorNames={authorNames}
           timezone={project.timezone}
