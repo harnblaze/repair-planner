@@ -39,13 +39,22 @@ insert into public.project_messages (id, project_id, author_id, body) values
 select is((select public from storage.buckets where id = 'chat-attachments'), false, 'bucket is private');
 select is(
   (select allowed_mime_types from storage.buckets where id = 'chat-attachments'),
-  array['image/jpeg']::text[],
-  'bucket accepts only image/jpeg'
+  array[
+    'image/jpeg',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/plain',
+    'text/csv'
+  ]::text[],
+  'bucket accepts photos and documents'
 );
 select is(
   (select file_size_limit from storage.buckets where id = 'chat-attachments'),
-  10485760::bigint,
-  'bucket limits files to 10 MB'
+  26214400::bigint,
+  'bucket limits files to 25 MB'
 );
 
 -- ================= Владелец A: RPC =================
