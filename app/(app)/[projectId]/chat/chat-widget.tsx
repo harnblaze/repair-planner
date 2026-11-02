@@ -13,12 +13,15 @@ import {
   authorNameOf,
   canSend,
   groupMessagesByDay,
+  isEdited,
   isOwnMessage,
   jumboSize,
   mapPresence,
   mergeMessages,
   messageTime,
   normalizeBody,
+  removeMessage,
+  removeMessageReactions,
   removeReaction,
   shouldShowAuthor,
   summarizeReactions,
@@ -33,6 +36,8 @@ import { createClient as createBrowserSupabase } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 import {
+  deleteMessageAction,
+  editMessageAction,
   loadMessagesAction,
   markChatReadAction,
   sendMessageAction,
@@ -74,6 +79,12 @@ export function ChatWidget({
   const [unread, setUnread] = useState(initialUnread);
   const [online, setOnline] = useState<OnlineUser[]>([]);
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
+  // Меню «…» у своего сообщения: правка и удаление.
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [editingFor, setEditingFor] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [confirmDeleteFor, setConfirmDeleteFor] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -165,6 +176,28 @@ export function ChatWidget({
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "project_messages", filter: `project_id=eq.${projectId}` },
           (payload) => applyRef.current([payload.new as ChatMessage]),
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "project_messages", filter: `project_id=eq.${projectId}` },
+          (payload) => {
+            // Правку сделали в другой вкладке или другим участником: заменяем текст.
+            const updated = payload.new as ChatMessage;
+            if (!knownIds.current.has(updated.id)) return;
+            setMessages((current) => mergeMessages(current, [updated]));
+          },
+        )
+        .on(
+          "postgres_changes",
+          { event: "DELETE", schema: "public", table: "project_messages" },
+          (payload) => {
+            // При DELETE приходит только первичный ключ, то есть id сообщения.
+            const id = (payload.old as { id?: string } | undefined)?.id;
+            if (!id || !knownIds.current.has(id)) return;
+            knownIds.current.delete(id);
+            setMessages((current) => removeMessage(current, id));
+            setReactions((current) => removeMessageReactions(current, id));
+          },
         )
         .on(
           "postgres_changes",
@@ -280,15 +313,17 @@ export function ChatWidget({
     return rest > 0 ? `${names.join(", ")} и ещё ${rest}` : names.join(", ");
   }, [live, othersOnline]);
 
-  // Оба всплывающих окна (пикер эмодзи и полоска реакций) закрываются по клику
-  // мимо и по Esc. Без этого пикер эмодзи висит поверх поля ввода и после
-  // отправки закрывает ленту — а закрывать его руками никто не станет.
+  // Все всплывающие окна (пикер эмодзи, реакции, меню сообщения, подтверждение
+  // удаления) закрываются по клику мимо и по Esc. Без этого пикер эмодзи висит
+  // поверх поля ввода и после отправки закрывает ленту.
   useEffect(() => {
-    if (!emojiOpen && !reactionPickerFor) return;
+    if (!emojiOpen && !reactionPickerFor && !menuFor && !confirmDeleteFor) return;
 
     const closeAll = () => {
       setEmojiOpen(false);
       setReactionPickerFor(null);
+      setMenuFor(null);
+      setConfirmDeleteFor(null);
     };
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null;
@@ -305,12 +340,13 @@ export function ChatWidget({
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [emojiOpen, reactionPickerFor]);
+  }, [emojiOpen, reactionPickerFor, menuFor, confirmDeleteFor]);
 
   const react = useCallback(
     async (messageId: string, emoji: string) => {
       if (!canPost) return;
-      setReactionPickerFor(null);      // Оптимистично: счётчик меняется сразу, ответ экшена только подтверждает.
+      setReactionPickerFor(null);
+      // Оптимистично: счётчик меняется сразу, ответ экшена только подтверждает.
       const previous = reactions;
       setReactions((current) => toggleReaction(current, messageId, emoji, userId));
       try {
@@ -325,6 +361,76 @@ export function ChatWidget({
       }
     },
     [canPost, projectId, reactions, userId],
+  );
+
+  /** Открыть правку: текст берём из сообщения, меню закрываем. */
+  const startEdit = useCallback((message: ChatMessage) => {
+    setEditingFor(message.id);
+    setEditText(message.body);
+    setMenuFor(null);
+    setConfirmDeleteFor(null);
+  }, []);
+
+  const cancelEdit = useCallback(() => {
+    setEditingFor(null);
+    setEditText("");
+    setEditSaving(false);
+  }, []);
+
+  /** Сохранить правку. Оптимизма нет: правка ждёт ответа, иначе текст прыгает. */
+  const saveEdit = useCallback(async () => {
+    if (!editingFor || !canPost) return;
+    const body = normalizeBody(editText);
+    if (!canSend(body)) {
+      toast.error("Сообщение не может быть пустым.");
+      return;
+    }
+
+    setEditSaving(true);
+    try {
+      const result = await editMessageAction(projectId, editingFor, body);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      setMessages((current) => mergeMessages(current, [result.message]));
+      cancelEdit();
+    } catch {
+      toast.error("Не удалось изменить сообщение. Проверьте связь.");
+    } finally {
+      setEditSaving(false);
+    }
+  }, [canPost, cancelEdit, editText, editingFor, projectId]);
+
+  /** Удалить: оптимистично, с откатом. Спрашиваем подтверждение заранее. */
+  const deleteMessage = useCallback(
+    async (messageId: string) => {
+      if (!canPost) return;
+      setConfirmDeleteFor(null);
+      setMenuFor(null);
+
+      const previousMessages = messages;
+      const previousReactions = reactions;
+      knownIds.current.delete(messageId);
+      setMessages((current) => removeMessage(current, messageId));
+      setReactions((current) => removeMessageReactions(current, messageId));
+
+      try {
+        const result = await deleteMessageAction(projectId, messageId);
+        if (!result.ok) {
+          knownIds.current.add(messageId);
+          setMessages(previousMessages);
+          setReactions(previousReactions);
+          toast.error(result.error);
+        }
+      } catch {
+        knownIds.current.add(messageId);
+        setMessages(previousMessages);
+        setReactions(previousReactions);
+        toast.error("Не удалось удалить сообщение. Проверьте связь.");
+      }
+    },
+    [canPost, messages, projectId, reactions],
   );
 
   const send = useCallback(async () => {
@@ -475,18 +581,56 @@ export function ChatWidget({
                         {authorNameOf(authorNames[message.author_id])}
                       </span>
                     ) : null}
-                    <div
-                      className={cn(
-                        "max-w-[85%] rounded-[12px] break-words whitespace-pre-wrap",
-                        own
-                          ? "rounded-br-[4px] bg-brand text-white"
-                          : "rounded-bl-[4px] bg-page text-ink",
-                        // Крупному эмодзи пузырь не нужен таким широким: он сам по себе строка.
-                        jumbo ? "px-2 py-1" : "px-2.5 py-1.5 text-[12.5px]",
-                      )}
-                    >
-                      <span className={jumbo ? `${jumbo} align-middle` : undefined}>{message.body}</span>
-                    </div>
+                    {editingFor === message.id ? (
+                      // Правка прямо в ленте: сохранить — Enter, отмена — Esc.
+                      <div className="flex w-full max-w-[85%] flex-col gap-1.5 rounded-[12px] border border-line-strong bg-surface p-2">
+                        <textarea
+                          value={editText}
+                          onChange={(event) => setEditText(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey) {
+                              event.preventDefault();
+                              void saveEdit();
+                            } else if (event.key === "Escape") {
+                              event.preventDefault();
+                              cancelEdit();
+                            }
+                          }}
+                          rows={3}
+                          autoFocus
+                          disabled={editSaving}
+                          aria-label="Изменить сообщение"
+                          className="min-h-[56px] w-full resize-none bg-transparent text-[12.5px] text-ink outline-none"
+                        />
+                        <div className="flex items-center gap-1.5">
+                          <Button type="button" size="sm" disabled={editSaving} onClick={() => void saveEdit()}>
+                            Сохранить
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={editSaving}
+                            onClick={cancelEdit}
+                          >
+                            Отмена
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        className={cn(
+                          "max-w-[85%] rounded-[12px] break-words whitespace-pre-wrap",
+                          own
+                            ? "rounded-br-[4px] bg-brand text-white"
+                            : "rounded-bl-[4px] bg-page text-ink",
+                          // Крупному эмодзи пузырь не нужен таким широким: он сам по себе строка.
+                          jumbo ? "px-2 py-1" : "px-2.5 py-1.5 text-[12.5px]",
+                        )}
+                      >
+                        <span className={jumbo ? `${jumbo} align-middle` : undefined}>{message.body}</span>
+                      </div>
+                    )}
                     <div className={cn("mt-0.5 flex items-center gap-1", own && "flex-row-reverse")}>
                       {summary.map((reaction) => (
                         <button
@@ -546,6 +690,73 @@ export function ChatWidget({
                       <span className="text-[10px] text-meta">
                         {messageTime(message.created_at, timezone)}
                       </span>
+                      {/* Отметку «изменено» ставит триггер (0036), клиент только читает. */}
+                      {isEdited(message) ? (
+                        <span className="text-[10px] text-meta">изменено</span>
+                      ) : null}
+                      {own && canPost ? (
+                        confirmDeleteFor === message.id ? (
+                          <span
+                            data-chat-popover
+                            className="flex items-center gap-1 rounded-full border border-line-strong bg-surface px-1.5 py-0.5 text-[10.5px] text-meta shadow-[0_4px_14px_rgba(20,30,50,0.14)]"
+                          >
+                            Удалить?
+                            <button
+                              type="button"
+                              onClick={() => void deleteMessage(message.id)}
+                              className="text-status-alert-fg hover:underline"
+                            >
+                              Да
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteFor(null)}
+                              className="hover:underline"
+                            >
+                              Нет
+                            </button>
+                          </span>
+                        ) : menuFor === message.id ? (
+                          <span
+                            data-chat-popover
+                            className="flex items-center gap-1 rounded-full border border-line-strong bg-surface px-1.5 py-0.5 text-[10.5px] text-meta shadow-[0_4px_14px_rgba(20,30,50,0.14)]"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => startEdit(message)}
+                              className="hover:underline"
+                            >
+                              Изменить
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMenuFor(null);
+                                setConfirmDeleteFor(message.id);
+                              }}
+                              className="text-status-alert-fg hover:underline"
+                            >
+                              Удалить
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            aria-label="Действия с сообщением"
+                            data-chat-popover-toggle
+                            onClick={() => {
+                              // Открывая меню, закрываем остальные всплывающие окна.
+                              setEmojiOpen(false);
+                              setReactionPickerFor(null);
+                              setConfirmDeleteFor(null);
+                              setMenuFor((current) => (current === message.id ? null : message.id));
+                            }}
+                            className="flex size-[18px] items-center justify-center rounded-full border border-line-strong bg-surface text-[11px] leading-none text-meta transition-opacity hover:bg-page md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100 md:group-focus-within:opacity-100"
+                          >
+                            ⋯
+                          </button>
+                        )
+                      ) : null}
                     </div>
                   </div>
                 );

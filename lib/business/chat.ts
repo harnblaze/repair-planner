@@ -11,6 +11,8 @@ export type ChatMessage = {
   author_id: string;
   body: string;
   created_at: string;
+  /** Когда сообщение правили (0036); null/undefined — не правили ни разу. */
+  edited_at?: string | null;
 };
 
 export const CHAT_BODY_MAX = 2000;
@@ -52,6 +54,23 @@ export function compareMessages(a: ChatMessage, b: ChatMessage): number {
 
 export function isOwnMessage(message: ChatMessage, userId: string): boolean {
   return message.author_id === userId;
+}
+
+/** Правили ли сообщение: отметку ставит триггер, клиент её только читает. */
+export function isEdited(message: ChatMessage): boolean {
+  return Boolean(message.edited_at);
+}
+
+/**
+ * Убрать сообщение из ленты. Вместе с ним уходят его реакции: иначе после
+ * удаления в состоянии остались бы чипы, ведущие в никуда.
+ */
+export function removeMessage(messages: ChatMessage[], id: string): ChatMessage[] {
+  return messages.filter((message) => message.id !== id);
+}
+
+export function removeMessageReactions(reactions: ChatReaction[], id: string): ChatReaction[] {
+  return reactions.filter((reaction) => reaction.message_id !== id);
 }
 
 /** Подпись автора: пустое имя в профиле не должно давать пустую строку. */

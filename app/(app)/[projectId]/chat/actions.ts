@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { CHAT_PAGE_SIZE } from "@/lib/business/chat";
 import {
   CHAT_BODY_MAX,
+  chatEditSchema,
   chatMessageSchema,
   reactionSchema,
   type ChatMessageInput,
@@ -26,12 +27,13 @@ type MessageRow = {
   author_id: string;
   body: string;
   created_at: string;
+  edited_at: string | null;
   project_message_reactions: { user_id: string; emoji: string }[] | null;
 };
 
 function toMessage(row: MessageRow): ChatMessage {
-  const { id, project_id, author_id, body, created_at } = row;
-  return { id, project_id, author_id, body, created_at };
+  const { id, project_id, author_id, body, created_at, edited_at } = row;
+  return { id, project_id, author_id, body, created_at, edited_at };
 }
 
 function toReactions(row: MessageRow): ChatReaction[] {
@@ -43,6 +45,8 @@ function toReactions(row: MessageRow): ChatReaction[] {
 }
 
 export type ChatSendResult = { ok: true; message: ChatMessage } | { ok: false; error: string };
+export type ChatEditResult = { ok: true; message: ChatMessage } | { ok: false; error: string };
+export type ChatDeleteResult = { ok: true } | { ok: false; error: string };
 export type ChatLoadResult =
   | { ok: true; messages: ChatMessage[]; reactions: ChatReaction[] }
   | { ok: false; error: string };
@@ -75,7 +79,7 @@ export async function sendMessageAction(
       author_id: user.id,
       body: parsed.data.body,
     })
-    .select("id, project_id, author_id, body, created_at")
+    .select("id, project_id, author_id, body, created_at, edited_at")
     .single();
 
   if (error || !data) {
@@ -94,7 +98,7 @@ export async function loadMessagesAction(projectId: string): Promise<ChatLoadRes
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("project_messages")
-    .select("id, project_id, author_id, body, created_at, project_message_reactions(user_id, emoji)")
+    .select("id, project_id, author_id, body, created_at, edited_at, project_message_reactions(user_id, emoji)")
     .eq("project_id", projectId)
     .order("created_at", { ascending: false })
     .limit(CHAT_PAGE_SIZE);
@@ -110,6 +114,84 @@ export async function loadMessagesAction(projectId: string): Promise<ChatLoadRes
     messages: rows.map(toMessage).reverse(),
     reactions: rows.flatMap(toReactions),
   };
+}
+
+/**
+ * Правка своего сообщения. Чужое не обновится: условие стоит и в запросе, и в
+ * RLS-политике (0036) — политика не должна зависеть от аккуратности экшена.
+ */
+export async function editMessageAction(
+  projectId: string,
+  messageId: string,
+  body: string,
+): Promise<ChatEditResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return { ok: false, error: denied.ok ? "Недостаточно прав." : denied.error };
+
+  const parsed = chatEditSchema.safeParse({ messageId, body });
+  if (!parsed.success) return INVALID;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Сессия истекла. Войдите заново." };
+
+  const { data, error } = await supabase
+    .from("project_messages")
+    .update({ body: parsed.data.body })
+    .eq("id", parsed.data.messageId)
+    .eq("project_id", projectId)
+    .eq("author_id", user.id)
+    .select("id, project_id, author_id, body, created_at, edited_at")
+    .maybeSingle();
+
+  if (error) {
+    console.error("editMessageAction:", error);
+    return { ok: false, error: "Не удалось изменить сообщение. Попробуйте ещё раз." };
+  }
+  if (!data) return { ok: false, error: "Можно править только свои сообщения." };
+
+  return { ok: true, message: data };
+}
+
+/** Удаление своего сообщения: реакции уходят каскадом на стороне БД. */
+export async function deleteMessageAction(
+  projectId: string,
+  messageId: string,
+): Promise<ChatDeleteResult> {
+  const denied = await requireProjectEdit(projectId);
+  if (denied) return { ok: false, error: denied.ok ? "Недостаточно прав." : denied.error };
+
+  if (!chatEditSchema.shape.messageId.safeParse(messageId).success) {
+    return { ok: false, error: "Сообщение не найдено." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Сессия истекла. Войдите заново." };
+
+  // select нужен, чтобы отличить «удалили» от «нечего было удалять»: RLS молча
+  // не отдаёт чужие строки, и без этого чужая попытка выглядела бы успехом.
+  const { data, error } = await supabase
+    .from("project_messages")
+    .delete()
+    .eq("id", messageId)
+    .eq("project_id", projectId)
+    .eq("author_id", user.id)
+    .select("id");
+
+  if (error) {
+    console.error("deleteMessageAction:", error);
+    return { ok: false, error: "Не удалось удалить сообщение. Попробуйте ещё раз." };
+  }
+  if (!data || data.length === 0) {
+    return { ok: false, error: "Можно удалять только свои сообщения." };
+  }
+
+  return { ok: true };
 }
 
 export type ChatReactionResult = { ok: true; added: boolean } | { ok: false; error: string };

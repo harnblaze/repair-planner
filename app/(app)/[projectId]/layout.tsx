@@ -45,7 +45,9 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
   const [{ data: recentMessages }, { data: readRow }, { data: members }] = await Promise.all([
     supabase
       .from("project_messages")
-      .select("id, project_id, author_id, body, created_at, project_message_reactions(user_id, emoji)")
+      .select(
+        "id, project_id, author_id, body, created_at, edited_at, project_message_reactions(user_id, emoji)",
+      )
       .eq("project_id", projectId)
       .order("created_at", { ascending: false })
       .limit(50),

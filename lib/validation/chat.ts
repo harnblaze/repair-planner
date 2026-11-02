@@ -24,6 +24,18 @@ export const chatMessageSchema = z.object({
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
 
 /**
+ * Правка сообщения: тело проверяется теми же правилами, что и при отправке
+ * (пустое или длиннее 2000 — нельзя), только вместо нового id приходит id
+ * существующего сообщения.
+ */
+export const chatEditSchema = z.object({
+  messageId: z.guid(),
+  body: chatMessageSchema.shape.body,
+});
+
+export type ChatEditInput = z.infer<typeof chatEditSchema>;
+
+/**
  * Набор реакций живёт в lib/business/chat.ts: там он нужен виджету, а этот файл
  * тянет zod — импортировать его в клиентский компонент незачем. Здесь только
  * ре-экспорт, чтобы у набора было одно определение.

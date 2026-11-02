@@ -481,8 +481,9 @@ RPC (все `set search_path = ''`, `EXECUTE` отозван у `public, anon`):
 | `id` | uuid PK | **без default**: id генерирует клиент, чтобы оптимистичная вставка и событие Realtime совпали по id и сообщение не задвоилось |
 | `project_id` | uuid not null | FK → `projects(id)` on delete cascade |
 | `author_id` | uuid not null | FK → `profiles(id)` on delete cascade; `default auth.uid()` + триггер `private.set_message_author` |
-| `body` | text not null | CHECK `length(btrim(body)) between 1 and 2000` |
-| `created_at` | timestamptz not null default now() | |
+| `body` | text not null | CHECK `length(btrim(body)) between 1 and 2000`; правка проходит тот же CHECK |
+| `created_at` | timestamptz not null default now() | правкой не меняется |
+| `edited_at` | timestamptz null | когда правили (0036); ставит триггер `project_messages_touch_edited_at` (`private.touch_message_edited_at`), клиент только читает. `null` — не правили |
 
 Индекс: `(project_id, created_at desc)`.
 
@@ -494,7 +495,7 @@ RPC (все `set search_path = ''`, `EXECUTE` отозван у `public, anon`):
 
 | Таблица | SELECT | INSERT | UPDATE | DELETE |
 |---|---|---|---|---|
-| `project_messages` | участник проекта | `project_can_edit` **и** `author_id = auth.uid()` | нет политики — правка сообщений не входит в этап | только своё сообщение, при членстве в проекте |
+| `project_messages` | участник проекта | `project_can_edit` **и** `author_id = auth.uid()` | только своё сообщение при членстве в проекте (`0036`), `with check` повторяет условие — подменить `author_id` нельзя | только своё сообщение, при членстве в проекте |
 | `project_message_reads` | только своя строка (`user_id = auth.uid()`) | только своя строка | только своя строка | нет политики |
 
 **Realtime.** `project_messages` добавлена в публикацию `supabase_realtime` (идемпотентно, с проверкой `pg_publication_tables` и `exception`-фолбэком). Публикация только включает поток изменений: RLS продолжает действовать и на Realtime — подписчик получает лишь строки, которые ему разрешено читать.

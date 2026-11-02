@@ -9,6 +9,7 @@ import {
   authorNameOf,
   canSend,
   groupMessagesByDay,
+  isEdited,
   isEmojiOnly,
   isOwnMessage,
   jumboSize,
@@ -16,6 +17,8 @@ import {
   mapPresence,
   messageTime,
   normalizeBody,
+  removeMessage,
+  removeMessageReactions,
   removeReaction,
   REACTION_EMOJI,
   shouldShowAuthor,
@@ -346,5 +349,39 @@ describe("кто онлайн", () => {
 
   it("пустое состояние — пустой список", () => {
     expect(mapPresence({})).toEqual([]);
+  });
+});
+
+describe("правка и удаление", () => {
+  it("сообщение без edited_at считается неправленым", () => {
+    expect(isEdited(message({ id: "1" }))).toBe(false);
+    expect(isEdited(message({ id: "2", edited_at: null }))).toBe(false);
+    expect(isEdited(message({ id: "3", edited_at: "2026-11-03T10:00:00Z" }))).toBe(true);
+  });
+
+  it("удаление убирает только своё сообщение и не мутирует исходный список", () => {
+    const first = message({ id: "1", created_at: "2026-11-03T09:00:00Z" });
+    const second = message({ id: "2", created_at: "2026-11-03T09:01:00Z" });
+    const list = [first, second];
+
+    expect(removeMessage(list, "1")).toEqual([second]);
+    expect(list).toHaveLength(2);
+  });
+
+  it("вместе с сообщением уходят только его реакции", () => {
+    const reactions: ChatReaction[] = [
+      { message_id: "1", user_id: "u-1", emoji: "👍" },
+      { message_id: "1", user_id: "u-2", emoji: "🔧" },
+      { message_id: "2", user_id: "u-1", emoji: "❤️" },
+    ];
+
+    expect(removeMessageReactions(reactions, "1")).toEqual([
+      { message_id: "2", user_id: "u-1", emoji: "❤️" },
+    ]);
+  });
+
+  it("пустую правку сохранить нельзя — те же правила, что при отправке", () => {
+    expect(canSend(normalizeBody("   \n  "))).toBe(false);
+    expect(canSend(normalizeBody("  исправленный текст  "))).toBe(true);
   });
 });
