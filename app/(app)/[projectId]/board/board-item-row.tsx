@@ -95,11 +95,7 @@ export function BoardItemRow({
   };
 
   const isOverdue = !item.is_done && !!item.due_date && item.due_date < today;
-  const meta = [
-    item.note,
-    item.due_date ? `до ${formatDateShort(item.due_date)}` : null,
-    item.createdByName,
-  ]
+  const meta = [item.note, item.due_date ? `до ${formatDateShort(item.due_date)}` : null]
     .filter(Boolean)
     .join(" · ");
 
@@ -121,6 +117,11 @@ export function BoardItemRow({
           <p className="text-[11.5px] text-status-alert-fg">{errors.note.message}</p>
         ) : null}
         <Input type="date" {...register("dueDate")} />
+        {/* Автор — внутри пункта, а не в строке на доске: там он теснит
+            примечание и дату, а нужен редко (page.tsx доски его передаёт). */}
+        {item.createdByName ? (
+          <p className="text-[11px] text-meta-alt">Создал: {item.createdByName}</p>
+        ) : null}
         <div className="flex items-center gap-2">
           <Button type="submit" size="sm" disabled={pending}>
             Сохранить
