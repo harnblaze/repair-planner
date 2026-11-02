@@ -1,17 +1,29 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
+  addReaction,
   applyEmoji,
   authorNameOf,
   canSend,
   groupMessagesByDay,
+  isEmojiOnly,
   isOwnMessage,
+  jumboSize,
   mergeMessages,
+  mapPresence,
   messageTime,
   normalizeBody,
+  removeReaction,
+  REACTION_EMOJI,
   shouldShowAuthor,
+  summarizeReactions,
+  toggleReaction,
   unreadCount,
   type ChatMessage,
+  type ChatReaction,
 } from "./chat";
 import { EMOJI_CATEGORIES, recentEmoji } from "./emoji";
 
@@ -189,5 +201,150 @@ describe("набор эмодзи", () => {
   it("хвост ограничен восемью", () => {
     const list = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
     expect(recentEmoji(list, "10")).toHaveLength(8);
+  });
+});
+
+describe("реакции", () => {
+  const list: ChatReaction[] = [
+    { message_id: "m1", user_id: "u1", emoji: "❤️" },
+    { message_id: "m1", user_id: "u2", emoji: "❤️" },
+    { message_id: "m1", user_id: "u2", emoji: "👍" },
+  ];
+
+  it("суммирует по эмодзи и отмечает свою", () => {
+    const summary = summarizeReactions(list, "u1");
+    expect(summary).toEqual([
+      { emoji: "👍", count: 1, mine: false },
+      { emoji: "❤️", count: 2, mine: true },
+    ]);
+  });
+
+  it("порядок — по набору, а не по времени прихода", () => {
+    const reversed = [...list].reverse();
+    expect(summarizeReactions(reversed, "u1").map((item) => item.emoji)).toEqual(["👍", "❤️"]);
+  });
+
+  it("пустая реакция не попадает в сводку", () => {
+    expect(summarizeReactions([], "u1")).toEqual([]);
+  });
+
+  it("toggle ставит и снимает свою реакцию", () => {
+    const added = toggleReaction([], "m1", "🎉", "u1");
+    expect(added).toHaveLength(1);
+    expect(toggleReaction(added, "m1", "🎉", "u1")).toEqual([]);
+  });
+
+  it("чужая реакция не снимается моим переключением", () => {
+    const next = toggleReaction([{ message_id: "m1", user_id: "u2", emoji: "👍" }], "m1", "👍", "u1");
+    expect(next).toHaveLength(2);
+    expect(next.some((reaction) => reaction.user_id === "u2")).toBe(true);
+  });
+
+  it("исходный массив не мутируется", () => {
+    const source: ChatReaction[] = [{ message_id: "m1", user_id: "u2", emoji: "👍" }];
+    toggleReaction(source, "m1", "👍", "u1");
+    expect(source).toHaveLength(1);
+  });
+});
+
+describe("крупный эмодзи", () => {
+  it("один эмодзи — крупный, включая ZWJ-семейство и ❤️", () => {
+    expect(isEmojiOnly("👍")).toBe(true);
+    expect(isEmojiOnly("👨‍👩‍👧‍👦")).toBe(true);
+    expect(isEmojiOnly("❤️")).toBe(true);
+    expect(isEmojiOnly("  👍  ")).toBe(true);
+  });
+
+  it("до трёх эмодзи вместе — ещё крупный", () => {
+    expect(isEmojiOnly("👍❤️🎉")).toBe(true);
+    expect(jumboSize("👍")).toBe("text-[34px] leading-[1.15]");
+    expect(jumboSize("👍❤️")).toBe("text-[26px] leading-[1.2]");
+  });
+
+  it("эмодзи с текстом и просто текст — не крупный", () => {
+    expect(isEmojiOnly("👍 ок")).toBe(false);
+    expect(isEmojiOnly("привет")).toBe(false);
+    expect(isEmojiOnly("")).toBe(false);
+    expect(isEmojiOnly("   ")).toBe(false);
+    expect(jumboSize("👍 ок")).toBeNull();
+  });
+
+  it("больше трёх эмодзи — обычный размер", () => {
+    expect(isEmojiOnly("👍❤️🎉😂")).toBe(false);
+    expect(jumboSize("👍❤️🎉😂")).toBeNull();
+  });
+});
+
+describe("набор реакций совпадает с CHECK в миграции", () => {
+  // База и код должны держать один список: иначе UI предложит эмодзи,
+  // который CHECK отвергнет, и пользователь увидит ошибку вместо реакции.
+  const sql = readFileSync(join(process.cwd(), "supabase/migrations/0035_message_reactions.sql"), "utf8");
+  const check = /emoji in \(([^)]*)\)/i.exec(sql)?.[1] ?? "";
+  const fromSql = [...check.matchAll(/'([^']+)'/g)].map((match) => match[1]);
+
+  it("в миграции нашлись эмодзи", () => {
+    expect(fromSql).toHaveLength(REACTION_EMOJI.length);
+  });
+
+  it("списки совпадают", () => {
+    expect([...fromSql].sort()).toEqual([...REACTION_EMOJI].sort());
+  });
+});
+
+describe("реакции из Realtime", () => {
+  const own = { message_id: "m-1", user_id: "u-1", emoji: "👍" };
+
+  it("повторное добавление не даёт двух единиц в счётчике", () => {
+    const once = addReaction([], own);
+    const twice = addReaction(once, own);
+    expect(twice).toHaveLength(1);
+  });
+
+  it("добавление чужой реакции не схлопывается с моей", () => {
+    const list = addReaction(addReaction([], own), { ...own, user_id: "u-2" });
+    expect(summarizeReactions(list, "u-1")).toEqual([{ emoji: "👍", count: 2, mine: true }]);
+  });
+
+  it("повторное удаление ничего не ломает", () => {
+    const list = addReaction([], own);
+    expect(removeReaction(removeReaction(list, own), own)).toHaveLength(0);
+  });
+
+  it("удаление чужой реакции мою не трогает", () => {
+    const list = addReaction(addReaction([], own), { ...own, user_id: "u-2" });
+    const left = removeReaction(list, { ...own, user_id: "u-2" });
+    expect(left).toHaveLength(1);
+    expect(left[0].user_id).toBe("u-1");
+  });
+});
+
+describe("кто онлайн", () => {
+  it("схлопывает две вкладки одного человека", () => {
+    const online = mapPresence({
+      "u-1": [{ user_id: "u-1", full_name: "Станислав Белов" }],
+      "u-1-tab2": [{ user_id: "u-1", full_name: "Станислав Белов" }],
+      "u-2": [{ user_id: "u-2", full_name: "Дмитрий" }],
+    });
+    expect(online).toHaveLength(2);
+    expect(online.map((user) => user.userId).sort()).toEqual(["u-1", "u-2"]);
+  });
+
+  it("без имени подписывает «Участник», а не пустой строкой", () => {
+    expect(mapPresence({ a: [{ user_id: "u-3" }] })).toEqual([
+      { userId: "u-3", fullName: "Участник" },
+    ]);
+  });
+
+  it("сортирует по имени и пропускает записи без пользователя", () => {
+    const online = mapPresence({
+      a: [{ user_id: "u-2", full_name: "Борис" }],
+      b: [{ user_id: "u-1", full_name: "Анна" }],
+      c: [{}],
+    });
+    expect(online.map((user) => user.fullName)).toEqual(["Анна", "Борис"]);
+  });
+
+  it("пустое состояние — пустой список", () => {
+    expect(mapPresence({})).toEqual([]);
   });
 });

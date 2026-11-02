@@ -501,6 +501,35 @@ RPC (все `set search_path = ''`, `EXECUTE` отозван у `public, anon`):
 
 **Чистка.** `public.purge_project_messages(p_keep interval default '12 months') returns integer` — `security definer`, `EXECUTE` только у `service_role`; расписание `pg_cron` (jobname `purge-project-messages`), при отсутствии расширения — вручную.
 
+### 5.19 `project_message_reactions` — реакции на сообщения (0035)
+
+Одна таблица на реакции к сообщениям чата.
+
+| Поле | Тип | Примечание |
+|---|---|---|
+| `message_id` | uuid not null | FK → `project_messages(id)` on delete cascade |
+| `user_id` | uuid not null | FK → `profiles(id)` on delete cascade |
+| `emoji` | text not null | CHECK: `in ('👍', '❤️', '😂', '🎉', '🔧', '👀')` — набор фиксированный |
+| `created_at` | timestamptz not null default now() | |
+| PK | `(message_id, user_id, emoji)` | один человек может поставить несколько **разных** реакций, но не две одинаковые |
+
+Индекс `(message_id)` — реакции всегда читаются пачкой по сообщениям.
+
+**Набор эмодзи намеренно закрыт.** Тот же список объявлен в `lib/business/chat.ts` (`REACTION_EMOJI`), а `lib/validation/chat.ts` его ре-экспортирует для zod-схемы; тест `lib/business/chat.test.ts` читает этот файл миграции и падает, если SQL-список и код разъехались. Иначе интерфейс предложил бы эмодзи, который CHECK отвергнет.
+
+**RLS** (все политики — `to authenticated`; условие везде одно: сообщение принадлежит доступному проекту):
+
+| Операция | Условие |
+|---|---|
+| SELECT | `exists (select 1 from project_messages m where m.id = message_id and project_access(m.project_id) is not null)` |
+| INSERT | то же **и** `user_id = auth.uid()` — реакция всегда от своего имени |
+| DELETE | то же **и** `user_id = auth.uid()` — снять можно только свою |
+| UPDATE | политики нет: реакцию не правят, её ставят или снимают |
+
+**Realtime.** Таблица добавлена в публикацию `supabase_realtime` тем же идемпотентным приёмом, что `project_messages`: реакции приходят подписчикам живьём, а RLS фильтрует поток по участникам проекта.
+
+**Каскад.** При удалении сообщения реакции уходят вместе с ним; при удалении профиля — тоже (FK `on delete cascade`).
+
 ## 6. RLS
 
 ### 6.1 Проблема рекурсии и её решение

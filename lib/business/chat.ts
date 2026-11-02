@@ -159,3 +159,143 @@ export function messageTime(iso: string, timezone: string): string {
     hour12: false,
   }).format(new Date(iso));
 }
+
+// ── Реакции ──────────────────────────────────────────────────────────────────
+
+/**
+ * Набор реакций в порядке показа. Тот же список лежит в CHECK миграции 0035;
+ * тест сверяет их, чтобы база и код не разъехались. Живёт здесь, а не в
+ * lib/validation/chat.ts: тот файл тянет zod, а виджету нужен только набор.
+ */
+export const REACTION_EMOJI = ["👍", "❤️", "😂", "🎉", "🔧", "👀"] as const;
+
+export type ReactionEmoji = (typeof REACTION_EMOJI)[number];
+
+/** Строка реакции: из БД или оптимистичная (тогда created_at не нужен). */
+export type ChatReaction = {
+  message_id: string;
+  user_id: string;
+  emoji: string;
+  created_at?: string;
+};
+
+export type ReactionSummary = { emoji: string; count: number; mine: boolean };
+
+/**
+ * Сводка по ОДНОМУ сообщению: реакции приходят уже отфильтрованными по
+ * message_id, поэтому самого сообщения в параметрах нет. Порядок — как в
+ * REACTION_EMOJI, а не по времени: кнопки не должны прыгать от каждого клика.
+ */
+export function summarizeReactions(reactions: ChatReaction[], userId: string): ReactionSummary[] {
+  const counts = new Map<string, { count: number; mine: boolean }>();
+  for (const reaction of reactions) {
+    const entry = counts.get(reaction.emoji) ?? { count: 0, mine: false };
+    entry.count += 1;
+    if (reaction.user_id === userId) entry.mine = true;
+    counts.set(reaction.emoji, entry);
+  }
+
+  return REACTION_EMOJI.flatMap((emoji) => {
+    const entry = counts.get(emoji);
+    return entry ? [{ emoji, count: entry.count, mine: entry.mine }] : [];
+  });
+}
+
+/** Оптимистичное переключение своей реакции: поставили — сняли — снова поставили. */
+export function toggleReaction(
+  reactions: ChatReaction[],
+  messageId: string,
+  emoji: string,
+  userId: string,
+): ChatReaction[] {
+  const own = (reaction: ChatReaction) =>
+    reaction.message_id === messageId && reaction.emoji === emoji && reaction.user_id === userId;
+
+  if (reactions.some(own)) {
+    return reactions.filter((reaction) => !own(reaction));
+  }
+  return [...reactions, { message_id: messageId, user_id: userId, emoji }];
+}
+
+/**
+ * Идемпотентное добавление: событие Realtime может прийти и после того, как мы
+ * уже поставили реакцию оптимистично. Дубль не должен дать две единицы в счётчике.
+ */
+export function addReaction(reactions: ChatReaction[], reaction: ChatReaction): ChatReaction[] {
+  const same = (item: ChatReaction) =>
+    item.message_id === reaction.message_id &&
+    item.user_id === reaction.user_id &&
+    item.emoji === reaction.emoji;
+  return reactions.some(same) ? reactions : [...reactions, reaction];
+}
+
+/** Идемпотентное снятие: повторный DELETE-событие ничего не ломает. */
+export function removeReaction(reactions: ChatReaction[], reaction: ChatReaction): ChatReaction[] {
+  return reactions.filter(
+    (item) =>
+      !(
+        item.message_id === reaction.message_id &&
+        item.user_id === reaction.user_id &&
+        item.emoji === reaction.emoji
+      ),
+  );
+}
+
+// ── Кто онлайн (Realtime Presence) ───────────────────────────────────────────
+
+/** Что клиент кладёт в track(); ответ presenceState() — массив таких записей. */
+export type PresenceEntry = { user_id?: string; full_name?: string };
+export type OnlineUser = { userId: string; fullName: string };
+
+/**
+ * Presence живёт только в памяти канала: «онлайн» — это открытая вкладка
+ * проекта, а не запись в базе. Повторы по одному ключу схлопываем (человек с
+ * двумя вкладками — один онлайн), безымянных не теряем: подпись «Участник».
+ */
+export function mapPresence(state: Record<string, PresenceEntry[]>): OnlineUser[] {
+  const byId = new Map<string, string>();
+  for (const entries of Object.values(state)) {
+    for (const entry of entries) {
+      if (!entry?.user_id) continue;
+      byId.set(entry.user_id, entry.full_name?.trim() || "Участник");
+    }
+  }
+  return [...byId.entries()]
+    .map(([userId, fullName]) => ({ userId, fullName }))
+    .sort((a, b) => a.fullName.localeCompare(b.fullName, "ru"));
+}
+
+// ── «Крупный эмодзи» ─────────────────────────────────────────────────────────
+
+/**
+ * Из чего состоит одна эмодзи-графема: пиктограмма, variation selector (❤️),
+ * ZWJ-склейка (👨‍👩‍👧‍👦), скинтон и keycap-рамка.
+ */
+const EMOJI_GRAPHEME = /^(?:\p{Extended_Pictographic}|\uFE0F|\u200D|[\u{1F3FB}-\u{1F3FF}]|\u20E3)+$/u;
+const HAS_PICTOGRAPH = /\p{Extended_Pictographic}/u;
+
+/** Сколько эмодзи в сообщении; пробелы по краям и между ними не считаются. */
+const EMOJI_ONLY_MAX = 3;
+
+function graphemes(body: string): string[] {
+  const trimmed = body.trim();
+  if (!trimmed) return [];
+  // Intl.Segmenter держит 👨‍👩‍👧‍👦 и ❤️ одной графемой; без него ZWJ-семейство
+  // распадается на четыре пиктограммы и «крупный эмодзи» включился бы зря.
+  return [...new Intl.Segmenter("ru", { granularity: "grapheme" }).segment(trimmed)]
+    .map((part) => part.segment)
+    .filter((part) => part.trim().length > 0);
+}
+
+/** Сообщение состоит только из эмодзи (1–3 штуки) и ни из чего больше. */
+export function isEmojiOnly(body: string): boolean {
+  const parts = graphemes(body);
+  if (parts.length < 1 || parts.length > EMOJI_ONLY_MAX) return false;
+  return parts.every((part) => EMOJI_GRAPHEME.test(part) && HAS_PICTOGRAPH.test(part));
+}
+
+/** Класс размера для «крупного эмодзи» или null, если сообщение обычное. */
+export function jumboSize(body: string): string | null {
+  if (!isEmojiOnly(body)) return null;
+  return graphemes(body).length === 1 ? "text-[34px] leading-[1.15]" : "text-[26px] leading-[1.2]";
+}

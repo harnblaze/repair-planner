@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { REACTION_EMOJI } from "@/lib/business/chat";
+
 // Зеркало CHECK из миграции 0033: body после trim — от 1 до 2000 символов.
 // Проверяем на клиенте и повторно в экшене: клиенту верить нельзя.
 export const CHAT_BODY_MAX = 2000;
@@ -20,3 +22,18 @@ export const chatMessageSchema = z.object({
 });
 
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
+
+/**
+ * Набор реакций живёт в lib/business/chat.ts: там он нужен виджету, а этот файл
+ * тянет zod — импортировать его в клиентский компонент незачем. Здесь только
+ * ре-экспорт, чтобы у набора было одно определение.
+ */
+export { REACTION_EMOJI, type ReactionEmoji } from "@/lib/business/chat";
+
+export const reactionSchema = z.object({
+  messageId: z.guid(),
+  // z.enum принимает кортеж строк — набор фиксированный, произвольные эмодзи нельзя.
+  emoji: z.enum(REACTION_EMOJI),
+});
+
+export type ReactionInput = z.infer<typeof reactionSchema>;
