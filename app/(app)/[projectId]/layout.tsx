@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 
 import { ProjectNav } from "@/components/common/project-nav";
 import { BADGE_BASE } from "@/components/common/status-badge";
-import type { ChatMessage, ChatReaction } from "@/lib/business/chat";
+import { CHAT_ATTACHMENTS_BUCKET, SIGNED_URL_TTL_SECONDS } from "@/lib/business/attachments";
+import type { ChatAttachment, ChatMessage, ChatReaction } from "@/lib/business/chat";
 import { canEditProject, projectRoleLabel } from "@/lib/business/project-roles";
 import { getProjectRole } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
@@ -46,7 +47,7 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
     supabase
       .from("project_messages")
       .select(
-        "id, project_id, author_id, body, created_at, edited_at, project_message_reactions(user_id, emoji)",
+        "id, project_id, author_id, body, created_at, edited_at, project_message_reactions(user_id, emoji), project_message_attachments(id, storage_path, width, height)",
       )
       .eq("project_id", projectId)
       .order("created_at", { ascending: false })
@@ -72,12 +73,13 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
   // а клиент не должен догружать их при открытии панели.
   const messageRows = recentMessages ?? [];
   const initialMessages: ChatMessage[] = messageRows
-    .map(({ id, project_id, author_id, body, created_at }) => ({
+    .map(({ id, project_id, author_id, body, created_at, edited_at }) => ({
       id,
       project_id,
       author_id,
       body,
       created_at,
+      edited_at,
     }))
     .reverse();
   const initialReactions: ChatReaction[] = messageRows.flatMap((row) =>
@@ -85,6 +87,34 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
       message_id: row.id,
       user_id: reaction.user_id,
       emoji: reaction.emoji,
+    })),
+  );
+
+  // Фото подписываем одним запросом на всю панель: bucket приватный, ссылки
+  // живут час и обновляются вместе со страницей.
+  const attachmentRows = messageRows.flatMap((row) => row.project_message_attachments ?? []);
+  const signedByPath = new Map<string, string>();
+  if (attachmentRows.length > 0) {
+    const { data: signed, error: signError } = await supabase.storage
+      .from(CHAT_ATTACHMENTS_BUCKET)
+      .createSignedUrls(
+        attachmentRows.map((row) => row.storage_path),
+        SIGNED_URL_TTL_SECONDS,
+      );
+    if (signError) console.error("ProjectLayout (sign chat attachments):", signError);
+    for (const item of signed ?? []) {
+      if (item.path && item.signedUrl) signedByPath.set(item.path, item.signedUrl);
+    }
+  }
+
+  const initialAttachments: ChatAttachment[] = messageRows.flatMap((row) =>
+    (row.project_message_attachments ?? []).map((attachment) => ({
+      id: attachment.id,
+      message_id: row.id,
+      storage_path: attachment.storage_path,
+      width: attachment.width,
+      height: attachment.height,
+      url: signedByPath.get(attachment.storage_path) ?? null,
     })),
   );
 
@@ -125,6 +155,7 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
           canPost={canEditProject(role)}
           initialMessages={initialMessages}
           initialReactions={initialReactions}
+          initialAttachments={initialAttachments}
           initialUnread={unreadCount ?? 0}
           authorNames={authorNames}
           timezone={project.timezone}

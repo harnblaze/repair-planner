@@ -49,3 +49,34 @@ export const reactionSchema = z.object({
 });
 
 export type ReactionInput = z.infer<typeof reactionSchema>;
+
+/**
+ * Сообщение с фото: тело может быть пустым — фото само по себе сообщение
+ * (RPC 0037 разрешает пустое тело только при наличии вложений). Проверка
+ * «есть текст или есть фото» повторяется здесь, чтобы клиент получал ответ
+ * до запроса в базу.
+ */
+export const chatAttachmentSchema = z.object({
+  path: z.string().min(1),
+  width: z.number().int().min(1).max(20000),
+  height: z.number().int().min(1).max(20000),
+});
+
+export type ChatAttachmentInput = z.infer<typeof chatAttachmentSchema>;
+
+export const chatMessageWithAttachmentsSchema = z
+  .object({
+    id: z.guid(),
+    body: z
+      .string()
+      .transform((value) => value.trim())
+      .pipe(z.string().max(CHAT_BODY_MAX, "Слишком длинное сообщение")),
+    // Верхняя граница дублирует RPC: лишние фото отсекаются до базы.
+    attachments: z.array(chatAttachmentSchema).min(1).max(4),
+  })
+  .refine((value) => value.body.length > 0 || value.attachments.length > 0, {
+    message: "Добавьте текст или фото",
+    path: ["body"],
+  });
+
+export type ChatMessageWithAttachmentsInput = z.infer<typeof chatMessageWithAttachmentsSchema>;

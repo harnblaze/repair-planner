@@ -3,13 +3,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { ChatIcon, CloseIcon } from "@/components/common/icons";
+import { AttachIcon, ChatIcon, CloseIcon } from "@/components/common/icons";
 import { Button } from "@/components/ui/button";
+import {
+  CHAT_ATTACHMENT_MESSAGES,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  firstAttachmentError,
+} from "@/lib/business/attachments";
 import {
   CHAT_BODY_MAX,
   REACTION_EMOJI,
   addReaction,
   applyEmoji,
+  attachmentGridClass,
+  attachmentsByMessage,
   authorNameOf,
   canSend,
   groupMessagesByDay,
@@ -21,16 +28,19 @@ import {
   messageTime,
   normalizeBody,
   removeMessage,
+  removeMessageAttachments,
   removeMessageReactions,
   removeReaction,
   shouldShowAuthor,
   summarizeReactions,
   toggleReaction,
+  type ChatAttachment,
   type ChatMessage,
   type ChatReaction,
   type OnlineUser,
   type PresenceEntry,
 } from "@/lib/business/chat";
+import { compressImage } from "@/lib/attachments/compress-image";
 import { EMOJI_CATEGORIES, readRecentEmoji, recentEmoji, saveRecentEmoji } from "@/lib/business/emoji";
 import { createClient as createBrowserSupabase } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -41,6 +51,8 @@ import {
   loadMessagesAction,
   markChatReadAction,
   sendMessageAction,
+  sendMessageWithAttachmentsAction,
+  startChatAttachmentUploadAction,
   toggleReactionAction,
 } from "./actions";
 import { useChatOpen } from "./use-chat-open";
@@ -51,12 +63,22 @@ const REALTIME_TIMEOUT_MS = 8000;
 // Дозапрос, пока Realtime недоступен: сообщения приходят с задержкой, зато не теряются.
 const POLL_MS = 15000;
 
+/** Фото, выбранное, но ещё не отправленное: сжатый blob и превью из object URL. */
+type PendingAttachment = {
+  key: string;
+  blob: Blob;
+  previewUrl: string;
+  width: number;
+  height: number;
+};
+
 type Props = {
   projectId: string;
   userId: string;
   canPost: boolean;
   initialMessages: ChatMessage[];
   initialReactions: ChatReaction[];
+  initialAttachments: ChatAttachment[];
   initialUnread: number;
   /** Имена участников по id (project_member_list). Чужие имена иначе не прочитать. */
   authorNames: Record<string, string | null>;
@@ -69,6 +91,7 @@ export function ChatWidget({
   canPost,
   initialMessages,
   initialReactions,
+  initialAttachments,
   initialUnread,
   authorNames,
   timezone,
@@ -76,6 +99,12 @@ export function ChatWidget({
   const [open, setOpen] = useChatOpen(projectId);
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [reactions, setReactions] = useState<ChatReaction[]>(initialReactions);
+  // Фото отправленных сообщений и фото, выбранные но ещё не отправленные.
+  const [attachments, setAttachments] = useState<ChatAttachment[]>(initialAttachments);
+  const [pending, setPending] = useState<PendingAttachment[]>([]);
+  const [attachBusy, setAttachBusy] = useState(false);
+  // Просмотр фото на весь экран: ссылка выбранного снимка.
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [unread, setUnread] = useState(initialUnread);
   const [online, setOnline] = useState<OnlineUser[]>([]);
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
@@ -101,6 +130,7 @@ export function ChatWidget({
   const knownIds = useRef(new Set(initialMessages.map((message) => message.id)));
   const listRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     openRef.current = open;
@@ -197,6 +227,31 @@ export function ChatWidget({
             knownIds.current.delete(id);
             setMessages((current) => removeMessage(current, id));
             setReactions((current) => removeMessageReactions(current, id));
+            setAttachments((current) => removeMessageAttachments(current, id));
+          },
+        )
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "project_message_attachments" },
+          () => {
+            // У нового фото нет подписанной ссылки в событии — перечитываем ленту.
+            // Событие приходит и на своё сообщение: дедуп по id не даст дубля.
+            void (async () => {
+              const result = await loadMessagesAction(projectId);
+              if (!result.ok) return;
+              applyRef.current(result.messages);
+              setReactions(result.reactions);
+              setAttachments(result.attachments);
+            })();
+          },
+        )
+        .on(
+          "postgres_changes",
+          { event: "DELETE", schema: "public", table: "project_message_attachments" },
+          (payload) => {
+            const id = (payload.old as { id?: string } | undefined)?.id;
+            if (!id) return;
+            setAttachments((current) => current.filter((item) => item.id !== id));
           },
         )
         .on(
@@ -261,8 +316,9 @@ export function ChatWidget({
       const result = await loadMessagesAction(projectId);
       if (cancelled || !result.ok) return;
       applyRef.current(result.messages);
-      // Реакции берём с сервера целиком: при опросе это источник истины.
+      // Реакции и фото берём с сервера целиком: при опросе это источник истины.
       setReactions(result.reactions);
+      setAttachments(result.attachments);
     };
     const interval = setInterval(() => void tick(), POLL_MS);
     void tick();
@@ -302,6 +358,9 @@ export function ChatWidget({
     return map;
   }, [reactions]);
 
+  // Фото раскладываем по сообщениям так же, как реакции, — один раз на рендер.
+  const photosByMessage = useMemo(() => attachmentsByMessage(attachments), [attachments]);
+
   // «Онлайн» — все, кроме себя: свой кружок в списке не нужен.
   const othersOnline = useMemo(() => online.filter((user) => user.userId !== userId), [online, userId]);
   const onlineLabel = useMemo(() => {
@@ -317,13 +376,14 @@ export function ChatWidget({
   // удаления) закрываются по клику мимо и по Esc. Без этого пикер эмодзи висит
   // поверх поля ввода и после отправки закрывает ленту.
   useEffect(() => {
-    if (!emojiOpen && !reactionPickerFor && !menuFor && !confirmDeleteFor) return;
+    if (!emojiOpen && !reactionPickerFor && !menuFor && !confirmDeleteFor && !viewerUrl) return;
 
     const closeAll = () => {
       setEmojiOpen(false);
       setReactionPickerFor(null);
       setMenuFor(null);
       setConfirmDeleteFor(null);
+      setViewerUrl(null);
     };
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null;
@@ -340,7 +400,7 @@ export function ChatWidget({
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [emojiOpen, reactionPickerFor, menuFor, confirmDeleteFor]);
+  }, [emojiOpen, reactionPickerFor, menuFor, confirmDeleteFor, viewerUrl]);
 
   const react = useCallback(
     async (messageId: string, emoji: string) => {
@@ -411,9 +471,11 @@ export function ChatWidget({
 
       const previousMessages = messages;
       const previousReactions = reactions;
+      const previousAttachments = attachments;
       knownIds.current.delete(messageId);
       setMessages((current) => removeMessage(current, messageId));
       setReactions((current) => removeMessageReactions(current, messageId));
+      setAttachments((current) => removeMessageAttachments(current, messageId));
 
       try {
         const result = await deleteMessageAction(projectId, messageId);
@@ -421,21 +483,24 @@ export function ChatWidget({
           knownIds.current.add(messageId);
           setMessages(previousMessages);
           setReactions(previousReactions);
+          setAttachments(previousAttachments);
           toast.error(result.error);
         }
       } catch {
         knownIds.current.add(messageId);
         setMessages(previousMessages);
         setReactions(previousReactions);
+        setAttachments(previousAttachments);
         toast.error("Не удалось удалить сообщение. Проверьте связь.");
       }
     },
-    [canPost, messages, projectId, reactions],
+    [attachments, canPost, messages, projectId, reactions],
   );
 
   const send = useCallback(async () => {
     const body = normalizeBody(text);
-    if (!canSend(body) || sending || !canPost) return;
+    const files = pending;
+    if ((!canSend(body) && files.length === 0) || sending || !canPost) return;
 
     // Отправили — всплывающие окна больше не нужны: они закрывали бы ленту.
     setEmojiOpen(false);
@@ -455,26 +520,115 @@ export function ChatWidget({
     setText("");
     setSending(true);
 
+    // Превью показываем сразу из локального файла: подписанных ссылок ещё нет.
+    const previews: ChatAttachment[] = files.map((file) => ({
+      id: `pending-${file.key}`,
+      message_id: id,
+      storage_path: "",
+      width: file.width,
+      height: file.height,
+      url: file.previewUrl,
+    }));
+    if (previews.length > 0) setAttachments((current) => [...current, ...previews]);
+    setPending([]);
+
     try {
-      const result = await sendMessageAction(projectId, { id, body });
-      if (!result.ok) {
-        // Откат оптимистичной вставки: сообщения нет на сервере.
-        knownIds.current.delete(id);
-        setMessages((current) => current.filter((message) => message.id !== id));
-        setText(body);
-        toast.error(result.error);
+      if (files.length === 0) {
+        const result = await sendMessageAction(projectId, { id, body });
+        if (!result.ok) throw new Error(result.error);
+        setMessages((current) => mergeMessages(current, [result.message]));
         return;
       }
+
+      // Сначала байты в Storage, потом одна транзакция «сообщение + вложения».
+      setAttachBusy(true);
+      const uploaded: { path: string; width: number; height: number }[] = [];
+      for (const file of files) {
+        const start = await startChatAttachmentUploadAction(projectId, id);
+        if (!start.ok) throw new Error(start.error);
+
+        const response = await fetch(start.signedUrl, {
+          method: "PUT",
+          headers: { "content-type": "image/jpeg", "x-upsert": "false" },
+          body: file.blob,
+        });
+        if (!response.ok) throw new Error(CHAT_ATTACHMENT_MESSAGES.uploadFailed);
+
+        uploaded.push({ path: start.path, width: file.width, height: file.height });
+      }
+
+      const result = await sendMessageWithAttachmentsAction(projectId, {
+        id,
+        body,
+        attachments: uploaded,
+      });
+      if (!result.ok) throw new Error(result.error);
+
       setMessages((current) => mergeMessages(current, [result.message]));
-    } catch {
+      setAttachments((current) => [
+        ...current.filter((item) => item.message_id !== id),
+        ...result.attachments,
+      ]);
+      for (const file of files) URL.revokeObjectURL(file.previewUrl);
+    } catch (error) {
+      // Откат: сообщения нет на сервере, превью убираем, текст и файлы возвращаем.
       knownIds.current.delete(id);
       setMessages((current) => current.filter((message) => message.id !== id));
+      setAttachments((current) => removeMessageAttachments(current, id));
       setText(body);
-      toast.error("Не удалось отправить сообщение. Проверьте связь.");
+      setPending((current) => [...files, ...current]);
+      toast.error(error instanceof Error ? error.message : "Не удалось отправить сообщение.");
     } finally {
       setSending(false);
+      setAttachBusy(false);
     }
-  }, [canPost, projectId, sending, text, userId]);
+  }, [canPost, pending, projectId, sending, text, userId]);
+
+  /**
+   * Выбор фото: проверка, сжатие в браузере, превью. На сервер ничего не уходит,
+   * пока сообщение не отправлено — иначе получились бы файлы-сироты на каждый
+   * отменённый выбор.
+   */
+  const pickFiles = useCallback(
+    async (fileList: FileList | null) => {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      const files = Array.from(fileList ?? []);
+      if (files.length === 0) return;
+
+      const accepted: PendingAttachment[] = [];
+      let count = pending.length;
+      for (const file of files) {
+        const error = firstAttachmentError(file, count);
+        if (error) {
+          toast.error(error);
+          continue;
+        }
+        try {
+          const compressed = await compressImage(file);
+          accepted.push({
+            key: crypto.randomUUID(),
+            blob: compressed.blob,
+            previewUrl: URL.createObjectURL(compressed.blob),
+            width: compressed.width,
+            height: compressed.height,
+          });
+          count += 1;
+        } catch {
+          toast.error(CHAT_ATTACHMENT_MESSAGES.unsupported);
+        }
+      }
+      if (accepted.length > 0) setPending((current) => [...current, ...accepted]);
+    },
+    [pending.length],
+  );
+
+  const removePending = useCallback((key: string) => {
+    setPending((current) => {
+      const target = current.find((item) => item.key === key);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return current.filter((item) => item.key !== key);
+    });
+  }, []);
 
   const insertEmoji = useCallback(
     (emoji: string) => {
@@ -569,7 +723,9 @@ export function ChatWidget({
                 // Имя — только над первой репликой подряд от одного человека:
                 // иначе в длинной переписке оно повторяется на каждой строке.
                 const showAuthor = shouldShowAuthor(previous, message, userId);
-                const jumbo = jumboSize(message.body);
+                const photos = photosByMessage.get(message.id) ?? [];
+                // Крупный эмодзи — только когда фото нет: иначе шрифт боролся бы с картинкой.
+                const jumbo = photos.length > 0 ? null : jumboSize(message.body);
                 const summary = summarizeReactions(reactionsByMessage.get(message.id) ?? [], userId);
                 return (
                   <div
@@ -620,15 +776,55 @@ export function ChatWidget({
                     ) : (
                       <div
                         className={cn(
-                          "max-w-[85%] rounded-[12px] break-words whitespace-pre-wrap",
+                          "flex max-w-[85%] flex-col gap-1 break-words whitespace-pre-wrap",
                           own
-                            ? "rounded-br-[4px] bg-brand text-white"
-                            : "rounded-bl-[4px] bg-page text-ink",
-                          // Крупному эмодзи пузырь не нужен таким широким: он сам по себе строка.
+                            ? "items-end rounded-[12px] rounded-br-[4px] bg-brand text-white"
+                            : "items-start rounded-[12px] rounded-bl-[4px] bg-page text-ink",
                           jumbo ? "px-2 py-1" : "px-2.5 py-1.5 text-[12.5px]",
+                          // Фото снимают внутренние отступы: картинка должна доходить до края.
+                          photos.length > 0 && "p-1",
                         )}
                       >
-                        <span className={jumbo ? `${jumbo} align-middle` : undefined}>{message.body}</span>
+                        {photos.length > 0 ? (
+                          <div
+                            className={cn(
+                              "grid w-[228px] max-w-full gap-1",
+                              attachmentGridClass(photos.length),
+                            )}
+                          >
+                            {photos.map((photo) => (
+                              <button
+                                key={photo.id}
+                                type="button"
+                                disabled={!photo.url}
+                                onClick={() => setViewerUrl(photo.url)}
+                                aria-label="Открыть фото"
+                                className="overflow-hidden rounded-[8px] bg-page"
+                              >
+                                {photo.url ? (
+                                  // eslint-disable-next-line @next/next/no-img-element -- подписанный URL из Storage, next/image тут не нужен
+                                  <img
+                                    src={photo.url}
+                                    alt="Фото в сообщении"
+                                    className={cn(
+                                      "w-full object-cover",
+                                      photos.length === 1 ? "max-h-[240px]" : "aspect-square",
+                                    )}
+                                  />
+                                ) : (
+                                  <span className="flex aspect-square items-center justify-center text-[10.5px] text-meta">
+                                    фото
+                                  </span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                        {message.body ? (
+                          <span className={jumbo ? `${jumbo} align-middle` : undefined}>
+                            {message.body}
+                          </span>
+                        ) : null}
                       </div>
                     )}
                     <div className={cn("mt-0.5 flex items-center gap-1", own && "flex-row-reverse")}>
@@ -767,7 +963,31 @@ export function ChatWidget({
       </div>
 
       {canPost ? (
-        <div className="relative flex shrink-0 items-end gap-1.5 border-t border-line-strong px-2 py-2">
+        <div className="shrink-0 border-t border-line-strong px-2 py-2">
+          {/* Выбранные фото видны до отправки: можно убрать лишнее, пока не ушло. */}
+          {pending.length > 0 ? (
+            <div className="mb-1.5 flex flex-wrap gap-1.5">
+              {pending.map((file) => (
+                <div key={file.key} className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- локальное превью из object URL */}
+                  <img
+                    src={file.previewUrl}
+                    alt="Выбранное фото"
+                    className="size-12 rounded-[6px] object-cover"
+                  />
+                  <button
+                    type="button"
+                    aria-label="Убрать фото"
+                    onClick={() => removePending(file.key)}
+                    className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-status-alert-fg text-[9px] leading-none text-white"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className="relative flex items-end gap-1.5">
           {emojiOpen ? (
             <div
               data-chat-popover
@@ -810,6 +1030,26 @@ export function ChatWidget({
             </div>
           ) : null}
 
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(event) => void pickFiles(event.target.files)}
+          />
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Прикрепить фото"
+            disabled={pending.length >= MAX_ATTACHMENTS_PER_MESSAGE || sending}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <AttachIcon size={15} />
+          </Button>
+
           <Button
             type="button"
             variant="ghost"
@@ -844,17 +1084,40 @@ export function ChatWidget({
           <Button
             type="button"
             size="sm"
-            disabled={!canSend(text) || sending}
+            disabled={(!canSend(text) && pending.length === 0) || sending}
             onClick={() => void send()}
           >
-            Отправить
+            {attachBusy ? "Грузим…" : "Отправить"}
           </Button>
+          </div>
         </div>
       ) : (
         <p className="shrink-0 border-t border-line-strong px-3 py-2 text-[11.5px] text-meta">
           Только просмотр: писать в чат могут владелец и редактор.
         </p>
       )}
+      {viewerUrl ? (
+        <div
+          role="dialog"
+          aria-label="Просмотр фото"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 p-4"
+          onClick={() => setViewerUrl(null)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element -- подписанный URL из Storage */}
+          <img src={viewerUrl} alt="Фото" className="max-h-full max-w-full rounded-[8px] object-contain" />
+          <button
+            type="button"
+            aria-label="Закрыть фото"
+            onClick={(event) => {
+              event.stopPropagation();
+              setViewerUrl(null);
+            }}
+            className="absolute top-3 right-3 flex size-8 items-center justify-center rounded-full bg-white/90 text-ink"
+          >
+            <CloseIcon size={15} />
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

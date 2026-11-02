@@ -558,6 +558,64 @@ export type Database = {
           },
         ]
       }
+      project_message_attachments: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          height: number
+          id: string
+          message_id: string
+          project_id: string
+          size_bytes: number
+          storage_path: string
+          width: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          height: number
+          id?: string
+          message_id: string
+          project_id: string
+          size_bytes: number
+          storage_path: string
+          width: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          height?: number
+          id?: string
+          message_id?: string
+          project_id?: string
+          size_bytes?: number
+          storage_path?: string
+          width?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_message_attachments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_message_attachments_message_id_project_id_fkey"
+            columns: ["message_id", "project_id"]
+            isOneToOne: false
+            referencedRelation: "project_messages"
+            referencedColumns: ["id", "project_id"]
+          },
+          {
+            foreignKeyName: "project_message_attachments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_message_reactions: {
         Row: {
           created_at: string
@@ -1426,6 +1484,10 @@ export type Database = {
     Functions: {
       accept_project_invitation: { Args: { p_token: string }; Returns: string }
       carry_over_task: { Args: { p_task_id: string }; Returns: string }
+      chat_attachment_orphans: {
+        Args: { p_limit?: number; p_project_id: string }
+        Returns: string[]
+      }
       completed_works_report: {
         Args: { p_month: string; p_project_id: string }
         Returns: {
@@ -1438,6 +1500,28 @@ export type Database = {
           task_id: string
           title: string
         }[]
+      }
+      create_chat_message: {
+        Args: {
+          p_attachments?: Json
+          p_body: string
+          p_id: string
+          p_project_id: string
+        }
+        Returns: {
+          author_id: string
+          body: string
+          created_at: string
+          edited_at: string | null
+          id: string
+          project_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "project_messages"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       create_project_invitation: {
         Args: {

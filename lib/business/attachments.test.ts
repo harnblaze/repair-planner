@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CHAT_ATTACHMENT_MESSAGES,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  MAX_SIDE,
+  MAX_SOURCE_BYTES,
   attachmentFolder,
   buildAttachmentPath,
+  canAddAttachment,
+  chatAttachmentPath,
+  firstAttachmentError,
   fitWithin,
   isValidAttachmentPath,
+  isValidChatAttachmentPath,
   isValidDimension,
-  MAX_SIDE,
   rememberSignedUrls,
   toPhotoCount,
   urlAfterLoadError,
@@ -137,5 +144,55 @@ describe("toPhotoCount", () => {
     expect(toPhotoCount([])).toBe(0);
     expect(toPhotoCount(null)).toBe(0);
     expect(toPhotoCount(undefined)).toBe(0);
+  });
+});
+
+describe("фото в чате", () => {
+  const projectId = "5eed0000-0000-4000-8000-000000000002";
+  const messageId = "0b6f4c9e-1a2b-4c3d-8e9f-0a1b2c3d4e5f";
+  const fileId = "11111111-2222-3333-4444-555555555555";
+
+  it("путь собирается из проекта, сообщения и имени файла", () => {
+    expect(chatAttachmentPath(projectId, messageId, fileId)).toBe(
+      `${projectId}/${messageId}/${fileId}.jpg`,
+    );
+  });
+
+  it("приводит путь к нижнему регистру, как Postgres печатает uuid", () => {
+    const upper = chatAttachmentPath(projectId.toUpperCase(), messageId.toUpperCase(), fileId.toUpperCase());
+    expect(upper).toBe(`${projectId}/${messageId}/${fileId}.jpg`);
+    expect(isValidChatAttachmentPath(upper, projectId, messageId)).toBe(true);
+  });
+
+  it("не принимает путь чужого проекта или сообщения", () => {
+    const path = chatAttachmentPath(projectId, messageId, fileId);
+    expect(isValidChatAttachmentPath(path, projectId, "0b6f4c9e-1a2b-4c3d-8e9f-0a1b2c3d4e60")).toBe(false);
+    expect(isValidChatAttachmentPath(path, "5eed0000-0000-4000-8000-000000000003", messageId)).toBe(false);
+  });
+
+  it("не принимает лишние сегменты и не-.jpg", () => {
+    const prefix = `${projectId}/${messageId}`;
+    expect(isValidChatAttachmentPath(`${prefix}/${fileId}.png`, projectId, messageId)).toBe(false);
+    expect(isValidChatAttachmentPath(`${prefix}/../${fileId}.jpg`, projectId, messageId)).toBe(false);
+  });
+
+  it("разрешает не больше четырёх вложений", () => {
+    expect(canAddAttachment(0)).toBe(true);
+    expect(canAddAttachment(3)).toBe(true);
+    expect(canAddAttachment(4)).toBe(false);
+  });
+
+  it("объясняет, почему файл не приложить", () => {
+    const ok = { type: "image/jpeg", size: 1024 };
+    expect(firstAttachmentError(ok, 0)).toBeNull();
+    expect(firstAttachmentError({ type: "application/pdf", size: 1024 }, 0)).toBe(
+      CHAT_ATTACHMENT_MESSAGES.unsupported,
+    );
+    expect(firstAttachmentError({ type: "image/jpeg", size: MAX_SOURCE_BYTES + 1 }, 0)).toBe(
+      CHAT_ATTACHMENT_MESSAGES.tooLarge,
+    );
+    expect(firstAttachmentError(ok, MAX_ATTACHMENTS_PER_MESSAGE)).toBe(
+      CHAT_ATTACHMENT_MESSAGES.limitReached,
+    );
   });
 });

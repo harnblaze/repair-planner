@@ -4,8 +4,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  type ChatAttachment,
+  REACTION_EMOJI,
   addReaction,
   applyEmoji,
+  attachmentGridClass,
+  attachmentsByMessage,
   authorNameOf,
   canSend,
   groupMessagesByDay,
@@ -13,14 +17,14 @@ import {
   isEmojiOnly,
   isOwnMessage,
   jumboSize,
-  mergeMessages,
   mapPresence,
+  mergeMessages,
   messageTime,
   normalizeBody,
   removeMessage,
+  removeMessageAttachments,
   removeMessageReactions,
   removeReaction,
-  REACTION_EMOJI,
   shouldShowAuthor,
   summarizeReactions,
   toggleReaction,
@@ -383,5 +387,34 @@ describe("правка и удаление", () => {
   it("пустую правку сохранить нельзя — те же правила, что при отправке", () => {
     expect(canSend(normalizeBody("   \n  "))).toBe(false);
     expect(canSend(normalizeBody("  исправленный текст  "))).toBe(true);
+  });
+});
+
+describe("вложения", () => {
+  const photo = (messageId: string, id: string): ChatAttachment => ({
+    id,
+    message_id: messageId,
+    storage_path: `p/${messageId}/${id}.jpg`,
+    width: 100,
+    height: 80,
+    url: null,
+  });
+
+  it("группирует фото по сообщениям", () => {
+    const map = attachmentsByMessage([photo("m-1", "a"), photo("m-1", "b"), photo("m-2", "c")]);
+    expect(map.get("m-1")?.map((item) => item.id)).toEqual(["a", "b"]);
+    expect(map.get("m-2")?.map((item) => item.id)).toEqual(["c"]);
+    expect(map.get("m-3")).toBeUndefined();
+  });
+
+  it("убирает фото удалённого сообщения, не трогая остальные", () => {
+    const list = [photo("m-1", "a"), photo("m-2", "b")];
+    expect(removeMessageAttachments(list, "m-1").map((item) => item.id)).toEqual(["b"]);
+  });
+
+  it("одно фото — одна колонка, несколько — две", () => {
+    expect(attachmentGridClass(1)).toBe("grid-cols-1");
+    expect(attachmentGridClass(2)).toBe("grid-cols-2");
+    expect(attachmentGridClass(4)).toBe("grid-cols-2");
   });
 });

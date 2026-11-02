@@ -318,3 +318,44 @@ export function jumboSize(body: string): string | null {
   if (!isEmojiOnly(body)) return null;
   return graphemes(body).length === 1 ? "text-[34px] leading-[1.15]" : "text-[26px] leading-[1.2]";
 }
+
+// ── Вложения ─────────────────────────────────────────────────────────────────
+
+/** Фото сообщения в том виде, в каком его рисует лента. */
+export type ChatAttachment = {
+  id: string;
+  message_id: string;
+  storage_path: string;
+  width: number;
+  height: number;
+  /** Подписанная ссылка на просмотр; null — подписать не удалось. */
+  url: string | null;
+};
+
+/** Фото по сообщениям: одна проходка вместо поиска по массиву на каждую строку. */
+export function attachmentsByMessage(
+  list: readonly ChatAttachment[],
+): Map<string, ChatAttachment[]> {
+  const map = new Map<string, ChatAttachment[]>();
+  for (const item of list) {
+    const group = map.get(item.message_id) ?? [];
+    group.push(item);
+    map.set(item.message_id, group);
+  }
+  return map;
+}
+
+/** Убрать фото удалённого сообщения. */
+export function removeMessageAttachments(
+  list: readonly ChatAttachment[],
+  messageId: string,
+): ChatAttachment[] {
+  return list.filter((item) => item.message_id !== messageId);
+}
+
+/** До четырёх фото в ряд: одно — крупно, несколько — сеткой (классы Tailwind). */
+export function attachmentGridClass(count: number): string {
+  if (count <= 1) return "grid-cols-1";
+  if (count === 2) return "grid-cols-2";
+  return "grid-cols-2";
+}

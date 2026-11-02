@@ -150,3 +150,12 @@ export function CloseIcon(props: IconProps) {
     </svg>
   );
 }
+
+/** Скрепка: прикрепить фото к сообщению. */
+export function AttachIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M10.6 4.8 5.6 9.8a1.9 1.9 0 0 0 2.7 2.7l5.3-5.3a3.1 3.1 0 0 0-4.4-4.4l-5 5a4.3 4.3 0 0 0 6.1 6.1l4.3-4.3" />
+    </svg>
+  );
+}

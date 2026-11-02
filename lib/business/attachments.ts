@@ -74,3 +74,52 @@ export function urlAfterLoadError(failedUrl: string, freshUrl: string | null): s
 export function toPhotoCount(rows: { count: number }[] | null | undefined): number {
   return rows?.[0]?.count ?? 0;
 }
+
+// ── Фото в чате ──────────────────────────────────────────────────────────────
+// Отдельный bucket: у фото переписки свои политики, и они не должны смешиваться
+// с политиками заявок (доступ к чату шире, чем к заявке).
+
+export const CHAT_ATTACHMENTS_BUCKET = "chat-attachments";
+/** Столько же разрешает RPC create_chat_message (0037) — числа обязаны совпадать. */
+export const MAX_ATTACHMENTS_PER_MESSAGE = 4;
+
+/** Сообщения об ошибках вложений чата: не в lib/errors.ts, чтобы не было цикла импортов. */
+export const CHAT_ATTACHMENT_MESSAGES = {
+  limitReached: `К сообщению можно приложить не больше ${MAX_ATTACHMENTS_PER_MESSAGE} фото.`,
+  unsupported: "Этот формат фото не поддерживается. Сохраните его как JPEG.",
+  tooLarge: "Фото слишком большое.",
+  uploadFailed: "Не удалось загрузить фото. Попробуйте ещё раз.",
+} as const;
+
+/** Папка фото сообщения. Нижний регистр — как Postgres печатает uuid в CHECK пути. */
+export function chatAttachmentFolder(projectId: string, messageId: string): string {
+  return `${projectId}/${messageId}`.toLowerCase();
+}
+
+export function chatAttachmentPath(projectId: string, messageId: string, fileId: string): string {
+  return `${chatAttachmentFolder(projectId, messageId)}/${fileId}.jpg`;
+}
+
+/** Путь ровно вида {projectId}/{messageId}/{uuid}.jpg — без лишних сегментов и `..`. */
+export function isValidChatAttachmentPath(path: string, projectId: string, messageId: string): boolean {
+  const prefix = `${chatAttachmentFolder(projectId, messageId)}/`;
+  return path.startsWith(prefix) && FILE_NAME_RE.test(path.slice(prefix.length));
+}
+
+export function canAddAttachment(count: number): boolean {
+  return count < MAX_ATTACHMENTS_PER_MESSAGE;
+}
+
+/**
+ * Почему файл нельзя приложить; null — можно. Проверки идут от самого частого:
+ * формат, размер, лимит по числу — и текст говорит, что именно не так.
+ */
+export function firstAttachmentError(
+  file: { type: string; size: number },
+  count: number,
+): string | null {
+  if (!file.type.startsWith("image/")) return CHAT_ATTACHMENT_MESSAGES.unsupported;
+  if (file.size > MAX_SOURCE_BYTES) return CHAT_ATTACHMENT_MESSAGES.tooLarge;
+  if (!canAddAttachment(count)) return CHAT_ATTACHMENT_MESSAGES.limitReached;
+  return null;
+}
