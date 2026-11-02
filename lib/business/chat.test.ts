@@ -1,0 +1,193 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  applyEmoji,
+  authorNameOf,
+  canSend,
+  groupMessagesByDay,
+  isOwnMessage,
+  mergeMessages,
+  messageTime,
+  normalizeBody,
+  shouldShowAuthor,
+  unreadCount,
+  type ChatMessage,
+} from "./chat";
+import { EMOJI_CATEGORIES, recentEmoji } from "./emoji";
+
+function message(overrides: Partial<ChatMessage> & { id: string }): ChatMessage {
+  return {
+    project_id: "p-1",
+    author_id: "u-1",
+    body: "текст",
+    created_at: "2026-11-03T10:00:00Z",
+    ...overrides,
+  };
+}
+
+describe("склейка ленты", () => {
+  it("дубль по id схлопывается: оптимистичная вставка и Realtime — одна строка", () => {
+    const optimistic = message({ id: "m-1", created_at: "2026-11-03T10:00:00Z" });
+    const fromRealtime = message({ id: "m-1", created_at: "2026-11-03T10:00:00Z", body: "текст" });
+
+    expect(mergeMessages([optimistic], [fromRealtime])).toHaveLength(1);
+  });
+
+  it("версия с сервера побеждает оптимистичную", () => {
+    const merged = mergeMessages(
+      [message({ id: "m-1", body: "как набрал" })],
+      [message({ id: "m-1", body: "как сохранилось" })],
+    );
+
+    expect(merged[0]?.body).toBe("как сохранилось");
+  });
+
+  it("порядок по времени, при равенстве — по id", () => {
+    const merged = mergeMessages(
+      [],
+      [
+        message({ id: "b", created_at: "2026-11-03T10:00:02Z" }),
+        message({ id: "a", created_at: "2026-11-03T10:00:01Z" }),
+        message({ id: "c", created_at: "2026-11-03T10:00:01Z" }),
+      ],
+    );
+
+    expect(merged.map((item) => item.id)).toEqual(["a", "c", "b"]);
+  });
+
+  it("своё сообщение распознаётся по автору", () => {
+    expect(isOwnMessage(message({ id: "m-1", author_id: "u-1" }), "u-1")).toBe(true);
+    expect(isOwnMessage(message({ id: "m-1", author_id: "u-2" }), "u-1")).toBe(false);
+  });
+});
+
+describe("подпись автора", () => {
+  const first = message({ id: "1", author_id: "u-2", created_at: "2026-11-03T09:00:00Z" });
+  const second = message({ id: "2", author_id: "u-2", created_at: "2026-11-03T09:01:00Z" });
+  const other = message({ id: "3", author_id: "u-3", created_at: "2026-11-03T09:02:00Z" });
+  const own = message({ id: "4", author_id: "u-1", created_at: "2026-11-03T09:03:00Z" });
+
+  it("имя показывается над первой репликой подряд", () => {
+    expect(shouldShowAuthor(null, first, "u-1")).toBe(true);
+    expect(shouldShowAuthor(first, second, "u-1")).toBe(false);
+  });
+
+  it("смена автора снова показывает имя", () => {
+    expect(shouldShowAuthor(second, other, "u-1")).toBe(true);
+    expect(shouldShowAuthor(other, own, "u-1")).toBe(false);
+  });
+
+  it("свои сообщения не подписываются никогда", () => {
+    expect(shouldShowAuthor(first, own, "u-1")).toBe(false);
+  });
+
+  it("пустое имя в профиле превращается в «Участник»", () => {
+    expect(authorNameOf("  Станислав Белов ")).toBe("Станислав Белов");
+    expect(authorNameOf(null)).toBe("Участник");
+    expect(authorNameOf("   ")).toBe("Участник");
+  });
+});
+
+describe("непрочитанное", () => {
+  const messages = [
+    message({ id: "1", author_id: "u-2", created_at: "2026-11-03T09:00:00Z" }),
+    message({ id: "2", author_id: "u-1", created_at: "2026-11-03T09:30:00Z" }),
+    message({ id: "3", author_id: "u-2", created_at: "2026-11-03T10:00:00Z" }),
+  ];
+
+  it("считает чужие сообщения новее отметки", () => {
+    // 09:00 — до отметки, 10:00 — после; 09:30 своё.
+    expect(unreadCount(messages, "2026-11-03T09:15:00Z", "u-1")).toBe(1);
+  });
+
+  it("свои сообщения не считаются", () => {
+    expect(unreadCount(messages, null, "u-1")).toBe(2);
+  });
+
+  it("после прочтения всего — ноль", () => {
+    expect(unreadCount(messages, "2026-11-03T10:05:00Z", "u-1")).toBe(0);
+  });
+});
+
+describe("вставка эмодзи", () => {
+  it("в конец строки", () => {
+    expect(applyEmoji("Привет", 6, 6, "🙂")).toEqual({ value: "Привет🙂", caret: 8 });
+  });
+
+  it("в середину — по позиции каретки", () => {
+    expect(applyEmoji("Привет мир", 6, 6, "🔥")).toEqual({ value: "Привет🔥 мир", caret: 8 });
+  });
+
+  it("выделение заменяется", () => {
+    expect(applyEmoji("Привет мир", 0, 6, "👋")).toEqual({ value: "👋 мир", caret: 2 });
+  });
+
+  it("каретка за границей строки не ломает вставку", () => {
+    // «✅» — один UTF-16 код, поэтому каретка встаёт на 4.
+    expect(applyEmoji("abc", 99, 99, "✅")).toEqual({ value: "abc✅", caret: 4 });
+  });
+});
+
+describe("правила отправки", () => {
+  it("пустое и пробельное не отправляется", () => {
+    expect(canSend("")).toBe(false);
+    expect(canSend("   \n ")).toBe(false);
+  });
+
+  it("обычный текст отправляется, крайние пробелы срезаются", () => {
+    expect(canSend("  привет  ")).toBe(true);
+    expect(normalizeBody("  привет  ")).toBe("привет");
+  });
+
+  it("границы длины — как CHECK в БД", () => {
+    expect(canSend("a".repeat(2000))).toBe(true);
+    expect(canSend("a".repeat(2001))).toBe(false);
+  });
+});
+
+describe("лента по дням", () => {
+  it("подписи считаются в timezone проекта", () => {
+    const groups = groupMessagesByDay(
+      [
+        message({ id: "1", created_at: "2026-11-02T20:00:00Z" }),
+        message({ id: "2", created_at: "2026-11-03T08:00:00Z" }),
+      ],
+      "Europe/Moscow",
+      "2026-11-03",
+    );
+
+    expect(groups.map((group) => group.label)).toEqual(["Вчера", "Сегодня"]);
+  });
+
+  it("сообщение вечера по Москве попадает в следующий день", () => {
+    const groups = groupMessagesByDay(
+      [message({ id: "1", created_at: "2026-11-02T22:30:00Z" })],
+      "Europe/Moscow",
+      "2026-11-03",
+    );
+
+    expect(groups[0]?.label).toBe("Сегодня");
+    expect(groups[0]?.day).toBe("2026-11-03");
+  });
+
+  it("время сообщения — в timezone проекта", () => {
+    expect(messageTime("2026-11-03T07:05:00Z", "Europe/Moscow")).toBe("10:05");
+  });
+});
+
+describe("набор эмодзи", () => {
+  it("в наборе достаточно эмодзи и нет пустых категорий", () => {
+    const total = EMOJI_CATEGORIES.reduce((sum, category) => sum + category.items.length, 0);
+    expect(total).toBeGreaterThanOrEqual(150);
+    expect(EMOJI_CATEGORIES.every((category) => category.items.length > 0)).toBe(true);
+  });
+
+  it("повтор сдвигает эмодзи в конец, а не дублирует", () => {
+    expect(recentEmoji(["😀", "🔥", "👍"], "🔥")).toEqual(["😀", "👍", "🔥"]);
+  });
+
+  it("хвост ограничен восемью", () => {
+    const list = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+    expect(recentEmoji(list, "10")).toHaveLength(8);
+  });
+});

@@ -6,6 +6,8 @@ import { canEditProject, projectRoleLabel } from "@/lib/business/project-roles";
 import { getProjectRole } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 
+import { ChatWidget } from "./chat/chat-widget";
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function ProjectLayout({ children, params }: LayoutProps<"/[projectId]">) {
@@ -19,7 +21,7 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
   const [{ data: project }, role] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, name")
+      .select("id, name, timezone")
       .eq("id", projectId)
       .is("archived_at", null)
       .maybeSingle(),
@@ -32,6 +34,52 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
   if (!project) {
     notFound();
   }
+
+  // Чат проекта: первый рендер собирается на сервере — клиент ничего не
+  // догружает, и панель не мигает пустой лентой.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const [{ data: recentMessages }, { data: readRow }, { data: members }] = await Promise.all([
+    supabase
+      .from("project_messages")
+      .select("id, project_id, author_id, body, created_at")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false })
+      .limit(50),
+    user
+      ? supabase
+          .from("project_message_reads")
+          .select("last_read_at")
+          .eq("project_id", projectId)
+          .eq("user_id", user.id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    // Имена авторов одним запросом на страницу: profiles закрыт RLS на свою
+    // строку, поэтому чужие имена доступны только через security definer.
+    supabase.rpc("project_member_list", { p_project_id: projectId }),
+  ]);
+
+  const authorNames: Record<string, string | null> = Object.fromEntries(
+    (members ?? []).map((member) => [member.user_id, member.full_name]),
+  );
+
+  const lastReadAt = readRow?.last_read_at ?? null;
+
+  // Счётчик считаем запросом, а не по загруженным 50 строкам: иначе на активном
+  // чате бейдж молча занижается.
+  const { count: unreadCount } = user
+    ? await (() => {
+        let query = supabase
+          .from("project_messages")
+          .select("id", { count: "exact", head: true })
+          .eq("project_id", projectId)
+          .neq("author_id", user.id);
+        if (lastReadAt) query = query.gt("created_at", lastReadAt);
+        return query;
+      })()
+    : { count: 0 };
 
   return (
     <div className="flex flex-1 flex-col">
@@ -47,6 +95,17 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
         <ProjectNav projectId={project.id} />
       </div>
       {children}
+      {user ? (
+        <ChatWidget
+          projectId={project.id}
+          userId={user.id}
+          canPost={canEditProject(role)}
+          initialMessages={(recentMessages ?? []).reverse()}
+          initialUnread={unreadCount ?? 0}
+          authorNames={authorNames}
+          timezone={project.timezone}
+        />
+      ) : null}
     </div>
   );
 }

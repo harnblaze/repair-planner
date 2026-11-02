@@ -558,6 +558,78 @@ export type Database = {
           },
         ]
       }
+      project_message_reads: {
+        Row: {
+          last_read_at: string
+          project_id: string
+          user_id: string
+        }
+        Insert: {
+          last_read_at?: string
+          project_id: string
+          user_id: string
+        }
+        Update: {
+          last_read_at?: string
+          project_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_message_reads_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_message_reads_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_messages: {
+        Row: {
+          author_id: string
+          body: string
+          created_at: string
+          id: string
+          project_id: string
+        }
+        Insert: {
+          author_id?: string
+          body: string
+          created_at?: string
+          id: string
+          project_id: string
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          created_at?: string
+          id?: string
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_messages_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_messages_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           archived_at: string | null
@@ -1440,6 +1512,7 @@ export type Database = {
         }[]
       }
       purge_project_activity: { Args: { p_keep?: string }; Returns: number }
+      purge_project_messages: { Args: { p_keep?: string }; Returns: number }
       receive_supply_delivery_line: {
         Args: {
           p_delivery_line_id: string

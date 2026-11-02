@@ -132,3 +132,21 @@ export function ChevronDownIcon({ size = 11, className, strokeWidth = 1.6 }: Ico
     </svg>
   );
 }
+
+/** Пузырь сообщения — кнопка чата в углу экрана. */
+export function ChatIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M13.5 9.2a1.6 1.6 0 0 1-1.6 1.6H5.2L2.5 13V4.2a1.6 1.6 0 0 1 1.6-1.6h7.8a1.6 1.6 0 0 1 1.6 1.6z" />
+    </svg>
+  );
+}
+
+/** Крестик — закрыть панель чата. */
+export function CloseIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M4 4l8 8M12 4l-8 8" />
+    </svg>
+  );
+}
