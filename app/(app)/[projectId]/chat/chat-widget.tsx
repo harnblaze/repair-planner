@@ -122,6 +122,8 @@ export function ChatWidget({
   // Сжатие большого фото занимает секунду-две, и без индикатора кажется, что
   // выбор файла ничего не сделал.
   const [preparing, setPreparing] = useState(false);
+  // Фокус в поле ввода — для подсказки про Enter.
+  const [composerFocused, setComposerFocused] = useState(false);
   // Просмотр фото на весь экран: ссылка выбранного снимка.
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [unread, setUnread] = useState(initialUnread);
@@ -390,6 +392,18 @@ export function ChatWidget({
     if (!open) return;
     void markChatReadAction(projectId);
   }, [open, projectId]);
+
+  // Поле ввода растёт по содержимому до 96 px (max-h-24), дальше — внутренний
+  // скролл. Высоту сбрасываем в auto перед чтением scrollHeight: без сброса
+  // она не уменьшается, когда текст стирают. setState здесь не нужен —
+  // правим style напрямую, поэтому правило set-state-in-effect не нарушается.
+  useEffect(() => {
+    const node = textareaRef.current;
+    if (!node) return;
+    node.style.height = "auto";
+    node.style.height = `${Math.min(node.scrollHeight, 96)}px`;
+    node.style.overflowY = node.scrollHeight > 96 ? "auto" : "hidden";
+  }, [text, open]);
 
   // Лента прилипает к низу, только если читатель внизу: иначе он читает
   // историю, а её выдёргивает к последнему сообщению.
@@ -1194,7 +1208,18 @@ export function ChatWidget({
       ) : null}
 
       {canPost ? (
-        <div className="shrink-0 border-t border-line-strong px-2 py-2">
+        <div className="relative shrink-0 border-t border-line-strong px-2 py-2">
+          {/* Подсказка не занимает места в потоке: иначе лента дёргалась бы при
+              каждом фокусе поля. Пока открыт пикер эмодзи — прячем, они бы
+              наложились друг на друга. */}
+          {(composerFocused || text.trim().length > 0) && !emojiOpen ? (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute bottom-full left-2 mb-1 rounded bg-surface/95 px-1.5 py-0.5 text-[10.5px] text-meta shadow-[0_2px_8px_rgba(20,30,50,0.12)]"
+            >
+              Enter — отправить · Shift+Enter — новая строка
+            </span>
+          ) : null}
           {/* Выбранные файлы видны до отправки: можно убрать лишнее, пока не ушло. */}
           {preparing ? (
             <p className="mb-1 text-[11px] text-meta">Готовим файлы…</p>
@@ -1321,7 +1346,9 @@ export function ChatWidget({
             rows={1}
             placeholder="Сообщение…"
             aria-label="Текст сообщения"
-            className="max-h-24 min-h-[30px] flex-1 resize-none bg-transparent px-1 py-1.5 text-[12.5px] leading-snug text-ink outline-none placeholder:text-meta"
+            onFocus={() => setComposerFocused(true)}
+            onBlur={() => setComposerFocused(false)}
+            className="max-h-24 min-h-[30px] flex-1 resize-none overflow-hidden bg-transparent px-1 py-1.5 text-[12.5px] leading-snug text-ink outline-none placeholder:text-meta"
           />
 
           <Button
