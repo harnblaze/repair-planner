@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ProjectNav } from "@/components/common/project-nav";
 import { BADGE_BASE } from "@/components/common/status-badge";
 import { CHAT_ATTACHMENTS_BUCKET, SIGNED_URL_TTL_SECONDS } from "@/lib/business/attachments";
-import type { ChatAttachment, ChatMessage, ChatReaction } from "@/lib/business/chat";
+import { CHAT_PAGE_SIZE, type ChatAttachment, type ChatMessage, type ChatReaction } from "@/lib/business/chat";
 import { canEditProject, projectRoleLabel } from "@/lib/business/project-roles";
 import { getProjectRole } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
@@ -51,7 +51,10 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
       )
       .eq("project_id", projectId)
       .order("created_at", { ascending: false })
-      .limit(50),
+      // Вторичный ключ тот же, что у пагинации: иначе на границе страницы
+      // сообщения с одинаковым временем могли бы потеряться.
+      .order("id", { ascending: false })
+      .limit(CHAT_PAGE_SIZE),
     user
       ? supabase
           .from("project_message_reads")

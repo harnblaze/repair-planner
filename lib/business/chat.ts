@@ -46,6 +46,15 @@ export function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]): 
   return [...byId.values()].sort(compareMessages);
 }
 
+/**
+ * Более ранняя страница истории: те же правила, что у mergeMessages (дедуп по
+ * id и порядок по времени), но отдельное имя — у места вызова виден смысл:
+ * старые сообщения дописываются в начало, а не заменяют ленту.
+ */
+export function mergeOlderMessages(current: ChatMessage[], older: ChatMessage[]): ChatMessage[] {
+  return mergeMessages(current, older);
+}
+
 /** Порядок ленты: по времени, при равенстве — по id, чтобы он был стабильным. */
 export function compareMessages(a: ChatMessage, b: ChatMessage): number {
   const byTime = a.created_at.localeCompare(b.created_at);
@@ -247,6 +256,32 @@ export function summarizeReactions(reactions: ChatReaction[], userId: string): R
   });
 }
 
+/**
+ * Слияние реакций двух страниц истории: дедуп по (сообщение, автор, эмодзи).
+ * Пришедшее позже побеждает — как и у сообщений.
+ */
+export function mergeReactions(current: ChatReaction[], incoming: ChatReaction[]): ChatReaction[] {
+  const key = (item: ChatReaction) => `${item.message_id}|${item.user_id}|${item.emoji}`;
+  const byKey = new Map<string, ChatReaction>();
+  for (const item of current) byKey.set(key(item), item);
+  for (const item of incoming) byKey.set(key(item), item);
+  return [...byKey.values()];
+}
+
+/**
+ * Реакции страницы после дозапроса: у сообщений этой страницы сервер — истина
+ * (реакцию могли снять с другого устройства), у ранее догруженной истории
+ * записи остаются как были — иначе они бы исчезали при каждом опросе.
+ */
+export function replacePageReactions(
+  current: ChatReaction[],
+  incoming: ChatReaction[],
+  pageIds: readonly string[],
+): ChatReaction[] {
+  const page = new Set(pageIds);
+  return [...current.filter((item) => !page.has(item.message_id)), ...incoming];
+}
+
 /** Оптимистичное переключение своей реакции: поставили — сняли — снова поставили. */
 export function toggleReaction(
   reactions: ChatReaction[],
@@ -399,6 +434,30 @@ export function removeMessageAttachments(
   messageId: string,
 ): ChatAttachment[] {
   return list.filter((item) => item.message_id !== messageId);
+}
+
+/**
+ * Слияние вложений двух страниц: дедуп по id, пришедшее позже побеждает.
+ * Это важно для ссылок: подписанная живёт час, и свежая должна заменить старую.
+ */
+export function mergeAttachments(
+  current: readonly ChatAttachment[],
+  incoming: readonly ChatAttachment[],
+): ChatAttachment[] {
+  const byId = new Map<string, ChatAttachment>();
+  for (const item of current) byId.set(item.id, item);
+  for (const item of incoming) byId.set(item.id, item);
+  return [...byId.values()];
+}
+
+/** Вложения страницы после дозапроса: см. replacePageReactions. */
+export function replacePageAttachments(
+  current: readonly ChatAttachment[],
+  incoming: readonly ChatAttachment[],
+  pageIds: readonly string[],
+): ChatAttachment[] {
+  const page = new Set(pageIds);
+  return [...current.filter((item) => !page.has(item.message_id)), ...incoming];
 }
 
 /** До четырёх фото в ряд: одно — крупно, несколько — сеткой (классы Tailwind). */

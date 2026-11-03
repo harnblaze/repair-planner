@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { AttachIcon, ChatIcon, CloseIcon } from "@/components/common/icons";
@@ -16,6 +16,7 @@ import {
 } from "@/lib/business/attachments";
 import {
   CHAT_BODY_MAX,
+  CHAT_PAGE_SIZE,
   authorInitials,
   REACTION_EMOJI,
   addReaction,
@@ -25,6 +26,11 @@ import {
   authorNameOf,
   canSend,
   groupMessagesByDay,
+  mergeAttachments,
+  mergeOlderMessages,
+  mergeReactions,
+  replacePageAttachments,
+  replacePageReactions,
   isEdited,
   isOwnMessage,
   isNearBottom,
@@ -127,9 +133,20 @@ export function ChatWidget({
   // Просмотр фото на весь экран: ссылка выбранного снимка.
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [unread, setUnread] = useState(initialUnread);
+  // Есть ли ещё более ранние сообщения: пока сервер не сказал иначе, считаем,
+  // что полная страница значит «возможно, дальше что-то есть».
+  const [hasMore, setHasMore] = useState(initialMessages.length >= CHAT_PAGE_SIZE);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const loadingOlderRef = useRef(false);
   // «Новые сообщения»: сколько пришло, пока читатель листал историю выше.
   const [newCount, setNewCount] = useState(0);
   const atBottomRef = useRef(true);
+  /** Позиция до вставки истории: высоту компенсируем сразу после рендера. */
+  const restoreRef = useRef<{ height: number; top: number } | null>(null);
+  // Была ли панель открыта в прошлом проходе: при открытии лента должна
+  // оказаться внизу, даже если новых сообщений не пришло.
+  const wasOpenRef = useRef(false);
+  const lastIdRef = useRef<string | null>(initialMessages.at(-1)?.id ?? null);
   const [online, setOnline] = useState<OnlineUser[]>([]);
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
   // Меню «…» у своего сообщения: правка и удаление.
@@ -374,9 +391,12 @@ export function ChatWidget({
       const result = await loadMessagesAction(projectId);
       if (cancelled || !result.ok) return;
       applyRef.current(result.messages);
-      // Реакции и фото берём с сервера целиком: при опросе это источник истины.
-      setReactions(result.reactions);
-      setAttachments(result.attachments);
+      // Реакции и фото этой страницы берём с сервера целиком — там источник
+      // истины (реакцию могли снять с другого устройства). Записи догруженной
+      // истории опрос не знает и трогать не должен, иначе они бы исчезали.
+      const pageIds = result.messages.map((message) => message.id);
+      setReactions((current) => replacePageReactions(current, result.reactions, pageIds));
+      setAttachments((current) => replacePageAttachments(current, result.attachments, pageIds));
     };
     const interval = setInterval(() => void tick(), intervalMs);
     void tick();
@@ -408,14 +428,38 @@ export function ChatWidget({
     node.style.overflowY = node.scrollHeight > 96 ? "auto" : "hidden";
   }, [text, open]);
 
-  // Лента прилипает к низу, только если читатель внизу: иначе он читает
-  // историю, а её выдёргивает к последнему сообщению.
-  useEffect(() => {
-    if (!open) return;
+  // Вставка истории в начало: компенсируем прирост высоты в том же кадре,
+  // до отрисовки. Без этого читаемое сообщение уехало бы вниз на высоту
+  // догруженных — ровно на столько вырос scrollHeight.
+  useLayoutEffect(() => {
+    const pending = restoreRef.current;
+    if (!pending) return;
+    restoreRef.current = null;
     const node = listRef.current;
     if (!node) return;
-    const lastOwn = messages[messages.length - 1]?.author_id === userId;
-    if (atBottomRef.current || lastOwn) node.scrollTop = node.scrollHeight;
+    node.scrollTop = pending.top + (node.scrollHeight - pending.height);
+  }, [messages]);
+
+  // Лента прилипает к низу, только если читатель внизу: иначе он читает
+  // историю, а её выдёргивает к последнему сообщению. Прыжок — только на
+  // действительно новое сообщение (подгрузка истории последнее не меняет)
+  // или на открытие панели.
+  useEffect(() => {
+    if (!open) {
+      wasOpenRef.current = false;
+      return;
+    }
+    const node = listRef.current;
+    if (!node) return;
+    const lastId = messages.at(-1)?.id ?? null;
+    const justOpened = !wasOpenRef.current;
+    wasOpenRef.current = true;
+    const appended = lastId !== lastIdRef.current;
+    lastIdRef.current = lastId;
+    const lastOwn = messages.at(-1)?.author_id === userId;
+    if (justOpened || (appended && (atBottomRef.current || lastOwn))) {
+      node.scrollTop = node.scrollHeight;
+    }
   }, [messages, open, userId]);
 
   const onListScroll = useCallback(() => {
@@ -432,6 +476,48 @@ export function ChatWidget({
     atBottomRef.current = true;
     setNewCount(0);
   }, []);
+
+  /**
+   * Более ранняя страница. Позицию держим вручную: после вставки в начало
+   * scrollHeight вырастает на высоту новых сообщений, и без компенсации
+   * читаемое уехало бы вниз ровно на столько же.
+   */
+  const loadOlder = useCallback(async () => {
+    const oldest = messages[0];
+    // Ref, а не состояние: двойной клик успевает пройти до перерисовки.
+    if (loadingOlderRef.current || !hasMore || !oldest) return;
+
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const result = await loadMessagesAction(projectId, {
+        createdAt: oldest.created_at,
+        id: oldest.id,
+      });
+      if (!result.ok) {
+        toast.error("Не удалось загрузить историю");
+        return;
+      }
+
+      for (const message of result.messages) knownIds.current.add(message.id);
+      // Позицию запоминаем в ref: layout-эффект вернёт её сразу после вставки
+      // узлов, в том же кадре — до того, как читатель увидит прыжок. Высоту
+      // читаем здесь, а не до запроса: за время ответа могли прийти новые.
+      const node = listRef.current;
+      if (result.messages.length > 0 && node) {
+        restoreRef.current = { height: node.scrollHeight, top: node.scrollTop };
+      }
+      setMessages((current) => mergeOlderMessages(current, result.messages));
+      setReactions((current) => mergeReactions(current, result.reactions));
+      setAttachments((current) => mergeAttachments(current, result.attachments));
+      setHasMore(result.hasMore);
+    } catch {
+      toast.error("Не удалось загрузить историю");
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  }, [hasMore, messages, projectId]);
 
   const groups = useMemo(
     () => groupMessagesByDay(messages, timezone),
@@ -884,6 +970,22 @@ export function ChatWidget({
         onScroll={onListScroll}
         className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto bg-page/60 px-2.5 py-2"
       >
+        {hasMore ? (
+          // Кнопка живёт в начале ленты: история догружается вверх, туда же,
+          // куда читатель и смотрит.
+          <div className="flex shrink-0 justify-center py-0.5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="default"
+              disabled={loadingOlder}
+              onClick={() => void loadOlder()}
+              className="rounded-full px-3 text-[11.5px] text-meta"
+            >
+              {loadingOlder ? "Загружаем…" : "Показать более ранние"}
+            </Button>
+          </div>
+        ) : null}
         {groups.length === 0 ? (
           <p className="m-auto max-w-[220px] text-center text-[12px] text-meta">
             Сообщений пока нет. Напишите первым.

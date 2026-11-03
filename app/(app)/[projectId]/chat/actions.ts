@@ -121,9 +121,28 @@ async function signAttachments(
 export type ChatSendResult = { ok: true; message: ChatMessage } | { ok: false; error: string };
 export type ChatEditResult = { ok: true; message: ChatMessage } | { ok: false; error: string };
 export type ChatDeleteResult = { ok: true } | { ok: false; error: string };
+
+/** Курсор истории: сообщение, до которого уже догружено (самое старое в ленте). */
+export type ChatHistoryCursor = { createdAt: string; id: string };
+
 export type ChatLoadResult =
-  | { ok: true; messages: ChatMessage[]; reactions: ChatReaction[]; attachments: ChatAttachment[] }
+  | {
+      ok: true;
+      messages: ChatMessage[];
+      reactions: ChatReaction[];
+      attachments: ChatAttachment[];
+      /** Есть ли ещё более ранние сообщения — по этому флагу живёт кнопка. */
+      hasMore: boolean;
+    }
   | { ok: false; error: string };
+
+/**
+ * Время для фильтра PostgREST. Смещение UTC переводим в «Z»: «+» в строке
+ * запроса декодируется как пробел, и сервер получил бы битую дату.
+ */
+function cursorTime(iso: string): string {
+  return iso.replace(" ", "T").replace(/\+00:00$/, "Z");
+}
 
 /** Отправка: id приходит от клиента и связывает оптимистичную вставку с серверной строкой. */
 export async function sendMessageAction(
@@ -164,27 +183,54 @@ export async function sendMessageAction(
   return { ok: true, message: data };
 }
 
-/** Последние сообщения и их реакции — для первого рендера и дозапроса после реконнекта. */
-export async function loadMessagesAction(projectId: string): Promise<ChatLoadResult> {
+/**
+ * Последние сообщения и их реакции — для первого рендера и дозапроса после
+ * реконнекта. С курсором `before` отдаёт предыдущую страницу истории (кнопка
+ * «Показать более ранние»).
+ *
+ * Порядок — по времени, при равенстве по id: uuid сравнимы в Postgres, и такой
+ * же вторичный ключ стоит в курсоре. Одного created_at мало: несколько
+ * сообщений в одну микросекунду отличимы только по id, и без него страница
+ * либо зацикливалась бы, либо теряла строки.
+ */
+export async function loadMessagesAction(
+  projectId: string,
+  before?: ChatHistoryCursor,
+): Promise<ChatLoadResult> {
   const role = await getProjectRole(projectId);
   if (!role) return { ok: false, error: "Нет доступа к проекту." };
 
   const supabase = await createClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from("project_messages")
     .select(
       "id, project_id, author_id, body, created_at, edited_at, project_message_reactions(user_id, emoji), project_message_attachments(id, storage_path, kind, mime_type, file_name, size_bytes, width, height)",
     )
-    .eq("project_id", projectId)
+    .eq("project_id", projectId);
+
+  if (before) {
+    const at = cursorTime(before.createdAt);
+    // Строго до курсора; при совпадении времени — по id, чтобы страницы не
+    // пересекались и не теряли сообщения одного «момента».
+    query = query.or(`created_at.lt.${at},and(created_at.eq.${at},id.lt.${before.id})`);
+  }
+
+  // На одну строку больше страницы: по ней честно видно, есть ли что-то раньше.
+  const { data, error } = await query
     .order("created_at", { ascending: false })
-    .limit(CHAT_PAGE_SIZE);
+    .order("id", { ascending: false })
+    .limit(CHAT_PAGE_SIZE + 1);
 
   if (error) {
     console.error("loadMessagesAction:", error);
     return { ok: false, error: "Не удалось загрузить чат." };
   }
 
-  const rows = (data ?? []) as MessageRow[];
+  const fetched = (data ?? []) as MessageRow[];
+  // Заказано «от новых к старым», поэтому лишняя строка — самая старая из
+  // выборки: её отдадим следующим нажатием, чтобы не отдавать меньше страницы.
+  const hasMore = fetched.length > CHAT_PAGE_SIZE;
+  const rows = hasMore ? fetched.slice(0, CHAT_PAGE_SIZE) : fetched;
   const urlByPath = await signAttachments(supabase, rows);
 
   // Уборка «сирот» по активности: не чаще раза в сутки на проект. Ошибки
@@ -196,6 +242,7 @@ export async function loadMessagesAction(projectId: string): Promise<ChatLoadRes
     messages: rows.map(toMessage).reverse(),
     reactions: rows.flatMap(toReactions),
     attachments: rows.flatMap((row) => toAttachments(row, urlByPath)),
+    hasMore,
   };
 }
 

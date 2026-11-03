@@ -20,8 +20,13 @@ import {
   isOwnMessage,
   jumboSize,
   mapPresence,
+  mergeAttachments,
   mergeMessages,
+  mergeOlderMessages,
+  mergeReactions,
   messageTime,
+  replacePageAttachments,
+  replacePageReactions,
   normalizeBody,
   removeMessage,
   removeMessageAttachments,
@@ -469,5 +474,82 @@ describe("лента: прилипание к низу", () => {
 
   it("лента короче окна — считаем, что внизу", () => {
     expect(isNearBottom(0, 300, 500)).toBe(true);
+  });
+});
+
+describe("история: страницы", () => {
+  function attachment(overrides: Partial<ChatAttachment> & { id: string }): ChatAttachment {
+    return {
+      message_id: "m-1",
+      storage_path: "p/1.jpg",
+      kind: "image",
+      mime_type: "image/jpeg",
+      file_name: null,
+      size_bytes: 100,
+      width: 10,
+      height: 10,
+      url: "https://example.test/1.jpg",
+      ...overrides,
+    };
+  }
+
+  it("более ранняя страница встаёт перед лентой, а не заменяет её", () => {
+    const current = [message({ id: "m-3", created_at: "2026-11-03T10:00:00Z" })];
+    const older = [message({ id: "m-2", created_at: "2026-11-03T09:00:00Z" })];
+
+    expect(mergeOlderMessages(current, older).map((item) => item.id)).toEqual(["m-2", "m-3"]);
+  });
+
+  it("пересечение страниц схлопывается по id: дубля в ленте нет", () => {
+    const current = [
+      message({ id: "m-2", created_at: "2026-11-03T09:00:00Z" }),
+      message({ id: "m-3", created_at: "2026-11-03T10:00:00Z" }),
+    ];
+    const older = [
+      message({ id: "m-1", created_at: "2026-11-03T08:00:00Z" }),
+      message({ id: "m-2", created_at: "2026-11-03T09:00:00Z", body: "с сервера" }),
+    ];
+
+    const merged = mergeOlderMessages(current, older);
+
+    expect(merged.map((item) => item.id)).toEqual(["m-1", "m-2", "m-3"]);
+    expect(merged[1]?.body).toBe("с сервера");
+  });
+
+  it("реакции двух страниц склеиваются без дублей", () => {
+    const reaction: ChatReaction = { message_id: "m-1", user_id: "u-1", emoji: "👍" };
+    const merged = mergeReactions([reaction], [{ ...reaction }]);
+
+    expect(merged).toHaveLength(1);
+  });
+
+  it("дозапрос заменяет реакции только тех сообщений, что пришли в странице", () => {
+    const old = { message_id: "m-old", user_id: "u-1", emoji: "🔥" };
+    const stale = { message_id: "m-1", user_id: "u-1", emoji: "👍" };
+    const fresh = { message_id: "m-1", user_id: "u-2", emoji: "❤️" };
+
+    const result = replacePageReactions([old, stale], [fresh], ["m-1"]);
+
+    expect(result).toEqual([old, fresh]);
+  });
+
+  it("вложения склеиваются по id, свежая ссылка побеждает", () => {
+    const merged = mergeAttachments(
+      [attachment({ id: "a-1", url: "https://example.test/old.jpg" })],
+      [attachment({ id: "a-1", url: "https://example.test/new.jpg" })],
+    );
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.url).toBe("https://example.test/new.jpg");
+  });
+
+  it("дозапрос заменяет вложения только тех сообщений, что пришли в странице", () => {
+    const old = attachment({ id: "a-old", message_id: "m-old" });
+    const stale = attachment({ id: "a-1", message_id: "m-1" });
+    const fresh = attachment({ id: "a-2", message_id: "m-1" });
+
+    const result = replacePageAttachments([old, stale], [fresh], ["m-1"]);
+
+    expect(result).toEqual([old, fresh]);
   });
 });
