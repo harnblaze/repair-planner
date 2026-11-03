@@ -29,6 +29,17 @@ export const CHANGELOG_KIND_LABEL: Record<ChangelogKind, string> = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-11-03-password-eye",
+    date: "2026-11-03",
+    title: "Пароль можно показать",
+    items: [
+      {
+        kind: "new",
+        text: "В полях пароля появился «глазик»: можно посмотреть, что набрали, не перепечатывая — при входе, регистрации и смене пароля.",
+      },
+    ],
+  },
+  {
     id: "2026-11-03-chat-replies",
     date: "2026-11-03",
     title: "Ответы на сообщения",

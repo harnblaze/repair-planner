@@ -152,6 +152,27 @@ export function SearchIcon(props: IconProps) {
   );
 }
 
+/** Открытый глаз — показать пароль. */
+export function EyeIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M1.6 8S4 4.4 8 4.4 14.4 8 14.4 8 12 11.6 8 11.6 1.6 8 1.6 8Z" />
+      <circle cx="8" cy="8" r="1.9" />
+    </svg>
+  );
+}
+
+/** Перечёркнутый глаз — скрыть пароль. */
+export function EyeOffIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M2.2 2.2l11.6 11.6" />
+      <path d="M6.3 4.6A7.1 7.1 0 0 1 8 4.4c4 0 6.4 3.6 6.4 3.6a12.4 12.4 0 0 1-2.3 2.6" />
+      <path d="M4.3 5.7A12.4 12.4 0 0 0 1.6 8s2.4 3.6 6.4 3.6c.9 0 1.7-.2 2.4-.5" />
+    </svg>
+  );
+}
+
 /** Стрелка-ответ: ответить на сообщение, вернуться к оригиналу. */
 export function ReplyIcon(props: IconProps) {
   return (

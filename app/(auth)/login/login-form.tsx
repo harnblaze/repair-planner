@@ -9,6 +9,7 @@ import { useForm } from "react-hook-form";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { loginSchema, type LoginInput } from "@/lib/validation/auth";
 
@@ -62,12 +63,7 @@ export function LoginForm() {
             Забыли пароль?
           </Link>
         </div>
-        <Input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          {...register("password")}
-        />
+        <PasswordInput id="password" autoComplete="current-password" {...register("password")} />
         {errors.password ? (
           <p className="text-[11.5px] text-status-alert-fg">{errors.password.message}</p>
         ) : null}

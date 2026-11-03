@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { resetPasswordSchema, type ResetPasswordInput } from "@/lib/validation/auth";
 
@@ -66,12 +66,7 @@ export function ResetPasswordForm() {
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="password">Новый пароль</Label>
-        <Input
-          id="password"
-          type="password"
-          autoComplete="new-password"
-          {...register("password")}
-        />
+        <PasswordInput id="password" autoComplete="new-password" {...register("password")} />
         {errors.password ? (
           <p className="text-[11.5px] text-status-alert-fg">{errors.password.message}</p>
         ) : null}
@@ -79,9 +74,8 @@ export function ResetPasswordForm() {
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="confirmPassword">Повторите пароль</Label>
-        <Input
+        <PasswordInput
           id="confirmPassword"
-          type="password"
           autoComplete="new-password"
           {...register("confirmPassword")}
         />
