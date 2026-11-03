@@ -19,6 +19,8 @@ import { addDays } from "@/lib/business/working-days";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 
+import { MarkActivitySeen } from "./mark-activity-seen";
+
 export const metadata: Metadata = {
   title: "Лента проекта — Планировщик",
 };
@@ -85,6 +87,8 @@ export default async function ProjectActivityPage({ params, searchParams }: Page
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-5 pt-6 pb-7">
+      {/* Открыли ленту — она прочитана до самой свежей записи. */}
+      <MarkActivitySeen projectId={projectId} latestAt={visible[0]?.created_at ?? null} />
       <Card>
         <CardHeader>
           <CardTitle>Лента проекта</CardTitle>
