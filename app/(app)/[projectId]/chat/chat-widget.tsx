@@ -616,7 +616,15 @@ export function ChatWidget({
       setAttachments((current) => removeMessageAttachments(current, id));
       setText(body);
       setPending((current) => [...files, ...current]);
-      toast.error(error instanceof Error ? error.message : "Не удалось отправить сообщение.");
+      // Сетевой сбой браузер отдаёт как «Failed to fetch» — показывать это
+      // человеку бессмысленно, переводим в понятную фразу.
+      const message =
+        error instanceof Error && /failed to fetch|networkerror|load failed/i.test(error.message)
+          ? "Нет связи. Проверьте интернет и попробуйте ещё раз."
+          : error instanceof Error
+            ? error.message
+            : "Не удалось отправить сообщение.";
+      toast.error(message);
     } finally {
       setSending(false);
       setAttachBusy(false);
