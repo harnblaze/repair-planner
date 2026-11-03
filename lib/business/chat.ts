@@ -316,7 +316,7 @@ export function isEmojiOnly(body: string): boolean {
 /** Класс размера для «крупного эмодзи» или null, если сообщение обычное. */
 export function jumboSize(body: string): string | null {
   if (!isEmojiOnly(body)) return null;
-  return graphemes(body).length === 1 ? "text-[34px] leading-[1.15]" : "text-[26px] leading-[1.2]";
+  return graphemes(body).length === 1 ? "text-[30px] leading-[1.1]" : "text-[22px] leading-[1.2]";
 }
 
 // ── Вложения ─────────────────────────────────────────────────────────────────

@@ -265,8 +265,9 @@ describe("крупный эмодзи", () => {
 
   it("до трёх эмодзи вместе — ещё крупный", () => {
     expect(isEmojiOnly("👍❤️🎉")).toBe(true);
-    expect(jumboSize("👍")).toBe("text-[34px] leading-[1.15]");
-    expect(jumboSize("👍❤️")).toBe("text-[26px] leading-[1.2]");
+    // Кегли подобраны под узкую панель чата (364 px): 34 px выглядели плашкой.
+    expect(jumboSize("👍")).toBe("text-[30px] leading-[1.1]");
+    expect(jumboSize("👍❤️")).toBe("text-[22px] leading-[1.2]");
   });
 
   it("эмодзи с текстом и просто текст — не крупный", () => {

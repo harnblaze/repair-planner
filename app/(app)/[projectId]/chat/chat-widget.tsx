@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { AttachIcon, ChatIcon, CloseIcon } from "@/components/common/icons";
+import { executorsInitials } from "@/lib/business/executor-names";
 import { Button } from "@/components/ui/button";
 import {
   CHAT_ATTACHMENT_MESSAGES,
@@ -765,7 +766,7 @@ export function ChatWidget({
   return (
     <section
       aria-label="Чат проекта"
-      className="fixed inset-x-0 bottom-0 z-40 flex h-[80dvh] flex-col overflow-hidden rounded-t-2xl border border-line-strong bg-surface shadow-[0_-8px_30px_rgba(20,30,50,0.18)] md:inset-x-auto md:right-4 md:bottom-[calc(1rem+env(safe-area-inset-bottom))] md:h-[70dvh] md:w-[360px] md:rounded-xl md:shadow-[0_10px_34px_rgba(20,30,50,0.2)]"
+      className="fixed inset-x-0 bottom-0 z-40 flex h-[46dvh] flex-col overflow-hidden rounded-t-2xl border border-line-strong bg-surface shadow-[0_-8px_30px_rgba(20,30,50,0.18)] md:inset-x-auto md:right-4 md:bottom-[calc(1rem+env(safe-area-inset-bottom))] md:h-[36dvh] md:max-h-[440px] md:w-[364px] md:rounded-2xl md:shadow-[0_12px_40px_rgba(20,30,50,0.22)]"
     >
       <header className="flex shrink-0 items-center justify-between gap-2 border-b border-line-strong px-3 py-2">
         <div className="flex min-w-0 flex-col">
@@ -791,7 +792,10 @@ export function ChatWidget({
         </Button>
       </header>
 
-      <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-3">
+      <div
+        ref={listRef}
+        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto bg-page/60 px-2.5 py-2"
+      >
         {groups.length === 0 ? (
           <p className="m-auto max-w-[220px] text-center text-[12px] text-meta">
             Сообщений пока нет. Напишите первым.
@@ -819,7 +823,12 @@ export function ChatWidget({
                     className={cn("group flex flex-col", own ? "items-end" : "items-start")}
                   >
                     {showAuthor ? (
-                      <span className="mb-0.5 text-[10.5px] font-medium text-meta">
+                      <span className="mb-0.5 flex items-center gap-1 text-[10.5px] font-medium text-meta">
+                        {own ? null : (
+                          <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-brand/15 text-[8.5px] font-semibold text-brand">
+                            {executorsInitials([authorNameOf(authorNames[message.author_id])])}
+                          </span>
+                        )}
                         {authorNameOf(authorNames[message.author_id])}
                       </span>
                     ) : null}
@@ -862,19 +871,22 @@ export function ChatWidget({
                     ) : (
                       <div
                         className={cn(
-                          "flex max-w-[85%] flex-col gap-1 break-words whitespace-pre-wrap",
-                          own
-                            ? "items-end rounded-[12px] rounded-br-[4px] bg-brand text-white"
-                            : "items-start rounded-[12px] rounded-bl-[4px] bg-page text-ink",
-                          jumbo ? "px-2 py-1" : "px-2.5 py-1.5 text-[12.5px]",
+                          "flex flex-col gap-1 break-words whitespace-pre-wrap",
+                          // Крупный эмодзи — без пузыря и без ограничения ширины: в
+                          // цветной плашке он читается как иконка, а max-w режет глиф.
+                          jumbo
+                            ? "bg-transparent p-0 text-ink"
+                            : own
+                              ? "max-w-[85%] items-end rounded-[14px] rounded-br-[5px] bg-brand px-2.5 py-1.5 text-[12.5px] text-white"
+                              : "max-w-[85%] items-start rounded-[14px] rounded-bl-[5px] border border-line-strong bg-surface px-2.5 py-1.5 text-[12.5px] text-ink",
                           // Фото снимают внутренние отступы: картинка должна доходить до края.
-                          images.length > 0 && "p-1",
+                          images.length > 0 && "max-w-[85%] p-1",
                         )}
                       >
                         {images.length > 0 ? (
                           <div
                             className={cn(
-                              "grid w-[228px] max-w-full gap-1",
+                              "grid w-[196px] max-w-full gap-1",
                               attachmentGridClass(images.length),
                             )}
                           >
@@ -894,7 +906,7 @@ export function ChatWidget({
                                     alt="Фото в сообщении"
                                     className={cn(
                                       "w-full object-cover",
-                                      images.length === 1 ? "max-h-[240px]" : "aspect-square",
+                                      images.length === 1 ? "max-h-[196px]" : "aspect-square",
                                     )}
                                   />
                                 ) : (
@@ -1113,7 +1125,7 @@ export function ChatWidget({
               ))}
             </div>
           ) : null}
-          <div className="relative flex items-end gap-1.5">
+          <div className="relative flex items-end gap-0.5 rounded-[22px] border border-line-strong bg-page px-1 py-0.5 focus-within:border-brand">
           {emojiOpen ? (
             <div
               data-chat-popover
@@ -1204,12 +1216,13 @@ export function ChatWidget({
             rows={1}
             placeholder="Сообщение…"
             aria-label="Текст сообщения"
-            className="max-h-24 min-h-[30px] flex-1 resize-none rounded-[7px] border border-control bg-surface px-2 py-1.5 text-[12.5px] text-ink outline-none focus-visible:border-brand"
+            className="max-h-24 min-h-[30px] flex-1 resize-none bg-transparent px-1 py-1.5 text-[12.5px] leading-snug text-ink outline-none placeholder:text-meta"
           />
 
           <Button
             type="button"
             size="sm"
+            className="mb-0.5 shrink-0 rounded-full px-3"
             disabled={(!canSend(text) && pending.length === 0) || sending}
             onClick={() => void send()}
           >
