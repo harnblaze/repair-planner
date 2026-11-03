@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { AttachIcon, ChatIcon, CloseIcon, SearchIcon } from "@/components/common/icons";
+import { AttachIcon, ChatIcon, CloseIcon, ReplyIcon, SearchIcon } from "@/components/common/icons";
 import { Button } from "@/components/ui/button";
 import {
   CHAT_ATTACHMENT_MESSAGES,
@@ -41,6 +41,8 @@ import {
   mapPresence,
   mentionParts,
   mergeMessages,
+  fromChatRow,
+  quotePreview,
   messageTime,
   normalizeBody,
   searchSnippet,
@@ -54,6 +56,7 @@ import {
   toggleReaction,
   type ChatAttachment,
   type ChatMessage,
+  type ChatMessageRow,
   type ChatReaction,
   type OnlineUser,
   type PresenceEntry,
@@ -143,6 +146,8 @@ export function ChatWidget({
   // Просмотр фото на весь экран: ссылка выбранного снимка.
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [unread, setUnread] = useState(initialUnread);
+  // Ответ на сообщение: полоса над полем ввода и цитата в будущем пузыре.
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   // Есть ли ещё более ранние сообщения: пока сервер не сказал иначе, считаем,
   // что полная страница значит «возможно, дальше что-то есть».
   const [hasMore, setHasMore] = useState(initialMessages.length >= CHAT_PAGE_SIZE);
@@ -369,7 +374,7 @@ export function ChatWidget({
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "project_messages", filter: `project_id=eq.${projectId}` },
           (payload) => {
-            applyRef.current([payload.new as ChatMessage]);
+            applyRef.current([fromChatRow(payload.new as ChatMessageRow)]);
           },
         )
         .on(
@@ -377,7 +382,7 @@ export function ChatWidget({
           { event: "UPDATE", schema: "public", table: "project_messages", filter: `project_id=eq.${projectId}` },
           (payload) => {
             // Правку сделали в другой вкладке или другим участником: заменяем текст.
-            const updated = payload.new as ChatMessage;
+            const updated = fromChatRow(payload.new as ChatMessageRow);
             if (!knownIds.current.has(updated.id)) return;
             setMessages((current) => mergeMessages(current, [updated]));
           },
@@ -872,6 +877,8 @@ export function ChatWidget({
   const send = useCallback(async () => {
     const body = normalizeBody(text);
     const files = pending;
+    // Снимаем адресата в момент отправки: пока идёт запрос, полосу могут закрыть.
+    const replyTarget = replyTo;
     if ((!canSend(body) && files.length === 0) || sending || !canPost) return;
 
     // Отправили — всплывающие окна больше не нужны: они закрывали бы ленту.
@@ -886,6 +893,12 @@ export function ChatWidget({
       author_id: userId,
       body,
       created_at: new Date().toISOString(),
+      // Цитата из локального состояния: ждать сервер незачем, она уже известна.
+      reply_to_id: replyTarget?.id ?? null,
+      reply_to: replyTarget
+        ? { id: replyTarget.id, body: replyTarget.body, author_id: replyTarget.author_id }
+        : null,
+      reply_deleted: false,
     };
 
     knownIds.current.add(id);
@@ -912,9 +925,14 @@ export function ChatWidget({
 
     try {
       if (files.length === 0) {
-        const result = await sendMessageAction(projectId, { id, body });
+        const result = await sendMessageAction(projectId, {
+          id,
+          body,
+          replyToId: replyTarget?.id,
+        });
         if (!result.ok) throw new Error(result.error);
         setMessages((current) => mergeMessages(current, [result.message]));
+        setReplyTo(null);
         return;
       }
 
@@ -959,10 +977,12 @@ export function ChatWidget({
         id,
         body,
         attachments: uploaded,
+        replyToId: replyTarget?.id,
       });
       if (!result.ok) throw new Error(result.error);
 
       setMessages((current) => mergeMessages(current, [result.message]));
+      setReplyTo(null);
       setAttachments((current) => [
         ...current.filter((item) => item.message_id !== id),
         ...result.attachments,
@@ -990,7 +1010,7 @@ export function ChatWidget({
       setSending(false);
       setAttachBusy(false);
     }
-  }, [canPost, pending, projectId, sending, text, userId]);
+  }, [canPost, pending, projectId, replyTo, sending, text, userId]);
 
   /**
    * Выбор фото: проверка, сжатие в браузере, превью. На сервер ничего не уходит,
@@ -1402,6 +1422,43 @@ export function ChatWidget({
                           images.length > 0 && "max-w-[85%] p-1",
                         )}
                       >
+                        {message.reply_to || message.reply_deleted ? (
+                          message.reply_deleted ? (
+                            // Оригинал удалили: снимок остался, ссылка обнулилась (0039).
+                            <div
+                              className={cn(
+                                "w-full max-w-[220px] rounded-[8px] border-l-2 px-1.5 py-0.5 text-[10.5px]",
+                                own
+                                  ? "border-white/50 bg-white/10 text-white/80"
+                                  : "border-line-card-hover bg-page text-meta",
+                              )}
+                            >
+                              Сообщение удалено
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const target = message.reply_to;
+                                if (target) void jumpToMessage(target.id);
+                              }}
+                              aria-label="Перейти к сообщению, на которое ответили"
+                              className={cn(
+                                "w-full max-w-[220px] rounded-[8px] border-l-2 px-1.5 py-0.5 text-left text-[10.5px] transition-colors",
+                                own
+                                  ? "border-white/50 bg-white/10 text-white/85 hover:bg-white/15"
+                                  : "border-brand/50 bg-page text-ink-soft hover:bg-row-hover",
+                              )}
+                            >
+                              <span className="block truncate font-medium">
+                                {authorNameOf(authorNames[message.reply_to?.author_id ?? ""])}
+                              </span>
+                              <span className="block truncate opacity-80">
+                                {quotePreview(message.reply_to?.body ?? "")}
+                              </span>
+                            </button>
+                          )
+                        ) : null}
                         {images.length > 0 ? (
                           <div
                             className={cn(
@@ -1525,6 +1582,23 @@ export function ChatWidget({
                           <span className="tabular-nums">{reaction.count}</span>
                         </button>
                       ))}
+                      {canPost ? (
+                        <button
+                          type="button"
+                          aria-label="Ответить"
+                          onClick={() => {
+                            // Ответ — жест, который отменяет открытые поповеры.
+                            setReplyTo(message);
+                            setEmojiOpen(false);
+                            setReactionPickerFor(null);
+                            setMenuFor(null);
+                            textareaRef.current?.focus();
+                          }}
+                          className="flex size-[18px] items-center justify-center rounded-full border border-line-strong bg-surface text-meta transition-opacity hover:bg-page md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100 md:group-focus-within:opacity-100"
+                        >
+                          <ReplyIcon size={11} />
+                        </button>
+                      ) : null}
                       {canPost ? (
                         reactionPickerFor === message.id ? (
                           <div
@@ -1700,6 +1774,31 @@ export function ChatWidget({
                   </button>
                 </div>
               ))}
+            </div>
+          ) : null}
+          {/* Полоса ответа не участвует в автовысоте поля: это отдельный блок
+              над ним, поэтому цитата не «дёргает» набор. */}
+          {replyTo ? (
+            <div className="mb-1 flex items-start gap-1.5 rounded-[8px] border-l-2 border-brand bg-page px-2 py-1">
+              <div className="min-w-0 flex-1">
+                <span className="block truncate text-[10.5px] font-medium text-ink">
+                  Ответ: {authorNameOf(authorNames[replyTo.author_id])}
+                </span>
+                <span className="block truncate text-[10.5px] text-meta">
+                  {quotePreview(replyTo.body)}
+                </span>
+              </div>
+              <button
+                type="button"
+                aria-label="Отменить ответ"
+                onClick={() => {
+                  setReplyTo(null);
+                  textareaRef.current?.focus();
+                }}
+                className="flex size-[18px] shrink-0 items-center justify-center rounded-full text-meta transition-colors hover:bg-surface hover:text-ink"
+              >
+                <CloseIcon size={11} />
+              </button>
             </div>
           ) : null}
           <div className="relative flex items-end gap-0.5 rounded-[22px] border border-line-strong bg-page px-1 py-0.5 focus-within:border-brand">

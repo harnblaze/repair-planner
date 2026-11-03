@@ -152,6 +152,16 @@ export function SearchIcon(props: IconProps) {
   );
 }
 
+/** Стрелка-ответ: ответить на сообщение, вернуться к оригиналу. */
+export function ReplyIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M6.2 4.4 3 7.6l3.2 3.2" />
+      <path d="M3.4 7.6h5.4a4.2 4.2 0 0 1 4.2 4.2v.6" />
+    </svg>
+  );
+}
+
 /** Крестик — закрыть панель чата. */
 export function CloseIcon(props: IconProps) {
   return (

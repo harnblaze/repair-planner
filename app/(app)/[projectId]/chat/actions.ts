@@ -20,7 +20,7 @@ import type { ChatAttachment, ChatMessage, ChatReaction } from "@/lib/business/c
 import { canEditProject } from "@/lib/business/project-roles";
 import { getProjectRole, requireProjectEdit } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
-import { CHAT_PAGE_SIZE, escapeLikePattern } from "@/lib/business/chat";
+import { CHAT_PAGE_SIZE, escapeLikePattern, fromChatRow } from "@/lib/business/chat";
 import {
   CHAT_BODY_MAX,
   chatEditSchema,
@@ -47,6 +47,9 @@ type MessageRow = {
   body: string;
   created_at: string;
   edited_at: string | null;
+  reply_to_id: string | null;
+  reply_to_body: string | null;
+  reply_to_author_id: string | null;
   project_message_reactions: { user_id: string; emoji: string }[] | null;
   project_message_attachments:
     | {
@@ -63,8 +66,9 @@ type MessageRow = {
 };
 
 function toMessage(row: MessageRow): ChatMessage {
-  const { id, project_id, author_id, body, created_at, edited_at } = row;
-  return { id, project_id, author_id, body, created_at, edited_at };
+  // Цитату собирает fromChatRow из снимка: join тут не нужен, и Realtime с ним
+  // тоже работал бы — там приходят только колонки строки.
+  return fromChatRow(row);
 }
 
 function toReactions(row: MessageRow): ChatReaction[] {
@@ -144,6 +148,30 @@ function cursorTime(iso: string): string {
   return iso.replace(" ", "T").replace(/\+00:00$/, "Z");
 }
 
+/** Оригинал ответа пропал, пока его выбирали (удалили в другой вкладке). */
+const REPLY_GONE = {
+  ok: false as const,
+  error: "Сообщение, на которое отвечаете, больше недоступно.",
+};
+
+/**
+ * Проверка адресата ответа до вставки: понятная ошибка вместо текста триггера.
+ * Повторная проверка стоит в БД (0039) — клиенту верить нельзя.
+ */
+async function replyTargetExists(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+  replyToId: string,
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("project_messages")
+    .select("id")
+    .eq("id", replyToId)
+    .eq("project_id", projectId)
+    .maybeSingle();
+  return Boolean(data);
+}
+
 /** Отправка: id приходит от клиента и связывает оптимистичную вставку с серверной строкой. */
 export async function sendMessageAction(
   projectId: string,
@@ -164,6 +192,10 @@ export async function sendMessageAction(
 
   if (!user) return { ok: false, error: "Сессия истекла. Войдите заново." };
 
+  if (parsed.data.replyToId && !(await replyTargetExists(supabase, projectId, parsed.data.replyToId))) {
+    return REPLY_GONE;
+  }
+
   const { data, error } = await supabase
     .from("project_messages")
     .insert({
@@ -171,16 +203,19 @@ export async function sendMessageAction(
       project_id: projectId,
       author_id: user.id,
       body: parsed.data.body,
+      reply_to_id: parsed.data.replyToId ?? null,
     })
-    .select("id, project_id, author_id, body, created_at, edited_at")
+    .select("id, project_id, author_id, body, created_at, edited_at, reply_to_id, reply_to_body, reply_to_author_id")
     .single();
 
   if (error || !data) {
     console.error("sendMessageAction:", error);
+    // Триггер 0039 не нашёл оригинал (его удалили между выбором и отправкой).
+    if (error?.message?.includes("reply_target_invalid")) return REPLY_GONE;
     return { ok: false, error: "Не удалось отправить сообщение. Попробуйте ещё раз." };
   }
 
-  return { ok: true, message: data };
+  return { ok: true, message: fromChatRow(data) };
 }
 
 /**
@@ -204,7 +239,7 @@ export async function loadMessagesAction(
   let query = supabase
     .from("project_messages")
     .select(
-      "id, project_id, author_id, body, created_at, edited_at, project_message_reactions(user_id, emoji), project_message_attachments(id, storage_path, kind, mime_type, file_name, size_bytes, width, height)",
+      "id, project_id, author_id, body, created_at, edited_at, reply_to_id, reply_to_body, reply_to_author_id, project_message_reactions(user_id, emoji), project_message_attachments(id, storage_path, kind, mime_type, file_name, size_bytes, width, height)",
     )
     .eq("project_id", projectId);
 
@@ -268,7 +303,7 @@ export async function searchMessagesAction(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("project_messages")
-    .select("id, project_id, author_id, body, created_at, edited_at, project_message_attachments(id)")
+    .select("id, project_id, author_id, body, created_at, edited_at, reply_to_id, reply_to_body, reply_to_author_id, project_message_attachments(id)")
     .eq("project_id", projectId)
     .ilike("body", `%${escapeLikePattern(term)}%`)
     .order("created_at", { ascending: false })
@@ -657,18 +692,27 @@ export async function sendMessageWithAttachmentsAction(
     });
   }
 
-  const { data: message, error } = await supabase.rpc("create_chat_message", {
+  if (parsed.data.replyToId && !(await replyTargetExists(supabase, projectId, parsed.data.replyToId))) {
+    return REPLY_GONE;
+  }
+
+  const { data: messageRow, error } = await supabase.rpc("create_chat_message", {
     p_project_id: projectId,
     p_id: parsed.data.id,
     p_body: parsed.data.body,
     p_attachments: attachments,
+    // Аргумент необязательный: явный null тип не принимает, undefined — да.
+    p_reply_to_id: parsed.data.replyToId,
   });
 
-  if (error || !message) {
+  if (error || !messageRow) {
     const known = Object.keys(RPC_ERRORS).find((code) => error?.message?.includes(code));
     console.error("sendMessageWithAttachmentsAction (rpc):", error);
+    if (error?.message?.includes("reply_target_invalid")) return REPLY_GONE;
     return { ok: false, error: known ? RPC_ERRORS[known] : CHAT_UPLOAD_FAILED };
   }
+
+  const message = fromChatRow(messageRow);
 
   const { data: rows, error: rowsError } = await supabase
     .from("project_message_attachments")
@@ -681,7 +725,7 @@ export async function sendMessageWithAttachmentsAction(
   const urlByPath = await signAttachments(
     supabase,
     (rows ?? []).map((row) => ({
-      ...message,
+      ...messageRow,
       project_message_reactions: null,
       project_message_attachments: [row],
     })) as MessageRow[],

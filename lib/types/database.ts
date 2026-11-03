@@ -702,6 +702,9 @@ export type Database = {
           edited_at: string | null
           id: string
           project_id: string
+          reply_to_author_id: string | null
+          reply_to_body: string | null
+          reply_to_id: string | null
         }
         Insert: {
           author_id?: string
@@ -710,6 +713,9 @@ export type Database = {
           edited_at?: string | null
           id: string
           project_id: string
+          reply_to_author_id?: string | null
+          reply_to_body?: string | null
+          reply_to_id?: string | null
         }
         Update: {
           author_id?: string
@@ -718,6 +724,9 @@ export type Database = {
           edited_at?: string | null
           id?: string
           project_id?: string
+          reply_to_author_id?: string | null
+          reply_to_body?: string | null
+          reply_to_id?: string | null
         }
         Relationships: [
           {
@@ -732,6 +741,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_messages_reply_to_fkey"
+            columns: ["reply_to_id"]
+            isOneToOne: false
+            referencedRelation: "project_messages"
             referencedColumns: ["id"]
           },
         ]
@@ -1517,6 +1533,7 @@ export type Database = {
           p_body: string
           p_id: string
           p_project_id: string
+          p_reply_to_id?: string
         }
         Returns: {
           author_id: string
@@ -1525,6 +1542,9 @@ export type Database = {
           edited_at: string | null
           id: string
           project_id: string
+          reply_to_author_id: string | null
+          reply_to_body: string | null
+          reply_to_id: string | null
         }
         SetofOptions: {
           from: "*"

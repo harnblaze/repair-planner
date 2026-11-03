@@ -18,7 +18,78 @@ export type ChatMessage = {
    * берёт вложения отдельным списком, а строке результата хватает флага.
    */
   has_attachments?: boolean;
+  /** На какое сообщение отвечаем: id для перехода к оригиналу (0039). */
+  reply_to_id?: string | null;
+  /** Цитата: снимок оригинала на момент ответа. Пусто — это не ответ. */
+  reply_to?: ChatReply | null;
+  /**
+   * Оригинал удалили: ссылка обнулилась (FK on delete set null), а снимок
+   * остался — по нему и рисуется «Сообщение удалено».
+   */
+  reply_deleted?: boolean;
 };
+
+/** Цитата в ответе: id оригинала, его текст и автор на момент ответа. */
+export type ChatReply = {
+  id: string;
+  body: string;
+  author_id: string;
+};
+
+/** Строка project_messages так, как её отдают select и Realtime. */
+export type ChatMessageRow = {
+  id: string;
+  project_id: string;
+  author_id: string;
+  body: string;
+  created_at: string;
+  edited_at?: string | null;
+  reply_to_id?: string | null;
+  reply_to_body?: string | null;
+  reply_to_author_id?: string | null;
+};
+
+/**
+ * Строка БД → сообщение ленты. Цитата собирается из снимка, а не из join:
+ * Realtime присылает только колонки строки, и вложенную связь туда не положить —
+ * с join цитата появлялась бы только после дозапроса.
+ */
+export function fromChatRow(row: ChatMessageRow): ChatMessage {
+  const hasSnapshot = typeof row.reply_to_body === "string";
+  return {
+    id: row.id,
+    project_id: row.project_id,
+    author_id: row.author_id,
+    body: row.body,
+    created_at: row.created_at,
+    edited_at: row.edited_at ?? null,
+    reply_to_id: row.reply_to_id ?? null,
+    reply_to: hasSnapshot
+      ? {
+          id: row.reply_to_id ?? "",
+          body: row.reply_to_body as string,
+          author_id: row.reply_to_author_id ?? "",
+        }
+      : null,
+    reply_deleted: hasSnapshot && !row.reply_to_id,
+  };
+}
+
+/** Сколько символов цитаты показываем в пузыре и в полосе ответа. */
+export const REPLY_PREVIEW_MAX = 90;
+
+/**
+ * Текст цитаты одной строкой: переводы строк схлопываются, длина режется по
+ * границе слова. Пустое тело (сообщение из одних файлов) — «Вложение».
+ */
+export function quotePreview(body: string, max = REPLY_PREVIEW_MAX): string {
+  const flat = body.replace(/\s+/g, " ").trim();
+  if (!flat) return "Вложение";
+  if (flat.length <= max) return flat;
+  const cut = flat.slice(0, max);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
 
 export const CHAT_BODY_MAX = 2000;
 

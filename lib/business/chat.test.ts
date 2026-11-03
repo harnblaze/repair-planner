@@ -16,6 +16,8 @@ import {
   authorNameOf,
   canSend,
   escapeLikePattern,
+  fromChatRow,
+  quotePreview,
   highlightParts,
   groupMessagesByDay,
   isEdited,
@@ -724,5 +726,84 @@ describe("applyMention", () => {
 
   it("без @ вставляет имя в позицию каретки", () => {
     expect(applyMention("привет ", 7, "Иван")).toEqual({ value: "привет @Иван ", caret: 13 });
+  });
+});
+
+describe("fromChatRow", () => {
+  const base = {
+    id: "11111111-1111-4111-8111-111111111111",
+    project_id: "22222222-2222-4222-8222-222222222222",
+    author_id: "33333333-3333-4333-8333-333333333333",
+    body: "привет",
+    created_at: "2026-11-03T10:00:00+00:00",
+  };
+
+  it("обычное сообщение без цитаты", () => {
+    const message = fromChatRow({ ...base, reply_to_id: null, reply_to_body: null, reply_to_author_id: null });
+    expect(message.reply_to).toBeNull();
+    expect(message.reply_deleted).toBe(false);
+  });
+
+  it("ответ собирает цитату из снимка", () => {
+    const message = fromChatRow({
+      ...base,
+      reply_to_id: "44444444-4444-4444-8444-444444444444",
+      reply_to_body: "оригинал",
+      reply_to_author_id: "55555555-5555-4555-8555-555555555555",
+    });
+    expect(message.reply_to).toEqual({
+      id: "44444444-4444-4444-8444-444444444444",
+      body: "оригинал",
+      author_id: "55555555-5555-4555-8555-555555555555",
+    });
+    expect(message.reply_deleted).toBe(false);
+  });
+
+  it("удалённый оригинал: ссылки нет, снимок остался", () => {
+    const message = fromChatRow({
+      ...base,
+      reply_to_id: null,
+      reply_to_body: "оригинал",
+      reply_to_author_id: "55555555-5555-4555-8555-555555555555",
+    });
+    expect(message.reply_deleted).toBe(true);
+    expect(message.reply_to?.body).toBe("оригинал");
+  });
+
+  it("пустое тело оригинала — тоже цитата", () => {
+    const message = fromChatRow({
+      ...base,
+      reply_to_id: "44444444-4444-4444-8444-444444444444",
+      reply_to_body: "",
+      reply_to_author_id: null,
+    });
+    expect(message.reply_to?.body).toBe("");
+    expect(message.reply_deleted).toBe(false);
+  });
+});
+
+describe("quotePreview", () => {
+  it("схлопывает переводы строк", () => {
+    expect(quotePreview("первая\nвторая\n\nтретья")).toBe("первая вторая третья");
+  });
+
+  it("короткий текст отдаёт целиком", () => {
+    expect(quotePreview("коротко")).toBe("коротко");
+  });
+
+  it("режет по границе слова и ставит многоточие", () => {
+    const long = "слово ".repeat(40);
+    const preview = quotePreview(long.trim(), 20);
+    expect(preview.endsWith("…")).toBe(true);
+    expect(preview.length).toBeLessThanOrEqual(21);
+    expect(preview).not.toContain("  ");
+  });
+
+  it("без пробелов режет по символу", () => {
+    expect(quotePreview("а".repeat(30), 10)).toBe(`${"а".repeat(10)}…`);
+  });
+
+  it("пустое тело — «Вложение»", () => {
+    expect(quotePreview("   ")).toBe("Вложение");
   });
 });

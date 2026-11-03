@@ -10,6 +10,9 @@ export const chatMessageSchema = z.object({
   // id приходит от клиента: с ним оптимистичная вставка и событие Realtime
   // сходятся в одну строку (дедуп по id, lib/business/chat.ts:mergeMessages).
   id: z.guid(),
+  // Ответ на сообщение (0039): ссылка необязательна, существование проверяет
+  // сервер — клиент может прислать любой id.
+  replyToId: z.guid().optional(),
   body: z
     .string()
     .transform((value) => value.trim())
@@ -83,6 +86,7 @@ export type ChatAttachmentInput = z.infer<typeof chatAttachmentSchema>;
 export const chatMessageWithAttachmentsSchema = z
   .object({
     id: z.guid(),
+    replyToId: z.guid().optional(),
     body: z
       .string()
       .transform((value) => value.trim())
