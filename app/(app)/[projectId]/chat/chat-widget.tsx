@@ -802,7 +802,7 @@ export function ChatWidget({
           </p>
         ) : (
           groups.map((group) => (
-            <div key={group.day} className="flex flex-col gap-2">
+            <div key={group.day} className="flex flex-col gap-1">
               <span className="self-center rounded-full bg-page px-2 py-0.5 text-[10.5px] text-meta">
                 {group.label}
               </span>
@@ -827,7 +827,12 @@ export function ChatWidget({
                 return (
                   <div
                     key={message.id}
-                    className={cn("group flex flex-col", own ? "items-end" : "items-start")}
+                    className={cn(
+                      "group flex flex-col",
+                      own ? "items-end" : "items-start",
+                      // Серия от одного автора идёт плотно: отступ только между сериями.
+                      firstInRun ? "mt-1.5" : "mt-0",
+                    )}
                   >
                     {showAuthor ? (
                       <span className="mb-0.5 flex items-center gap-1 text-[10.5px] font-medium text-meta">
@@ -885,13 +890,11 @@ export function ChatWidget({
                             ? "bg-transparent p-0 text-ink"
                             : own
                               ? cn(
-                                  "max-w-[85%] items-end bg-brand px-2.5 py-1.5 text-[12.5px] text-white",
-                                  lastInRun ? "rounded-[14px] rounded-br-[5px]" : "rounded-[14px]",
+                                  "max-w-[85%] items-end rounded-[14px] rounded-br-[5px] bg-brand px-2.5 py-1.5 text-[12.5px] text-white",
                                   firstInRun ? "" : "rounded-tr-[5px]",
                                 )
                               : cn(
-                                  "max-w-[85%] items-start border border-line-strong bg-surface px-2.5 py-1.5 text-[12.5px] text-ink",
-                                  lastInRun ? "rounded-[14px] rounded-bl-[5px]" : "rounded-[14px]",
+                                  "max-w-[85%] items-start rounded-[14px] rounded-bl-[5px] border border-line-strong bg-surface px-2.5 py-1.5 text-[12.5px] text-ink",
                                   firstInRun ? "" : "rounded-tl-[5px]",
                                 ),
                           // Фото снимают внутренние отступы: картинка должна доходить до края.
