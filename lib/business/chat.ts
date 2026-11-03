@@ -544,3 +544,107 @@ export function searchSnippet(body: string, query: string, radius = 40): string 
 
   return `${start > 0 ? "…" : ""}${flat.slice(start, end).trim()}${end < flat.length ? "…" : ""}`;
 }
+
+/** Буква, цифра или подчёркивание — то, что делает «@» частью слова или адреса. */
+const WORD_CHAR = /[\p{L}\p{N}_]/u;
+
+/** Кусок текста сообщения: обычный текст, упоминание другого или упоминание вас. */
+export type MentionPart = { text: string; mention: boolean; isMe: boolean };
+
+/**
+ * Разбор упоминаний `@Имя` по списку известных имён участников.
+ *
+ * Имена — данные, а не разметка: в базе лежит обычный текст, поэтому чип
+ * упоминания рисует компонент. Самое длинное имя проверяется первым, иначе
+ * «Иван» съел бы начало «Иван Петров». Границы с двух сторон обязательны:
+ * так `test@mail.ru` и «Иванов» (при участнике «Иван») упоминаниями не станут.
+ */
+export function mentionParts(
+  text: string,
+  names: readonly string[],
+  myName: string | null,
+): MentionPart[] {
+  const known = [...new Set(names.map((name) => name.trim()).filter((name) => name.length > 0))]
+    .sort((a, b) => b.length - a.length)
+    .map((name) => ({ name, lower: name.toLowerCase() }));
+
+  if (known.length === 0 || !text.includes("@")) {
+    return [{ text, mention: false, isMe: false }];
+  }
+
+  const me = myName?.trim().toLowerCase() ?? null;
+  const parts: MentionPart[] = [];
+  let plain = "";
+  let index = 0;
+
+  const flush = () => {
+    if (plain.length === 0) return;
+    parts.push({ text: plain, mention: false, isMe: false });
+    plain = "";
+  };
+
+  while (index < text.length) {
+    const char = text[index];
+    const before = index > 0 ? text[index - 1] : "";
+    if (char !== "@" || (before.length > 0 && WORD_CHAR.test(before))) {
+      plain += char;
+      index += 1;
+      continue;
+    }
+
+    const matched = known.find(({ name, lower }) => {
+      const candidate = text.slice(index + 1, index + 1 + name.length);
+      if (candidate.toLowerCase() !== lower) return false;
+      const after = text[index + 1 + name.length] ?? "";
+      return after.length === 0 || !WORD_CHAR.test(after);
+    });
+
+    if (!matched) {
+      plain += char;
+      index += 1;
+      continue;
+    }
+
+    flush();
+    parts.push({
+      text: text.slice(index, index + 1 + matched.name.length),
+      mention: true,
+      isMe: me !== null && matched.lower === me,
+    });
+    index += 1 + matched.name.length;
+  }
+
+  flush();
+  return parts.length > 0 ? parts : [{ text, mention: false, isMe: false }];
+}
+
+/**
+ * Что набрано после «@» под кареткой. Возвращает null, если каретка не внутри
+ * упоминания: `@` должен начинать слово, иначе адрес почты открывал бы список.
+ */
+export function activeMentionQuery(text: string, caret: number): string | null {
+  const at = Math.max(0, Math.min(caret, text.length));
+  const match = /(?:^|\s)@([^\s@]*)$/u.exec(text.slice(0, at));
+  return match ? match[1] : null;
+}
+
+/**
+ * Подстановка выбранного имени вместо набранного фрагмента. Каретка встаёт
+ * сразу за именем. Пробел добавляется, только если дальше идёт текст: перед
+ * запятой или уже стоящим пробелом он дал бы «@Иван ,».
+ */
+export function applyMention(
+  text: string,
+  caret: number,
+  name: string,
+): { value: string; caret: number } {
+  const at = Math.max(0, Math.min(caret, text.length));
+  const match = /(?:^|\s)@([^\s@]*)$/u.exec(text.slice(0, at));
+  const start = match ? at - match[1].length - 1 : at;
+  const rest = text.slice(at);
+  const space = /^[\s,.;:!?…)\]]/u.test(rest) ? "" : " ";
+  return {
+    value: `${text.slice(0, start)}@${name}${space}${rest}`,
+    caret: start + name.length + 1 + space.length,
+  };
+}

@@ -29,6 +29,21 @@ export const CHANGELOG_KIND_LABEL: Record<ChangelogKind, string> = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-11-03-chat-mentions",
+    date: "2026-11-03",
+    title: "Упоминания в чате",
+    items: [
+      {
+        kind: "new",
+        text: "В чате можно позвать человека через @: набираете @, выбираете из списка, и его имя подсвечивается в сообщении.",
+      },
+      {
+        kind: "improve",
+        text: "Если вас упомянули, свёрнутая кнопка чата показывает @ вместо числа непрочитанных — адресное сообщение видно сразу.",
+      },
+    ],
+  },
+  {
     id: "2026-11-03-chat-search",
     date: "2026-11-03",
     title: "Поиск по переписке",

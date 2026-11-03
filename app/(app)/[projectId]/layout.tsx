@@ -3,7 +3,13 @@ import { notFound } from "next/navigation";
 import { ProjectNav } from "@/components/common/project-nav";
 import { BADGE_BASE } from "@/components/common/status-badge";
 import { CHAT_ATTACHMENTS_BUCKET, SIGNED_URL_TTL_SECONDS } from "@/lib/business/attachments";
-import { CHAT_PAGE_SIZE, type ChatAttachment, type ChatMessage, type ChatReaction } from "@/lib/business/chat";
+import {
+  CHAT_PAGE_SIZE,
+  mentionParts,
+  type ChatAttachment,
+  type ChatMessage,
+  type ChatReaction,
+} from "@/lib/business/chat";
 import { canEditProject, projectRoleLabel } from "@/lib/business/project-roles";
 import { getProjectRole } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
@@ -141,6 +147,31 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
       })()
     : { count: 0 };
 
+  // Упомянули ли вас среди непрочитанных. Считаем на сервере: счётчик приходит
+  // из запроса, и без этого бейдж «@» появлялся бы только после нового события,
+  // а после перезагрузки страницы терялся бы.
+  const myName = (user ? authorNames[user.id] : null) ?? null;
+  const memberNames = Object.values(authorNames).filter((name): name is string => Boolean(name));
+  const unreadBodies =
+    user && (unreadCount ?? 0) > 0 && myName
+      ? (
+          await (() => {
+            let query = supabase
+              .from("project_messages")
+              .select("body")
+              .eq("project_id", projectId)
+              .neq("author_id", user.id)
+              .order("created_at", { ascending: false })
+              .limit(100);
+            if (lastReadAt) query = query.gt("created_at", lastReadAt);
+            return query;
+          })()
+        ).data ?? []
+      : [];
+  const initialMentioned = unreadBodies.some((row) =>
+    mentionParts(row.body, memberNames, myName).some((part) => part.isMe),
+  );
+
   return (
     <div className="flex flex-1 flex-col">
       {/* До md навигация не помещается рядом с названием — уходит второй строкой. */}
@@ -164,6 +195,7 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
           initialReactions={initialReactions}
           initialAttachments={initialAttachments}
           initialUnread={unreadCount ?? 0}
+          initialMentioned={initialMentioned}
           authorNames={authorNames}
           timezone={project.timezone}
         />

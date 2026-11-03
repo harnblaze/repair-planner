@@ -17,6 +17,8 @@ import {
 import {
   CHAT_BODY_MAX,
   CHAT_PAGE_SIZE,
+  activeMentionQuery,
+  applyMention,
   authorInitials,
   REACTION_EMOJI,
   addReaction,
@@ -37,6 +39,7 @@ import {
   isNearBottom,
   jumboSize,
   mapPresence,
+  mentionParts,
   mergeMessages,
   messageTime,
   normalizeBody,
@@ -106,6 +109,8 @@ type Props = {
   initialReactions: ChatReaction[];
   initialAttachments: ChatAttachment[];
   initialUnread: number;
+  /** Упомянули ли вас среди непрочитанных — бейдж покажет «@» сразу, без ожидания. */
+  initialMentioned: boolean;
   /** Имена участников по id (project_member_list). Чужие имена иначе не прочитать. */
   authorNames: Record<string, string | null>;
   timezone: string;
@@ -119,6 +124,7 @@ export function ChatWidget({
   initialReactions,
   initialAttachments,
   initialUnread,
+  initialMentioned,
   authorNames,
   timezone,
 }: Props) {
@@ -181,6 +187,11 @@ export function ChatWidget({
   // Сообщение, к которому только что прыгнули: подсветка гаснет сама.
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  // Упоминания: что набрано после «@» и какой пункт списка подсвечен.
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  // Среди непрочитанных есть сообщение с упоминанием вас — бейдж показывает «@».
+  const [mentionUnread, setMentionUnread] = useState(initialMentioned);
 
   const openRef = useRef(open);
   const knownIds = useRef(new Set(initialMessages.map((message) => message.id)));
@@ -191,6 +202,26 @@ export function ChatWidget({
   useEffect(() => {
     openRef.current = open;
   }, [open]);
+
+  /**
+   * Имена всех участников, включая себя: разбор упоминаний должен узнавать и
+   * своё имя, иначе «упомянули вас» не определить. Себя убирает только список
+   * подсказок — приглашать в чат самого себя незачем.
+   */
+  const myName = authorNames[userId] ?? null;
+  const memberNames = useMemo(
+    () =>
+      Object.entries(authorNames)
+        .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].trim().length > 0)
+        .map(([, name]) => name.trim()),
+    [authorNames],
+  );
+  const mentionsMe = useCallback(
+    (body: string) =>
+      myName !== null &&
+      mentionParts(body, memberNames, myName).some((part) => part.mention && part.isMe),
+    [memberNames, myName],
+  );
 
   const persistOpen = useCallback(
     (next: boolean) => {
@@ -228,13 +259,49 @@ export function ChatWidget({
       if (!atBottomRef.current) setNewCount((count) => count + fromOthers.length);
     } else {
       setUnread((count) => count + fromOthers.length);
+      // Упомянули — бейдж покажет «@» вместо числа: адресное сообщение важнее.
+      if (fromOthers.some((message) => mentionsMe(message.body))) setMentionUnread(true);
     }
-  }, [projectId, userId]);
+  }, [mentionsMe, projectId, userId]);
 
   const applyRef = useRef(applyIncoming);
   useEffect(() => {
     applyRef.current = applyIncoming;
   }, [applyIncoming]);
+
+  /** Пересчитать «@фрагмент» под кареткой: список обновляется и при движении каретки. */
+  const syncMention = useCallback((value: string, caret: number | null) => {
+    setMentionQuery(activeMentionQuery(value, caret ?? value.length));
+    setMentionIndex(0);
+  }, []);
+
+  /** Кого предложить: имя начинается с набранного, себя в списке нет. */
+  const mentionCandidates = useMemo(() => {
+    if (mentionQuery === null) return [];
+    const query = mentionQuery.trim().toLowerCase();
+    const self = myName?.trim().toLowerCase() ?? "";
+    return memberNames
+      .filter((name) => name.toLowerCase() !== self && name.toLowerCase().startsWith(query))
+      .slice(0, 5);
+  }, [memberNames, mentionQuery, myName]);
+
+  const chooseMention = useCallback(
+    (name: string) => {
+      const element = textareaRef.current;
+      const caret = element?.selectionStart ?? text.length;
+      const next = applyMention(text, caret, name);
+      setText(next.value.slice(0, CHAT_BODY_MAX));
+      setMentionQuery(null);
+      // Поле остаётся в фокусе, каретка — сразу за именем.
+      requestAnimationFrame(() => {
+        const node = textareaRef.current;
+        if (!node) return;
+        node.focus();
+        node.setSelectionRange(next.caret, next.caret);
+      });
+    },
+    [text],
+  );
 
   // Подписка на Realtime. Без явного setAuth события не приходят вовсе: канал
   // при этом отвечает SUBSCRIBED и ошибок не даёт — самый неприятный вид поломки.
@@ -434,7 +501,9 @@ export function ChatWidget({
   useEffect(() => {
     if (!open) return;
     void markChatReadAction(projectId).then((result) => {
-      if (result.ok) setUnread(0);
+      if (!result.ok) return;
+      setUnread(0);
+      setMentionUnread(false);
     });
   }, [open, projectId]);
 
@@ -808,6 +877,7 @@ export function ChatWidget({
     // Отправили — всплывающие окна больше не нужны: они закрывали бы ленту.
     setEmojiOpen(false);
     setReactionPickerFor(null);
+    setMentionQuery(null);
 
     const id = crypto.randomUUID();
     const optimistic: ChatMessage = {
@@ -1029,7 +1099,13 @@ export function ChatWidget({
       <button
         type="button"
         onClick={() => persistOpen(true)}
-        aria-label={unread > 0 ? `Чат проекта, непрочитанных: ${unread}` : "Открыть чат проекта"}
+        aria-label={
+          unread === 0
+            ? "Открыть чат проекта"
+            : mentionUnread
+              ? `Чат проекта, вас упомянули, непрочитанных: ${unread}`
+              : `Чат проекта, непрочитанных: ${unread}`
+        }
         // Toaster живёт снизу по центру — держим кнопку правее и выше safe-area.
         className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-40 flex size-12 items-center justify-center rounded-full bg-brand text-white shadow-[0_6px_18px_rgba(20,30,50,0.22)] transition-transform duration-120 hover:scale-[1.04] active:scale-95"
       >
@@ -1053,7 +1129,7 @@ export function ChatWidget({
         ) : null}
         {unread > 0 ? (
           <span className="absolute -top-1 -right-1 flex min-w-[18px] animate-pulse items-center justify-center rounded-full bg-status-alert-fg px-1 text-[10.5px] leading-[18px] font-semibold text-white">
-            {unread > 99 ? "99+" : unread}
+            {mentionUnread ? "@" : unread > 99 ? "99+" : unread}
           </span>
         ) : null}
       </button>
@@ -1391,7 +1467,27 @@ export function ChatWidget({
                         ) : null}
                         {message.body ? (
                           <span className={jumbo ? `${jumbo} align-middle` : undefined}>
-                            {message.body}
+                            {mentionParts(message.body, memberNames, myName).map((part, partIndex) =>
+                              part.mention ? (
+                                <span
+                                  key={partIndex}
+                                  className={cn(
+                                    "rounded-[4px] px-0.5 font-medium",
+                                    // В своём пузыре фон бренда: чип должен читаться
+                                    // на синем, но не спорить с текстом.
+                                    own
+                                      ? "bg-white/20 text-white"
+                                      : part.isMe
+                                        ? "bg-brand/15 text-brand"
+                                        : "bg-page text-ink-soft",
+                                  )}
+                                >
+                                  {part.text}
+                                </span>
+                              ) : (
+                                <span key={partIndex}>{part.text}</span>
+                              ),
+                            )}
                           </span>
                         ) : null}
                         {/* Время — внутри пузыря, как в мессенджерах: строка под
@@ -1607,6 +1703,37 @@ export function ChatWidget({
             </div>
           ) : null}
           <div className="relative flex items-end gap-0.5 rounded-[22px] border border-line-strong bg-page px-1 py-0.5 focus-within:border-brand">
+          {mentionCandidates.length > 0 ? (
+            <div
+              data-chat-popover
+              role="listbox"
+              aria-label="Участники для упоминания"
+              className="absolute left-1 bottom-[calc(100%-2px)] z-20 w-[232px] overflow-hidden rounded-lg border border-line-strong bg-surface py-1 shadow-[0_10px_30px_rgba(20,30,50,0.18)]"
+            >
+              {mentionCandidates.map((name, index) => (
+                <button
+                  key={name}
+                  type="button"
+                  role="option"
+                  aria-selected={index === mentionIndex}
+                  // mousedown не должен уводить фокус из поля: иначе выбор
+                  // мышью закрывал бы список до клика.
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => chooseMention(name)}
+                  onMouseEnter={() => setMentionIndex(index)}
+                  className={cn(
+                    "flex w-full items-center gap-1.5 px-2 py-1 text-left text-[12px]",
+                    index === mentionIndex ? "bg-page text-ink" : "text-ink-soft",
+                  )}
+                >
+                  <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-brand/15 text-[8.5px] font-semibold text-brand">
+                    {authorInitials(name)}
+                  </span>
+                  <span className="truncate">{name}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
           {emojiOpen ? (
             <div
               data-chat-popover
@@ -1687,18 +1814,54 @@ export function ChatWidget({
           <textarea
             ref={textareaRef}
             value={text}
-            onChange={(event) => setText(event.target.value.slice(0, CHAT_BODY_MAX))}
+            onChange={(event) => {
+              const next = event.target.value.slice(0, CHAT_BODY_MAX);
+              setText(next);
+              syncMention(next, event.target.selectionStart);
+            }}
             onKeyDown={(event) => {
+              // Список участников перехватывает клавиши первым: Enter при
+              // открытом списке подставляет имя, а не отправляет сообщение.
+              if (mentionCandidates.length > 0) {
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  setMentionIndex((index) => (index + 1) % mentionCandidates.length);
+                  return;
+                }
+                if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  setMentionIndex(
+                    (index) => (index - 1 + mentionCandidates.length) % mentionCandidates.length,
+                  );
+                  return;
+                }
+                if (event.key === "Enter" || event.key === "Tab") {
+                  event.preventDefault();
+                  chooseMention(mentionCandidates[mentionIndex] ?? mentionCandidates[0]);
+                  return;
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setMentionQuery(null);
+                  return;
+                }
+              }
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
                 void send();
               }
             }}
+            onSelect={(event) => syncMention(text, event.currentTarget.selectionStart)}
             rows={1}
             placeholder="Сообщение…"
             aria-label="Текст сообщения"
             onFocus={() => setComposerFocused(true)}
-            onBlur={() => setComposerFocused(false)}
+            onBlur={() => {
+              setComposerFocused(false);
+              // Ушли из поля — подсказка участников больше не нужна. Выбор
+              // мышью фокус не отдаёт (mousedown отменён), поэтому не мешает.
+              setMentionQuery(null);
+            }}
             className="max-h-24 min-h-[30px] flex-1 resize-none overflow-hidden bg-transparent px-1 py-1.5 text-[12.5px] leading-snug text-ink outline-none placeholder:text-meta"
           />
 

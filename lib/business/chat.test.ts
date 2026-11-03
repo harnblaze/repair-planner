@@ -10,6 +10,8 @@ import {
   applyEmoji,
   authorInitials,
   attachmentGridClass,
+  activeMentionQuery,
+  applyMention,
   attachmentsByMessage,
   authorNameOf,
   canSend,
@@ -22,6 +24,7 @@ import {
   isOwnMessage,
   jumboSize,
   mapPresence,
+  mentionParts,
   searchSnippet,
   mergeAttachments,
   mergeMessages,
@@ -623,5 +626,103 @@ describe("escapeLikePattern", () => {
 
   it("обычный текст не меняет", () => {
     expect(escapeLikePattern("электроды")).toBe("электроды");
+  });
+});
+
+describe("mentionParts", () => {
+  const names = ["Иван", "Иван Петров", "Станислав Белов"];
+
+  it("находит упоминание и помечает его", () => {
+    expect(mentionParts("привет @Иван, глянь", names, null)).toEqual([
+      { text: "привет ", mention: false, isMe: false },
+      { text: "@Иван", mention: true, isMe: false },
+      { text: ", глянь", mention: false, isMe: false },
+    ]);
+  });
+
+  it("длинное имя выигрывает у короткого", () => {
+    const parts = mentionParts("@Иван Петров, ты где", names, null);
+    expect(parts[0]).toEqual({ text: "@Иван Петров", mention: true, isMe: false });
+  });
+
+  it("регистр не важен", () => {
+    expect(mentionParts("@иван", names, null)[0]).toEqual({
+      text: "@иван",
+      mention: true,
+      isMe: false,
+    });
+  });
+
+  it("помечает упоминание вас", () => {
+    const parts = mentionParts("@Станислав Белов", names, "станислав белов");
+    expect(parts[0].isMe).toBe(true);
+  });
+
+  it("почтовый адрес упоминанием не становится", () => {
+    expect(mentionParts("пиши на test@Иван.ru", names, null)).toEqual([
+      { text: "пиши на test@Иван.ru", mention: false, isMe: false },
+    ]);
+  });
+
+  it("часть более длинного имени не считается упоминанием", () => {
+    expect(mentionParts("@Иванов", names, null)).toEqual([
+      { text: "@Иванов", mention: false, isMe: false },
+    ]);
+  });
+
+  it("без имён текст не меняется", () => {
+    expect(mentionParts("@Иван привет", [], null)).toEqual([
+      { text: "@Иван привет", mention: false, isMe: false },
+    ]);
+  });
+
+  it("несколько упоминаний в одной строке", () => {
+    const parts = mentionParts("@Иван и @Станислав Белов", names, null);
+    expect(parts.filter((part) => part.mention).map((part) => part.text)).toEqual([
+      "@Иван",
+      "@Станислав Белов",
+    ]);
+  });
+});
+
+describe("activeMentionQuery", () => {
+  it("возвращает набранное после @", () => {
+    expect(activeMentionQuery("@Ив", 3)).toBe("Ив");
+  });
+
+  it("пустой запрос сразу после @", () => {
+    expect(activeMentionQuery("привет @", 8)).toBe("");
+  });
+
+  it("находит запрос в середине набранного текста", () => {
+    expect(activeMentionQuery("привет @Дм", 10)).toBe("Дм");
+  });
+
+  it("внутри слова упоминания нет", () => {
+    expect(activeMentionQuery("test@mail", 9)).toBeNull();
+  });
+
+  it("после пробела список закрыт", () => {
+    expect(activeMentionQuery("@Иван ", 6)).toBeNull();
+  });
+});
+
+describe("applyMention", () => {
+  it("заменяет фрагмент и ставит каретку за именем", () => {
+    expect(applyMention("@Ив", 3, "Иван Петров")).toEqual({
+      value: "@Иван Петров ",
+      caret: 13,
+    });
+  });
+
+  it("подставляет в середину текста", () => {
+    expect(applyMention("привет @Ив, как дела", 10, "Иван")).toEqual({
+      value: "привет @Иван, как дела",
+      caret: 12,
+    });
+  });
+
+  it("без @ вставляет имя в позицию каретки", () => {
+    expect(applyMention("привет ", 7, "Иван")).toEqual({ value: "привет @Иван ", caret: 13 });
   });
 });
