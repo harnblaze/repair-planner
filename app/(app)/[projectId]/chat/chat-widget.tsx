@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { AttachIcon, ChatIcon, CloseIcon } from "@/components/common/icons";
-import { executorsInitials } from "@/lib/business/executor-names";
 import { Button } from "@/components/ui/button";
 import {
   CHAT_ATTACHMENT_MESSAGES,
@@ -17,6 +16,7 @@ import {
 } from "@/lib/business/attachments";
 import {
   CHAT_BODY_MAX,
+  authorInitials,
   REACTION_EMOJI,
   addReaction,
   applyEmoji,
@@ -817,6 +817,10 @@ export function ChatWidget({
                 // Крупный эмодзи — только когда вложений нет: иначе шрифт боролся бы с картинкой.
                 const jumbo = messageFiles.length > 0 ? null : jumboSize(message.body);
                 const summary = summarizeReactions(reactionsByMessage.get(message.id) ?? [], userId);
+                // Время — только у последнего сообщения в серии от одного автора:
+                // под каждой строкой оно превращало ленту в столбик отметок.
+                const next = index + 1 < group.messages.length ? group.messages[index + 1] : null;
+                const lastInRun = !next || next.author_id !== message.author_id;
                 return (
                   <div
                     key={message.id}
@@ -826,7 +830,7 @@ export function ChatWidget({
                       <span className="mb-0.5 flex items-center gap-1 text-[10.5px] font-medium text-meta">
                         {own ? null : (
                           <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-brand/15 text-[8.5px] font-semibold text-brand">
-                            {executorsInitials([authorNameOf(authorNames[message.author_id])])}
+                            {authorInitials(authorNames[message.author_id])}
                           </span>
                         )}
                         {authorNameOf(authorNames[message.author_id])}
@@ -1009,9 +1013,11 @@ export function ChatWidget({
                           </button>
                         )
                       ) : null}
-                      <span className="text-[10px] text-meta">
-                        {messageTime(message.created_at, timezone)}
-                      </span>
+                      {lastInRun ? (
+                        <span className="text-[10px] text-meta">
+                          {messageTime(message.created_at, timezone)}
+                        </span>
+                      ) : null}
                       {/* Отметку «изменено» ставит триггер (0036), клиент только читает. */}
                       {isEdited(message) ? (
                         <span className="text-[10px] text-meta">изменено</span>

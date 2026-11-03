@@ -62,6 +62,19 @@ export function isEdited(message: ChatMessage): boolean {
 }
 
 /**
+ * Инициалы для кружка у чужого сообщения: «Дмитрий» → «Д», «Станислав Белов» →
+ * «СБ». Отдельная функция, а не executorsInitials: тот отдаёт «Фамилия И.» для
+ * карточек заявок и для одного слова возвращает слово целиком — в аватар оно
+ * не влезает.
+ */
+export function authorInitials(fullName: string | null | undefined): string {
+  const parts = (fullName ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+}
+
+/**
  * Убрать сообщение из ленты. Вместе с ним уходят его реакции: иначе после
  * удаления в состоянии остались бы чипы, ведущие в никуда.
  */

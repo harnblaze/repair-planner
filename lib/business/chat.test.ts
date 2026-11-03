@@ -8,6 +8,7 @@ import {
   REACTION_EMOJI,
   addReaction,
   applyEmoji,
+  authorInitials,
   attachmentGridClass,
   attachmentsByMessage,
   authorNameOf,
@@ -105,6 +106,14 @@ describe("подпись автора", () => {
     expect(authorNameOf("  Станислав Белов ")).toBe("Станислав Белов");
     expect(authorNameOf(null)).toBe("Участник");
     expect(authorNameOf("   ")).toBe("Участник");
+  });
+
+  it("в аватар идут инициалы, а не имя целиком", () => {
+    expect(authorInitials("Дмитрий")).toBe("Д");
+    expect(authorInitials("Станислав Белов")).toBe("СБ");
+    expect(authorInitials("белов станислав иванович")).toBe("БС");
+    expect(authorInitials(null)).toBe("?");
+    expect(authorInitials("   ")).toBe("?");
   });
 });
 
