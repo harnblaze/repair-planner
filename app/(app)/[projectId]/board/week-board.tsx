@@ -54,6 +54,7 @@ import {
 import { toastCarriedOver, undoCarryOver, UNDO_TOAST_MS } from "../tasks/[taskId]/undo-carry-over";
 import { CreateTaskForm } from "./create-task-form";
 import { splitDayTasks } from "./day-stack";
+import { initialActiveDay, resolveActiveDay } from "./mobile-day";
 import { DoneStack } from "./done-stack";
 import {
   BOARD_ACCESSIBILITY,
@@ -344,6 +345,10 @@ export function WeekBoard({
 
   const [active, setActive] = useState<DragData | null>(null);
   const [overContainer, setOverContainer] = useState<string | null>(null);
+  // До md видна одна колонка: какую именно — выбирает переключатель дней.
+  // Хранится именно выбор, а при смене недели дата проверяется по неделе.
+  const [chosenDay, setChosenDay] = useState<string | null>(() => initialActiveDay(weekDates, today));
+  const activeDay = resolveActiveDay(weekDates, today, chosenDay);
 
   const dropAllowed = (container: string) =>
     active !== null && overContainer === container && checkDrop(board, active, container, daysOff, today)?.ok === true;
@@ -493,6 +498,52 @@ export function WeekBoard({
             без прокрутки и без переноса (docs/redesign.md §4). minmax(0,1fr)
             обязателен: иначе длинный заголовок задачи распирает колонку.
             До md (макет — только desktop) дни идут вертикальным списком. */}
+        {/* Переключатель дней для телефона: на десктопе все колонки видны сразу,
+            и полоса скрыта. sticky — чтобы день не терялся при прокрутке списка.
+            Полоса не входит в карточку недели: у той overflow-hidden, а внутри
+            такого контейнера sticky не работает. */}
+        <div
+          role="tablist"
+          aria-label="День недели"
+          className="sticky top-0 z-10 -mx-5 flex gap-1 border-b border-line-strong bg-page/95 px-5 py-2 backdrop-blur-sm md:hidden"
+        >
+          {weekDates.map((date) => {
+            const count = (board.days[date] ?? []).length;
+            const selected = date === activeDay;
+            const isToday = date === today;
+            return (
+              <button
+                key={date}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                aria-label={`${weekdayLabel(date)}, ${formatDateLong(date)}${count > 0 ? `, задач: ${count}` : ""}`}
+                onClick={() => setChosenDay(date)}
+                className={cn(
+                  "flex min-w-0 flex-1 flex-col items-center rounded-[7px] px-1 py-1.5 transition-colors duration-120",
+                  selected ? "bg-brand text-white" : "text-ink-soft hover:bg-surface",
+                )}
+              >
+                <span className={cn("text-[11.5px] leading-tight", isToday && "font-semibold")}>
+                  {weekdayLabel(date)}
+                </span>
+                <span
+                  className={cn(
+                    "flex items-center gap-1 font-mono text-[10.5px] leading-tight",
+                    selected ? "text-white/85" : "text-meta",
+                  )}
+                >
+                  {formatDateShort(date)}
+                  {count > 0 ? (
+                    // Счётчик — как в заголовке колонки, только мельче.
+                    <span className={selected ? "text-white/75" : "text-counter"}>{count}</span>
+                  ) : null}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
         <section className="overflow-hidden rounded-[10px] border border-line-strong bg-surface">
           <div
             className={cn(
@@ -510,6 +561,7 @@ export function WeekBoard({
                 label={weekdayLabel(date)}
                 dayOff={daysOff[date] ?? null}
                 isToday={date === today}
+                visible={date === activeDay}
                 tasks={(board.days[date] ?? []).map(withQueueLabel)}
                 highlighted={dropAllowed(date)}
                 canEdit={canEdit}
@@ -572,6 +624,7 @@ function DayColumn({
   label,
   dayOff,
   isToday,
+  visible,
   tasks,
   highlighted,
   canEdit,
@@ -583,6 +636,8 @@ function DayColumn({
   /** Подпись нерабочего дня или null для рабочего. */
   dayOff: string | null;
   isToday: boolean;
+  /** Показан ли этот день на телефоне: до md видна только активная колонка. */
+  visible: boolean;
   tasks: DayTask[];
   highlighted: boolean;
   canEdit: boolean;
@@ -610,7 +665,9 @@ function DayColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex min-h-24 min-w-0 flex-col border-b border-line-subtle transition-colors duration-120 last:border-b-0 md:min-h-[216px] md:border-r md:border-b-0",
+        // До md — только активный день; на десктопе видны все колонки.
+        visible ? "flex" : "hidden md:flex",
+        "min-h-24 min-w-0 flex-col border-b border-line-subtle transition-colors duration-120 last:border-b-0 md:min-h-[216px] md:border-r md:border-b-0",
         dayOff !== null
           ? "bg-page"
           : isToday

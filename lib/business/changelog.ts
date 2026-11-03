@@ -29,6 +29,17 @@ export const CHANGELOG_KIND_LABEL: Record<ChangelogKind, string> = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-11-03-mobile-board-days",
+    date: "2026-11-03",
+    title: "Доска на телефоне — по дням",
+    items: [
+      {
+        kind: "improve",
+        text: "На телефоне доска показывает один день за раз: сверху можно переключить день, вместо того чтобы листать пять колонок подряд.",
+      },
+    ],
+  },
+  {
     id: "2026-11-03-chat-ripple-loop",
     date: "2026-11-03",
     title: "Волна у кнопки чата не затихает",
