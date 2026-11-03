@@ -175,10 +175,23 @@ export function BoardItemRow({
           ~150px иначе не остаётся места под название (docs/redesign.md §6). */}
       {canEdit ? (
         <div className="absolute inset-y-0 right-1 flex items-start gap-0.5 rounded-[7px] bg-row-hover pt-1.5 pl-3 opacity-0 transition-opacity duration-120 group-focus-within:opacity-100 group-hover:opacity-100">
-          <Button type="button" variant="ghost" size="xs" onClick={() => setEditing(true)}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="h-8 sm:h-6"
+            onClick={() => setEditing(true)}
+          >
             Изменить
           </Button>
-          <Button type="button" variant="ghost" size="xs" disabled={pending} onClick={onDelete}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="h-8 sm:h-6"
+            disabled={pending}
+            onClick={onDelete}
+          >
             Удалить
           </Button>
         </div>

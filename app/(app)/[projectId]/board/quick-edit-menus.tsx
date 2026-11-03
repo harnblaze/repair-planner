@@ -80,7 +80,11 @@ export function StatusMenu({
         className={cn(
           BADGE_BASE,
           STATUS_CLASSES[status],
-          "group/status relative z-10 inline-flex cursor-pointer items-center gap-[3px] transition-[filter] duration-120 hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand data-[popup-open]:brightness-95",
+          "group/status relative z-10 inline-flex cursor-pointer items-center gap-[3px] overflow-visible transition-[filter] duration-120 hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand data-[popup-open]:brightness-95",
+          // Зона нажатия для пальца: бейдж высотой ~19 px, а псевдоэлемент
+          // растягивает её до 40 px, не меняя ни вид, ни размер кнопки (меню
+          // Base UI привязано к прямоугольнику триггера).
+          "before:absolute before:inset-x-0 before:-top-[11px] before:-bottom-[11px] before:content-['']",
         )}
       >
         <span className="truncate">{label}</span>
@@ -153,6 +157,8 @@ export function ExecutorsMenu({
         // подсветка при наведении выходит чуть за текст.
         className={cn(
           "relative z-10 -mx-1 flex max-w-[calc(100%+0.5rem)] cursor-pointer items-start gap-1 self-start rounded-[4px] px-1 py-px text-left text-[11.5px] transition-colors duration-120 hover:bg-row-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-brand data-[popup-open]:bg-row-hover",
+          // Та же зона нажатия, что у бейджа статуса: строка ~19 px.
+          "before:absolute before:inset-x-0 before:-top-[11px] before:-bottom-[11px] before:content-['']",
           empty ? "text-meta-dim" : "text-meta",
         )}
       >

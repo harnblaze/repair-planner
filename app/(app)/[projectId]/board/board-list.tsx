@@ -114,6 +114,7 @@ export function BoardList({
               disabled={!hasOpenItems}
               aria-label="Заявка в ОМТС"
               title="Заявка в ОМТС"
+              className="h-9 sm:h-7"
               onClick={() => setOmtsOpen(true)}
             >
               <FileSpreadsheetIcon />
