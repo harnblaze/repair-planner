@@ -72,6 +72,8 @@ const POLL_MS = 15000;
 // Страховка при «живой» подписке: сверяемся с сервером редко — молчащая
 // подписка (SUBSCRIBED без событий) иначе заморозила бы чат без ошибок.
 const POLL_SAFETY_MS = 8000;
+// Свёрнутый чат: только чтобы не пропустить новые сообщения и обновить бейдж.
+const POLL_CLOSED_MS = 30000;
 
 /** Файл, выбранный но ещё не отправленный: байты, превью (только у фото) и тип. */
 type PendingAttachment = {
@@ -348,8 +350,9 @@ export function ChatWidget({
   // чат тихо замирает без единой ошибки. Пока панель открыта, раз в полминуты
   // сверяемся с сервером; без подписки — чаще.
   useEffect(() => {
-    if (!open) return;
-    const intervalMs = live === "offline" ? POLL_MS : POLL_SAFETY_MS;
+    // Свёрнутая панель тоже опрашивается — иначе счётчик непрочитанного
+    // застывает на значении из серверного рендера и новых сообщений не видно.
+    const intervalMs = !open ? POLL_CLOSED_MS : live === "offline" ? POLL_MS : POLL_SAFETY_MS;
     let cancelled = false;
     const tick = async () => {
       const result = await loadMessagesAction(projectId);
@@ -797,7 +800,7 @@ export function ChatWidget({
           />
         ) : null}
         {unread > 0 ? (
-          <span className="absolute -top-1 -right-1 flex min-w-[18px] items-center justify-center rounded-full bg-status-alert-fg px-1 text-[10.5px] leading-[18px] font-semibold text-white">
+          <span className="absolute -top-1 -right-1 flex min-w-[18px] animate-pulse items-center justify-center rounded-full bg-status-alert-fg px-1 text-[10.5px] leading-[18px] font-semibold text-white">
             {unread > 99 ? "99+" : unread}
           </span>
         ) : null}
