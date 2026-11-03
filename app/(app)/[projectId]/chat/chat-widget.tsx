@@ -71,7 +71,7 @@ const REALTIME_TIMEOUT_MS = 8000;
 const POLL_MS = 15000;
 // Страховка при «живой» подписке: сверяемся с сервером редко — молчащая
 // подписка (SUBSCRIBED без событий) иначе заморозила бы чат без ошибок.
-const POLL_SAFETY_MS = 8000;
+const POLL_SAFETY_MS = 15000;
 // Свёрнутый чат: только чтобы не пропустить новые сообщения и обновить бейдж.
 const POLL_CLOSED_MS = 30000;
 
@@ -202,6 +202,7 @@ export function ChatWidget({
     let disposed = false;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     let channel: ReturnType<typeof supabase.channel> | undefined;
+    let presenceRef: ReturnType<typeof supabase.channel> | undefined;
 
     const authListener = supabase.auth.onAuthStateChange((_event, session) => {
       // После обновления токена подписка продолжает жить только с новым токеном.
@@ -225,16 +226,35 @@ export function ChatWidget({
       // делает его дважды) можно получить тот же объект, который предыдущая
       // копия эффекта уже сняла на сервере. Такой «зомби» рапортует joined и
       // не доставляет ни одного события. Сносим старый канал той же темы.
-      const topic = `project-messages:${projectId}`;
-      const stale = supabase.getChannels().find((item) => item.topic === `realtime:${topic}`);
-      if (stale) await supabase.removeChannel(stale);
+      // ЭКСПЕРИМЕНТ: уникальное имя канала на каждое монтирование.
+      const topic = `project-messages:${projectId}:${Math.random().toString(36).slice(2)}`;
+
 
       // Один канал на всё: сообщения, реакции и присутствие. Presence требует
       // ключ — им служит id пользователя, чтобы вкладки одного человека
       // схлопывались в одну запись.
-      const chatChannel = supabase.channel(`project-messages:${projectId}`, {
+      const chatChannel = supabase.channel(topic);
+
+      // Presence живёт в отдельном канале с постоянным именем: имя канала
+      // сообщений уникально на монтирование (иначе supabase-js переиспользует
+      // «зомби»-канал и тот молча не доставляет), а присутствию нужно общее имя.
+      const presenceChannel = supabase.channel(`chat-presence:${projectId}`, {
         config: { presence: { key: userId } },
       });
+
+      presenceRef = presenceChannel;
+
+      presenceChannel
+        .on("presence", { event: "sync" }, () => {
+          setOnline(mapPresence(presenceChannel.presenceState() as Record<string, PresenceEntry[]>));
+        })
+        .subscribe((status) => {
+          if (status !== "SUBSCRIBED") return;
+          void presenceChannel.track({
+            user_id: userId,
+            full_name: authorNames[userId] ?? "Участник",
+          });
+        });
 
       chatChannel
         .on(
@@ -311,17 +331,10 @@ export function ChatWidget({
             setReactions((current) => removeReaction(current, reaction));
           },
         )
-        .on("presence", { event: "sync" }, () => {
-          setOnline(mapPresence(chatChannel.presenceState() as Record<string, PresenceEntry[]>));
-        })
         .subscribe((status) => {
           if (status === "SUBSCRIBED") {
             setLive("live");
             if (timeout) clearTimeout(timeout);
-            void chatChannel.track({
-              user_id: userId,
-              full_name: authorNames[userId] ?? "Участник",
-            });
           } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
             setLive("offline");
             // Список онлайн без канала недостоверен — не показываем старый.
@@ -342,6 +355,7 @@ export function ChatWidget({
       if (timeout) clearTimeout(timeout);
       authListener.data.subscription.unsubscribe();
       if (channel) void supabase.removeChannel(channel);
+      if (presenceRef) void supabase.removeChannel(presenceRef);
     };
   }, [authorNames, projectId, userId]);
 
