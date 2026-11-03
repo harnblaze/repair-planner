@@ -6,23 +6,42 @@ import { describe, expect, it } from "vitest";
 import {
   ACTIVITY_KINDS,
   activityDay,
+  activityHref,
   activityTime,
   describeActivity,
   describeRow,
+  describeRowFor,
   groupByDay,
   isActivityKind,
+  isOwnMention,
   type ActivityRow,
 } from "./activity";
 
 // Главный тест файла: список видов событий в миграции и словарь подписей
 // должны совпадать. Новый триггер без подписи отрендерится в ленте сырым
 // kind — этот тест падает раньше, чем это заметит человек.
-const MIGRATION = path.join(process.cwd(), "supabase/migrations/0032_project_activity.sql");
+// Виды событий размазаны по миграциям: базовый набор живёт в 0032, новые
+// триггеры добавляют свои kind в отдельных файлах (0040 — упоминания в чате).
+const MIGRATIONS = [
+  path.join(process.cwd(), "supabase/migrations/0032_project_activity.sql"),
+  path.join(process.cwd(), "supabase/migrations/0040_chat_mentions_activity.sql"),
+];
 
 function kindsFromMigration(): string[] {
-  const sql = readFileSync(MIGRATION, "utf8");
-  const found = sql.match(/'[a-z]+(?:\.[a-z_]+)+'/g) ?? [];
-  return [...new Set(found.map((raw) => raw.slice(1, -1)))].sort();
+  const found: string[] = [];
+  for (const file of MIGRATIONS) {
+    const sql = readFileSync(file, "utf8");
+    // В 0032 виды событий стоят строковыми литералами с точкой (task.created).
+    for (const raw of sql.match(/'[a-z]+(?:\.[a-z_]+)+'/g) ?? []) {
+      found.push(raw.slice(1, -1));
+    }
+    // Однословные виды помечаются маркером: угадывать их по кавычкам нельзя —
+    // рядом в SQL стоят entity_type и другие строки.
+    for (const raw of sql.match(/-- activity-kind: ([a-z_]+)/g) ?? []) {
+      found.push(raw.replace("-- activity-kind: ", ""));
+    }
+  }
+  return [...new Set(found)].sort();
 }
 
 describe("словарь событий синхронен с миграцией", () => {
@@ -125,6 +144,44 @@ describe("describeRow", () => {
 
   it("неизвестный вид не роняет ленту", () => {
     expect(describeRow({ ...row, kind: "unknown.thing" })).toBe("изменение (unknown.thing)");
+  });
+
+  it("упоминание в чате читается после имени автора", () => {
+    const mention: ActivityRow = {
+      ...row,
+      kind: "chat_mention",
+      entity_type: "chat_message",
+      entity_id: "c-1",
+      payload: { message_id: "c-1", mentioned_user_id: "u-1", mentioned: "Дмитрий", excerpt: "@Дмитрий привет" },
+    };
+    expect(describeRow(mention)).toBe("упоминание в чате: «@Дмитрий привет»");
+  });
+
+  it("своё упоминание читается как «вас» и подсвечивается", () => {
+    const mention: ActivityRow = {
+      ...row,
+      kind: "chat_mention",
+      entity_type: "chat_message",
+      entity_id: "c-1",
+      payload: { message_id: "c-1", mentioned_user_id: "u-1", mentioned: "Дмитрий", excerpt: "@Дмитрий привет" },
+    };
+    expect(describeRowFor(mention, "u-1")).toBe("вас упомянули в чате: «@Дмитрий привет»");
+    expect(describeRowFor(mention, "u-2")).toBe("упоминание в чате: «@Дмитрий привет»");
+    expect(describeRowFor(mention, null)).toBe("упоминание в чате: «@Дмитрий привет»");
+    expect(isOwnMention(mention, "u-1")).toBe(true);
+    expect(isOwnMention(mention, "u-2")).toBe(false);
+    expect(isOwnMention(row, "u-1")).toBe(false);
+  });
+
+  it("у сообщения чата нет маршрута — ссылки в ленте нет", () => {
+    const mention: ActivityRow = {
+      ...row,
+      kind: "chat_mention",
+      entity_type: "chat_message",
+      entity_id: "c-1",
+      payload: { excerpt: "текст" },
+    };
+    expect(activityHref("p-1", mention)).toBeNull();
   });
 
   it("единица материала берётся из payload — снимок переживает удаление материала", () => {

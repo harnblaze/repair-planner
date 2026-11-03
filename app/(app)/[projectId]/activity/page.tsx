@@ -8,8 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   activityHref,
   activityTime,
-  describeRow,
+  describeRowFor,
   groupByDay,
+  isOwnMention,
   type ActivityRow,
 } from "@/lib/business/activity";
 import { authorFullName, toAuthorMap } from "@/lib/business/author";
@@ -45,6 +46,10 @@ export default async function ProjectActivityPage({ params, searchParams }: Page
   const limit = resolveLimit(limitParam);
 
   const supabase = await createClient();
+  // Смотрящий нужен, чтобы своё упоминание читалось «вас упомянули» и было видно.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const [{ data: project }, { data: rows, error: rowsError }, { data: members }] = await Promise.all([
     supabase.from("projects").select("name, timezone").eq("id", projectId).maybeSingle(),
     supabase
@@ -94,11 +99,20 @@ export default async function ProjectActivityPage({ params, searchParams }: Page
                 <div className="flex flex-col gap-1">
                   {group.rows.map((row) => {
                     const href = activityHref(projectId, row);
-                    const phrase = describeRow(row);
+                    const phrase = describeRowFor(row, user?.id ?? null);
                     const actor = actorLabel(names, row.actor_id);
+                    const mine = isOwnMention(row, user?.id ?? null);
 
                     return (
-                      <div key={row.id} className="flex min-w-0 items-baseline gap-2 text-[12.5px]">
+                      <div
+                        key={row.id}
+                        // Своё упоминание подсвечиваем: это то, ради чего в ленту
+                        // заходят — «меня звали».
+                        className={cn(
+                          "flex min-w-0 items-baseline gap-2 rounded-[6px] px-1.5 py-0.5 text-[12.5px]",
+                          mine && "-mx-1.5 bg-brand-surface",
+                        )}
+                      >
                         <span className="shrink-0 tabular-nums text-[11.5px] text-meta-dim">
                           {activityTime(row.created_at, timezone)}
                         </span>

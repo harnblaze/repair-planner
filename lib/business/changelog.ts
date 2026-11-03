@@ -29,6 +29,17 @@ export const CHANGELOG_KIND_LABEL: Record<ChangelogKind, string> = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-11-03-mention-activity",
+    date: "2026-11-03",
+    title: "Упоминания видны в ленте",
+    items: [
+      {
+        kind: "new",
+        text: "Если вас позвали в чате через @, это появляется в ленте проекта — не нужно держать чат открытым, чтобы не пропустить.",
+      },
+    ],
+  },
+  {
     id: "2026-11-03-mobile-touch",
     date: "2026-11-03",
     title: "На телефоне удобнее попадать пальцем",

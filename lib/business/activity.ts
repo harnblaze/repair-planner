@@ -51,6 +51,7 @@ export type ActivityPayloads = {
   "member.role_changed": { full_name?: string; role?: ProjectRole; from?: ProjectRole };
   "invitation.created": { role?: ProjectRole };
   "invitation.revoked": { role?: ProjectRole };
+  "chat_mention": { message_id?: string; mentioned_user_id?: string; mentioned?: string; excerpt?: string };
 };
 
 export type ActivityKind = keyof ActivityPayloads;
@@ -167,6 +168,10 @@ const DESCRIBERS: { [K in ActivityKind]: Describer<K> } = {
 
   "invitation.created": (p) => `создано приглашение в проект — ${role(p.role)}`,
   "invitation.revoked": () => `приглашение отозвано`,
+
+  // Без глагола и без рода: фраза стоит после имени автора, а род автора в
+  // базе не хранится. Читается как «Дмитрий: упоминание в чате: «…»».
+  "chat_mention": (p) => `упоминание в чате: ${inQuotes(p.excerpt)}`,
 };
 
 /** Все виды событий — для теста синхронности со списком в миграции и для фильтров. */
@@ -191,6 +196,26 @@ export function describeRow(row: ActivityRow): string {
   return describeActivity(row.kind, row.payload);
 }
 
+/** Упомянули ли в этой строке смотрящего: у события один адресат. */
+export function isOwnMention(row: ActivityRow, viewerId: string | null): boolean {
+  if (row.kind !== "chat_mention" || !viewerId) return false;
+  const payload = row.payload as ActivityPayloads["chat_mention"] | null;
+  return payload?.mentioned_user_id === viewerId;
+}
+
+/**
+ * Та же фраза, но от лица смотрящего: своё упоминание читается «вас упомянули».
+ * Отдельная функция, а не флаг в describeActivity: описатель остаётся чистым
+ * (одинаков для всех), а «вас» — свойство читателя, а не события.
+ */
+export function describeRowFor(row: ActivityRow, viewerId: string | null): string {
+  if (isOwnMention(row, viewerId)) {
+    const payload = row.payload as ActivityPayloads["chat_mention"] | null;
+    return `вас упомянули в чате: ${inQuotes(payload?.excerpt)}`;
+  }
+  return describeRow(row);
+}
+
 /** Куда ведёт строка ленты. Объект мог быть удалён — тогда ссылки нет. */
 export function activityHref(projectId: string, row: ActivityRow): string | null {
   const id = row.entity_id;
@@ -213,6 +238,10 @@ export function activityHref(projectId: string, row: ActivityRow): string | null
     case "project_member":
     case "project_invitation":
       return `/${projectId}/settings`;
+    // Чат — виджет на любой странице проекта, отдельного маршрута у сообщения
+    // нет: вести читателя в доску и не открыть чат было бы обманом.
+    case "chat_message":
+      return null;
     default:
       return null;
   }
