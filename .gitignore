@@ -54,3 +54,6 @@ DEPLOY.md
 
 # Serena (локальная конфигурация MCP-инструмента)
 .serena/
+
+# артефакты браузерной автоматизации (Playwright MCP)
+.playwright-mcp/

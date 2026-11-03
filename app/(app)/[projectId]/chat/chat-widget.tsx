@@ -112,6 +112,9 @@ export function ChatWidget({
   const [attachments, setAttachments] = useState<ChatAttachment[]>(initialAttachments);
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const [attachBusy, setAttachBusy] = useState(false);
+  // Сжатие большого фото занимает секунду-две, и без индикатора кажется, что
+  // выбор файла ничего не сделал.
+  const [preparing, setPreparing] = useState(false);
   // Просмотр фото на весь экран: ссылка выбранного снимка.
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [unread, setUnread] = useState(initialUnread);
@@ -627,10 +630,16 @@ export function ChatWidget({
    */
   const pickFiles = useCallback(
     async (fileList: FileList | null) => {
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      // Сначала копируем список в массив и только потом чистим input: FileList
+      // живой, привязан к полю, и обнуление value опустошает его — файлы
+      // «терялись» ещё до чтения, без единой ошибки в консоли.
       const files = Array.from(fileList ?? []);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       if (files.length === 0) return;
 
+      // Ошибки сжатия перехвачены внутри цикла, поэтому снимаем флаг после
+      // него, без try/finally: других бросков здесь нет.
+      setPreparing(true);
       const accepted: PendingAttachment[] = [];
       let count = pending.length;
       for (const file of files) {
@@ -684,6 +693,7 @@ export function ChatWidget({
           toast.error(CHAT_ATTACHMENT_MESSAGES.unsupported);
         }
       }
+      setPreparing(false);
       if (accepted.length > 0) setPending((current) => [...current, ...accepted]);
     },
     [pending.length],
@@ -1061,6 +1071,9 @@ export function ChatWidget({
       {canPost ? (
         <div className="shrink-0 border-t border-line-strong px-2 py-2">
           {/* Выбранные файлы видны до отправки: можно убрать лишнее, пока не ушло. */}
+          {preparing ? (
+            <p className="mb-1 text-[11px] text-meta">Готовим файлы…</p>
+          ) : null}
           {pending.length > 0 ? (
             <div className="mb-1.5 flex flex-wrap gap-1.5">
               {pending.map((file) => (
@@ -1149,7 +1162,7 @@ export function ChatWidget({
             variant="ghost"
             size="icon-sm"
             aria-label="Прикрепить фото"
-            disabled={pending.length >= MAX_ATTACHMENTS_PER_MESSAGE || sending}
+            disabled={preparing || attachBusy || pending.length >= MAX_ATTACHMENTS_PER_MESSAGE || sending}
             onClick={() => fileInputRef.current?.click()}
           >
             <AttachIcon size={15} />

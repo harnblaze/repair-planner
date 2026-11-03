@@ -9,6 +9,7 @@ import {
   MAX_ATTACHMENTS_PER_MESSAGE,
   MAX_DOCUMENT_BYTES,
   SIGNED_URL_TTL_SECONDS,
+  chatAttachmentFolder,
   chatAttachmentPath,
   documentExtensionFor,
   documentMimeFor,
@@ -515,7 +516,10 @@ export async function sendMessageWithAttachmentsAction(
       }
     }
 
-    const prefix = chatAttachmentPath(projectId, parsed.data.id, "");
+    // Префикс — именно папка: chatAttachmentPath с пустым fileId вернул бы
+    // «…/{id}/.jpg», и длина префикса оказалась бы на расширение больше —
+    // имя файла обрезалось бы неправильно, а поиск в Storage ничего не находил.
+    const prefix = `${chatAttachmentFolder(projectId, parsed.data.id)}/`;
     const fileName = attachment.path.slice(prefix.length);
     const { data: objects, error: listError } = await bucket.list(`${projectId}/${folder}`, {
       search: fileName,
