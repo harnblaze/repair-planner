@@ -50,6 +50,33 @@
   --color-status-warn-fg: #9a6206;
   --color-status-alert-bg: #fbeaea;
   --color-status-alert-fg: #b02a2a;
+
+  /* Волна вокруг свёрнутой кнопки чата: всплеск на новое сообщение, три
+     расходящихся круга и остановка — дальше подсказывает пульсирующий бейдж.
+     Масштаб упирается в поля: кнопка стоит в 16 px от края экрана, поэтому
+     1.55 от 48 px даёт вылет 13 px и ещё 3 px запаса до обрезки. */
+  --animate-chat-ripple: chat-ripple 1.8s ease-out 3;
+  /* Второе кольцо — та же волна со сдвигом: кольца идут друг за другом. */
+  --animate-chat-ripple-late: chat-ripple 1.8s ease-out 0.7s 3;
+
+  @keyframes chat-ripple {
+    0% {
+      transform: scale(1.02);
+      opacity: 0;
+    }
+    /* Кольцо «родилось» уже за кромкой кнопки — иначе оно вспыхивает
+       голубой обводкой поверх самой кнопки. */
+    12% {
+      opacity: 0.65;
+    }
+    60% {
+      opacity: 0.4;
+    }
+    100% {
+      transform: scale(1.55);
+      opacity: 0;
+    }
+  }
 }
 
 @theme inline {

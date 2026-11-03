@@ -386,11 +386,14 @@ export function ChatWidget({
     };
   }, [live, open, projectId]);
 
-  // Открытие = прочитано. Счётчик не обнуляем состоянием: пока панель открыта,
-  // бейджа всё равно не видно, а markChatReadAction сдвигает отметку на сервере.
+  // Открытие = прочитано. Отметку на сервере сдвигаем сразу, а счётчик
+  // обнуляем по её завершении: иначе после «открыл → свернул» бейдж и волна
+  // вокруг кнопки показывают уже прочитанное число.
   useEffect(() => {
     if (!open) return;
-    void markChatReadAction(projectId);
+    void markChatReadAction(projectId).then((result) => {
+      if (result.ok) setUnread(0);
+    });
   }, [open, projectId]);
 
   // Поле ввода растёт по содержимому до 96 px (max-h-24), дальше — внутренний
@@ -818,6 +821,15 @@ export function ChatWidget({
         // Toaster живёт снизу по центру — держим кнопку правее и выше safe-area.
         className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-40 flex size-12 items-center justify-center rounded-full bg-brand text-white shadow-[0_6px_18px_rgba(20,30,50,0.22)] transition-transform duration-120 hover:scale-[1.04] active:scale-95"
       >
+        {/* Волна — только когда есть непрочитанные. key по числу пересоздаёт
+            кольца, и CSS-анимация стартует заново на каждое новое сообщение;
+            сама кнопка при этом не пересоздаётся и фокус не теряет. */}
+        {unread > 0 ? (
+          <span key={unread} aria-hidden className="pointer-events-none absolute inset-0">
+            <span className="absolute inset-0 rounded-full border-2 border-brand/65 opacity-0 motion-safe:animate-chat-ripple" />
+            <span className="absolute inset-0 rounded-full border-2 border-brand/65 opacity-0 motion-safe:animate-chat-ripple-late" />
+          </span>
+        ) : null}
         <ChatIcon size={19} strokeWidth={1.6} />
         {othersOnline.length > 0 ? (
           // Зелёная точка — «в чате есть кто-то ещё». Без цифры: цифра на кнопке
