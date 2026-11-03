@@ -29,6 +29,17 @@ export const CHANGELOG_KIND_LABEL: Record<ChangelogKind, string> = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-11-03-whats-new",
+    date: "2026-11-03",
+    title: "Что нового в планировщике",
+    items: [
+      {
+        kind: "new",
+        text: "В шапке появилась ссылка «Что нового»: здесь видно, что изменилось в планировщике. Пока есть непросмотренные записи, рядом горит точка.",
+      },
+    ],
+  },
+  {
     id: "2026-11-03-chat-history",
     date: "2026-11-03",
     title: "История чата целиком",
