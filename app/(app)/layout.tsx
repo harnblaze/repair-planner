@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { NavigationTracker } from "@/components/common/back-link";
+import { ChangelogLink } from "@/components/common/changelog-link";
 import { CalendarIcon } from "@/components/common/icons";
 import { SignOutButton } from "@/components/common/sign-out-button";
 import { createClient } from "@/lib/supabase/server";
@@ -21,8 +22,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex min-h-screen flex-col bg-page">
       <NavigationTracker />
-      <header className="flex h-[52px] shrink-0 items-center justify-between gap-6 border-b border-line-strong bg-surface px-5">
-        <div className="flex items-center gap-5">
+      {/* На узком экране зазоры меньше: на 390 px шапка с «Что нового» иначе
+          вылезала за край ровно на 10 px. */}
+      <header className="flex h-[52px] shrink-0 items-center justify-between gap-3 border-b border-line-strong bg-surface px-5 sm:gap-6">
+        <div className="flex items-center gap-3 sm:gap-5">
           <Link href="/projects" className="flex items-center gap-[9px]">
             <span className="flex size-[22px] items-center justify-center rounded-[5px] bg-brand text-white">
               <CalendarIcon size={12} strokeWidth={1.6} />
@@ -32,6 +35,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </span>
           </Link>
           <span className="h-[18px] w-px bg-line-strong" />
+          <ChangelogLink />
           <Link
             href="/profile"
             className="rounded-md px-[9px] py-[5px] text-[13px] text-ink-muted transition-colors duration-120 hover:bg-page hover:text-ink"

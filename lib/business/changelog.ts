@@ -1,0 +1,150 @@
+// «Что нового»: что изменилось для мастера, а не что изменилось в коде.
+// Записи пишутся вручную по мере выкатки (правило — в AGENTS.md проекта):
+// новые сверху, одна тема на запись, текст без технических подробностей.
+
+import { formatDateLong } from "./dates";
+
+export type ChangelogKind = "new" | "fix" | "improve";
+
+export type ChangelogItem = {
+  kind: ChangelogKind;
+  text: string;
+};
+
+export type ChangelogEntry = {
+  /** Стабильный slug с датой: по нему отмечается «прочитано», переиспользовать нельзя. */
+  id: string;
+  /** День выкатки, "YYYY-MM-DD". */
+  date: string;
+  title: string;
+  items: ChangelogItem[];
+};
+
+/** Подписи бейджей. Порядок в записи не важен, читается сверху вниз. */
+export const CHANGELOG_KIND_LABEL: Record<ChangelogKind, string> = {
+  new: "Новое",
+  fix: "Исправлено",
+  improve: "Улучшено",
+};
+
+export const CHANGELOG: ChangelogEntry[] = [
+  {
+    id: "2026-11-03-chat-history",
+    date: "2026-11-03",
+    title: "История чата целиком",
+    items: [
+      {
+        kind: "new",
+        text: "В начале ленты появилась кнопка «Показать более ранние» — раньше было видно только последние 50 сообщений, а теперь можно пролистать всю переписку.",
+      },
+      {
+        kind: "improve",
+        text: "При подгрузке истории лента не прыгает: сообщение, которое читали, остаётся на своём месте.",
+      },
+    ],
+  },
+  {
+    id: "2026-11-03-chat-alerts",
+    date: "2026-11-03",
+    title: "Чат зовёт, когда есть новое",
+    items: [
+      {
+        kind: "new",
+        text: "Свёрнутый чат показывает число непрочитанных, а вокруг кнопки расходятся волны — заметно, даже если смотришь на доску.",
+      },
+      {
+        kind: "fix",
+        text: "Счётчик пропадает сразу после прочтения. Раньше он оставался на старом числе, и было непонятно, всё ли прочитано.",
+      },
+      {
+        kind: "fix",
+        text: "Сообщения приходят почти сразу, без перезагрузки страницы.",
+      },
+    ],
+  },
+  {
+    id: "2026-11-03-chat-files",
+    date: "2026-11-03",
+    title: "Фото и документы в чате",
+    items: [
+      {
+        kind: "new",
+        text: "К сообщению можно прикрепить до четырёх фотографий или документов, а фото открыть на весь экран.",
+      },
+      {
+        kind: "fix",
+        text: "Прикрепление файлов больше не молчит: видно, что файл выбран, и что он загружается при отправке.",
+      },
+    ],
+  },
+  {
+    id: "2026-11-03-chat-easier",
+    date: "2026-11-03",
+    title: "Писать и читать в чате удобнее",
+    items: [
+      {
+        kind: "new",
+        text: "Реакции на сообщения, отметка «кто сейчас онлайн» и крупные эмодзи, если сообщение состоит только из них.",
+      },
+      {
+        kind: "new",
+        text: "Своё сообщение можно исправить или удалить.",
+      },
+      {
+        kind: "improve",
+        text: "Поле ввода растёт под текст, а подсказка напоминает: Enter — отправить, Shift+Enter — новая строка.",
+      },
+      {
+        kind: "improve",
+        text: "Сообщения одного автора подряд собраны в серию, время — внутри облачка.",
+      },
+    ],
+  },
+  {
+    id: "2026-11-02-activity-and-author",
+    date: "2026-11-02",
+    title: "Лента проекта и автор заявки",
+    items: [
+      {
+        kind: "new",
+        text: "Отдельная страница «Лента проекта»: видно, кто создал заявку, перенёс её или выполнил, и что произошло с материалами.",
+      },
+      {
+        kind: "new",
+        text: "У заявок и у пунктов списков указано, кто их создал.",
+      },
+    ],
+  },
+];
+
+/** Ключ в localStorage: id последней записи, которую человек видел. */
+export const CHANGELOG_STORAGE_KEY = "changelog:seen";
+
+/** Самая свежая запись — её и записываем как «просмотрено». */
+export function latestChangelogId(): string | null {
+  return CHANGELOG[0]?.id ?? null;
+}
+
+/**
+ * Сколько записей новее просмотренной. Записи идут от новых к старым, поэтому
+ * ответ — просто индекс просмотренной. Незнакомый id (запись убрали или
+ * хранилище чужое) считаем «не видел ничего»: точка появится, но это не ошибка.
+ */
+export function unseenChangelogCount(lastSeenId: string | null): number {
+  if (!lastSeenId) return CHANGELOG.length;
+  const index = CHANGELOG.findIndex((entry) => entry.id === lastSeenId);
+  return index === -1 ? CHANGELOG.length : index;
+}
+
+/** Что достали из localStorage: только id, который есть в списке, иначе null. */
+export function readSeenId(raw: string | null): string | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  return CHANGELOG.some((entry) => entry.id === value) ? value : null;
+}
+
+/** "3 ноября 2026" — подпись даты в списке записей. */
+export function formatChangelogDate(date: string): string {
+  const [year] = date.split("-");
+  return `${formatDateLong(date)} ${year}`;
+}
