@@ -29,6 +29,17 @@ export const CHANGELOG_KIND_LABEL: Record<ChangelogKind, string> = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-11-03-chat-ripple-loop",
+    date: "2026-11-03",
+    title: "Волна у кнопки чата не затихает",
+    items: [
+      {
+        kind: "improve",
+        text: "Пока в чате есть непрочитанное, вокруг кнопки постоянно расходятся круги — волна больше не пропадает через несколько секунд. Круги стали крупнее.",
+      },
+    ],
+  },
+  {
     id: "2026-11-03-password-eye",
     date: "2026-11-03",
     title: "Пароль можно показать",

@@ -1127,7 +1127,7 @@ export function ChatWidget({
               : `Чат проекта, непрочитанных: ${unread}`
         }
         // Toaster живёт снизу по центру — держим кнопку правее и выше safe-area.
-        className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-40 flex size-12 items-center justify-center rounded-full bg-brand text-white shadow-[0_6px_18px_rgba(20,30,50,0.22)] transition-transform duration-120 hover:scale-[1.04] active:scale-95"
+        className="fixed right-6 bottom-[calc(1.5rem+env(safe-area-inset-bottom))] z-40 flex size-12 items-center justify-center rounded-full bg-brand text-white shadow-[0_6px_18px_rgba(20,30,50,0.22)] transition-transform duration-120 hover:scale-[1.04] active:scale-95"
       >
         {/* Волна — только когда есть непрочитанные. key по числу пересоздаёт
             кольца, и CSS-анимация стартует заново на каждое новое сообщение;
@@ -1161,7 +1161,7 @@ export function ChatWidget({
   return (
     <section
       aria-label="Чат проекта"
-      className="fixed inset-x-0 bottom-0 z-40 flex h-[46dvh] flex-col overflow-hidden rounded-t-2xl border border-line-strong bg-surface shadow-[0_-8px_30px_rgba(20,30,50,0.18)] md:inset-x-auto md:right-4 md:bottom-[calc(1rem+env(safe-area-inset-bottom))] md:h-[36dvh] md:max-h-[440px] md:w-[364px] md:rounded-2xl md:shadow-[0_12px_40px_rgba(20,30,50,0.22)]"
+      className="fixed inset-x-0 bottom-0 z-40 flex h-[46dvh] flex-col overflow-hidden rounded-t-2xl border border-line-strong bg-surface shadow-[0_-8px_30px_rgba(20,30,50,0.18)] md:inset-x-auto md:right-6 md:bottom-[calc(1.5rem+env(safe-area-inset-bottom))] md:h-[36dvh] md:max-h-[440px] md:w-[364px] md:rounded-2xl md:shadow-[0_12px_40px_rgba(20,30,50,0.22)]"
     >
       <header className="flex shrink-0 items-center justify-between gap-2 border-b border-line-strong px-3 py-2">
         <div className="flex min-w-0 flex-col">
