@@ -29,6 +29,17 @@ export const CHANGELOG_KIND_LABEL: Record<ChangelogKind, string> = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-11-03-mobile-touch",
+    date: "2026-11-03",
+    title: "На телефоне удобнее попадать пальцем",
+    items: [
+      {
+        kind: "improve",
+        text: "Шапка, разделы и стрелки недели стали крупнее для пальца, а на узких экранах страница больше не прокручивается вбок.",
+      },
+    ],
+  },
+  {
     id: "2026-11-03-mobile-board-days",
     date: "2026-11-03",
     title: "Доска на телефоне — по дням",

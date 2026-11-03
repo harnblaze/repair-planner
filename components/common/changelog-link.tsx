@@ -49,7 +49,7 @@ export function ChangelogLink() {
     <Link
       href="/changelog"
       aria-label={unseen > 0 ? "Что нового, есть новые записи" : "Что нового"}
-      className="relative rounded-md px-[9px] py-[5px] text-[13px] text-ink-muted transition-colors duration-120 hover:bg-page hover:text-ink"
+      className="relative flex min-h-10 min-w-9 items-center justify-center rounded-md px-1.5 text-[13px] text-ink-muted transition-colors duration-120 hover:bg-page hover:text-ink sm:min-w-0 sm:justify-start sm:px-[9px] sm:py-[5px]"
     >
       {/* На узком экране шапка не помещается с текстом — остаётся иконка. */}
       <BellIcon size={14} className="sm:hidden" />

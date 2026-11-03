@@ -45,7 +45,7 @@ function toScheduleDays(rows: ScheduleJoin[] | null | undefined): ScheduleDay[] 
 // Сегментированная группа кнопок недели (docs/redesign.md §3): общая рамка у
 // контейнера, разделители — между сегментами.
 const WEEK_SEGMENT_CLASS =
-  "flex h-[30px] items-center px-[11px] text-[12.5px] font-medium whitespace-nowrap text-ink-soft transition-colors duration-120 not-last:border-r not-last:border-control-line hover:bg-[#F4F6FA] hover:text-ink active:bg-[#EBEFF5]";
+  "flex h-[38px] items-center px-[11px] text-[12.5px] font-medium whitespace-nowrap sm:h-[30px] text-ink-soft transition-colors duration-120 not-last:border-r not-last:border-control-line hover:bg-[#F4F6FA] hover:text-ink active:bg-[#EBEFF5]";
 
 export default async function BoardPage({
   params,
@@ -260,7 +260,7 @@ export default async function BoardPage({
             <span className="sr-only sm:not-sr-only">След. неделя&nbsp;</span>→
           </Link>
         </div>
-        <div className="flex h-[30px] items-center gap-[7px] rounded-[7px] border border-control-line bg-surface px-[11px] whitespace-nowrap">
+        <div className="flex h-[38px] items-center gap-[7px] rounded-[7px] border border-control-line bg-surface px-[11px] whitespace-nowrap sm:h-[30px]">
           <CalendarIcon size={13} className="text-icon" />
           <span className="font-mono text-[12.5px] font-medium tracking-[-0.01em] text-ink">
             {formatDateShort(weekDates[0])} — {formatDateShort(weekDates[weekDates.length - 1])}
@@ -269,7 +269,7 @@ export default async function BoardPage({
         {canEdit ? (
           <Link
             href={`/${projectId}/settings/lists`}
-            className="ml-auto text-[12.5px] whitespace-nowrap text-meta transition-colors duration-120 hover:text-ink"
+            className="ml-auto flex min-h-9 items-center whitespace-nowrap text-[12.5px] text-meta transition-colors duration-120 hover:text-ink"
           >
             <span className="hidden sm:inline">Настроить списки</span>
             <span className="sm:hidden">Списки</span>

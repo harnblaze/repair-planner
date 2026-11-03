@@ -48,7 +48,7 @@ export function ProjectNav({ projectId }: { projectId: string }) {
             href={href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "shrink-0 whitespace-nowrap rounded-md px-[11px] py-1.5 text-[13px] transition-colors duration-120",
+              "shrink-0 whitespace-nowrap rounded-md px-[11px] py-2 text-[13px] transition-colors duration-120 sm:py-1.5",
               active
                 ? "bg-brand-surface font-semibold text-ink shadow-[inset_0_0_0_1px_var(--color-brand-line)]"
                 : "text-ink-nav hover:bg-[#F3F5F8] hover:text-ink",
