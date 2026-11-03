@@ -142,6 +142,16 @@ export function ChatIcon(props: IconProps) {
   );
 }
 
+/** Лупа — поиск по переписке. */
+export function SearchIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="7" cy="7" r="4.2" />
+      <path d="M10.2 10.2 13.6 13.6" />
+    </svg>
+  );
+}
+
 /** Крестик — закрыть панель чата. */
 export function CloseIcon(props: IconProps) {
   return (

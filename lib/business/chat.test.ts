@@ -13,6 +13,8 @@ import {
   attachmentsByMessage,
   authorNameOf,
   canSend,
+  escapeLikePattern,
+  highlightParts,
   groupMessagesByDay,
   isEdited,
   isEmojiOnly,
@@ -20,6 +22,7 @@ import {
   isOwnMessage,
   jumboSize,
   mapPresence,
+  searchSnippet,
   mergeAttachments,
   mergeMessages,
   mergeOlderMessages,
@@ -551,5 +554,74 @@ describe("история: страницы", () => {
     const result = replacePageAttachments([old, stale], [fresh], ["m-1"]);
 
     expect(result).toEqual([old, fresh]);
+  });
+});
+
+describe("highlightParts", () => {
+  it("находит совпадение без учёта регистра", () => {
+    expect(highlightParts("Электроды привезли", "электроды")).toEqual([
+      { text: "Электроды", match: true },
+      { text: " привезли", match: false },
+    ]);
+  });
+
+  it("помечает все вхождения", () => {
+    const parts = highlightParts("тест и ещё тест", "тест");
+    expect(parts.filter((part) => part.match).map((part) => part.text)).toEqual(["тест", "тест"]);
+    expect(parts.map((part) => part.text).join("")).toBe("тест и ещё тест");
+  });
+
+  it("пустой запрос — один кусок без совпадения", () => {
+    expect(highlightParts("привет", "  ")).toEqual([{ text: "привет", match: false }]);
+  });
+
+  it("текст без совпадения остаётся целым", () => {
+    expect(highlightParts("привет", "пока")).toEqual([{ text: "привет", match: false }]);
+  });
+
+  it("не ломается на спецсимволах", () => {
+    expect(highlightParts("скидка 100% и ещё 100%", "100%")).toEqual([
+      { text: "скидка ", match: false },
+      { text: "100%", match: true },
+      { text: " и ещё ", match: false },
+      { text: "100%", match: true },
+    ]);
+  });
+});
+
+describe("searchSnippet", () => {
+  it("короткий текст отдаёт целиком", () => {
+    expect(searchSnippet("Электроды привезли", "электроды")).toBe("Электроды привезли");
+  });
+
+  it("склеивает переносы строк в один абзац", () => {
+    expect(searchSnippet("первая строка\nвторая", "вторая")).toBe("первая строка вторая");
+  });
+
+  it("обрезает длинный текст вокруг совпадения с обеих сторон", () => {
+    const body = `${"а".repeat(80)} иголка ${"б".repeat(80)}`;
+    const snippet = searchSnippet(body, "иголка", 10);
+
+    expect(snippet.startsWith("…")).toBe(true);
+    expect(snippet.endsWith("…")).toBe(true);
+    expect(snippet).toContain("иголка");
+    // Окно — примерно по радиусу с каждой стороны, а не всё сообщение.
+    expect(snippet.length).toBeLessThan(40);
+  });
+
+  it("длинный текст без совпадения обрезает справа", () => {
+    const snippet = searchSnippet("в".repeat(100), "нет", 10);
+    expect(snippet.endsWith("…")).toBe(true);
+    expect(snippet.length).toBeLessThanOrEqual(21);
+  });
+});
+
+describe("escapeLikePattern", () => {
+  it("экранирует проценты, подчёркивания и обратный слэш", () => {
+    expect(escapeLikePattern("100%_все\\")).toBe("100\\%\\_все\\\\");
+  });
+
+  it("обычный текст не меняет", () => {
+    expect(escapeLikePattern("электроды")).toBe("электроды");
   });
 });

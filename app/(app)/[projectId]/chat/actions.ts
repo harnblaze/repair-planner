@@ -20,7 +20,7 @@ import type { ChatAttachment, ChatMessage, ChatReaction } from "@/lib/business/c
 import { canEditProject } from "@/lib/business/project-roles";
 import { getProjectRole, requireProjectEdit } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
-import { CHAT_PAGE_SIZE } from "@/lib/business/chat";
+import { CHAT_PAGE_SIZE, escapeLikePattern } from "@/lib/business/chat";
 import {
   CHAT_BODY_MAX,
   chatEditSchema,
@@ -243,6 +243,65 @@ export async function loadMessagesAction(
     reactions: rows.flatMap(toReactions),
     attachments: rows.flatMap((row) => toAttachments(row, urlByPath)),
     hasMore,
+  };
+}
+
+const SEARCH_LIMIT = 20;
+const SEARCH_MIN_CHARS = 2;
+const SEARCH_MAX_CHARS = 100;
+
+/**
+ * Поиск по тексту переписки. Историю ищет сервер: лента помнит 50 сообщений.
+ */
+export async function searchMessagesAction(
+  projectId: string,
+  query: string,
+): Promise<{ ok: true; messages: ChatMessage[] } | { ok: false; error: string }> {
+  const role = await getProjectRole(projectId);
+  if (!role) return { ok: false, error: "Нет доступа к проекту." };
+
+  const term = query.trim().slice(0, SEARCH_MAX_CHARS);
+  if (term.length < SEARCH_MIN_CHARS) {
+    return { ok: false, error: "Введите хотя бы два символа." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("project_messages")
+    .select("id, project_id, author_id, body, created_at, edited_at, project_message_attachments(id)")
+    .eq("project_id", projectId)
+    .ilike("body", `%${escapeLikePattern(term)}%`)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(SEARCH_LIMIT);
+
+  if (error) {
+    console.error("searchMessagesAction:", error);
+    return { ok: false, error: "Не удалось выполнить поиск. Попробуйте ещё раз." };
+  }
+
+  /** В выборке поиска от вложений нужен только факт: скрепка в строке результата. */
+  type SearchRow = {
+    id: string;
+    project_id: string;
+    author_id: string;
+    body: string;
+    created_at: string;
+    edited_at: string | null;
+    project_message_attachments: { id: string }[] | null;
+  };
+
+  return {
+    ok: true,
+    messages: ((data ?? []) as SearchRow[]).map((row) => ({
+      id: row.id,
+      project_id: row.project_id,
+      author_id: row.author_id,
+      body: row.body,
+      created_at: row.created_at,
+      edited_at: row.edited_at,
+      has_attachments: (row.project_message_attachments ?? []).length > 0,
+    })),
   };
 }
 

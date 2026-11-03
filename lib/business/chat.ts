@@ -13,6 +13,11 @@ export type ChatMessage = {
   created_at: string;
   /** Когда сообщение правили (0036); null/undefined — не правили ни разу. */
   edited_at?: string | null;
+  /**
+   * Есть ли у сообщения файлы. Заполняется только результатами поиска: лента
+   * берёт вложения отдельным списком, а строке результата хватает флага.
+   */
+  has_attachments?: boolean;
 };
 
 export const CHAT_BODY_MAX = 2000;
@@ -465,4 +470,77 @@ export function attachmentGridClass(count: number): string {
   if (count <= 1) return "grid-cols-1";
   if (count === 2) return "grid-cols-2";
   return "grid-cols-2";
+}
+
+// ── Поиск по переписке ───────────────────────────────────────────────────────
+
+/**
+ * Экранирование шаблона LIKE для поиска по тексту. Без него пользовательские
+ * «%» и «_» работают как wildcard: запрос «100%» нашёл бы все сообщения, а
+ * «тест_поиска» — любое слово из шести букв вместо буквального совпадения.
+ * Обратный слэш экранируется первым, иначе он съел бы наши же слэши.
+ */
+export function escapeLikePattern(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+/** Кусок текста: `match` — попал ли он в найденное вхождение. */
+export type TextPart = { text: string; match: boolean };
+
+/**
+ * Разбивает текст на куски по вхождениям запроса, без учёта регистра.
+ * Возвращает данные, а не разметку: подсветку рисует компонент, поэтому
+ * экранировать пользовательский текст здесь не нужно.
+ */
+export function highlightParts(text: string, query: string): TextPart[] {
+  const needle = query.trim().toLowerCase();
+  if (needle.length === 0) return [{ text, match: false }];
+
+  const haystack = text.toLowerCase();
+  const parts: TextPart[] = [];
+  let cursor = 0;
+
+  while (cursor < text.length) {
+    const found = haystack.indexOf(needle, cursor);
+    if (found === -1) {
+      parts.push({ text: text.slice(cursor), match: false });
+      break;
+    }
+    if (found > cursor) parts.push({ text: text.slice(cursor, found), match: false });
+    parts.push({ text: text.slice(found, found + needle.length), match: true });
+    cursor = found + needle.length;
+  }
+
+  return parts.length > 0 ? parts : [{ text, match: false }];
+}
+
+/**
+ * Окно вокруг первого совпадения: в результатах поиска нужен контекст, а не
+ * всё сообщение на 2000 символов. Короткий текст отдаётся целиком, обрезанные
+ * края помечаются многоточием.
+ */
+export function searchSnippet(body: string, query: string, radius = 40): string {
+  // Переносы строк в строке результата ломают вёрстку — склеиваем в один абзац.
+  const flat = body.replace(/\s+/g, " ").trim();
+  const needle = query.trim().toLowerCase();
+  const at = needle.length > 0 ? flat.toLowerCase().indexOf(needle) : -1;
+
+  if (at === -1) {
+    return flat.length <= radius * 2 ? flat : `${flat.slice(0, radius * 2).trimEnd()}…`;
+  }
+
+  let start = Math.max(0, at - radius);
+  let end = Math.min(flat.length, at + needle.length + radius);
+
+  // Окно режем по границам слов: обрывок «…ра с утра» читается как опечатка.
+  if (start > 0) {
+    const space = flat.indexOf(" ", start);
+    if (space !== -1 && space < at) start = space + 1;
+  }
+  if (end < flat.length) {
+    const space = flat.lastIndexOf(" ", end);
+    if (space !== -1 && space > at + needle.length) end = space;
+  }
+
+  return `${start > 0 ? "…" : ""}${flat.slice(start, end).trim()}${end < flat.length ? "…" : ""}`;
 }

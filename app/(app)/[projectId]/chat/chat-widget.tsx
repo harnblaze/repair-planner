@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { AttachIcon, ChatIcon, CloseIcon } from "@/components/common/icons";
+import { AttachIcon, ChatIcon, CloseIcon, SearchIcon } from "@/components/common/icons";
 import { Button } from "@/components/ui/button";
 import {
   CHAT_ATTACHMENT_MESSAGES,
@@ -26,6 +26,7 @@ import {
   authorNameOf,
   canSend,
   groupMessagesByDay,
+  highlightParts,
   mergeAttachments,
   mergeOlderMessages,
   mergeReactions,
@@ -39,6 +40,7 @@ import {
   mergeMessages,
   messageTime,
   normalizeBody,
+  searchSnippet,
   splitAttachments,
   removeMessage,
   removeMessageAttachments,
@@ -54,6 +56,7 @@ import {
   type PresenceEntry,
 } from "@/lib/business/chat";
 import { compressImage } from "@/lib/attachments/compress-image";
+import { formatDateNumeric } from "@/lib/business/dates";
 import { EMOJI_CATEGORIES, readRecentEmoji, recentEmoji, saveRecentEmoji } from "@/lib/business/emoji";
 import { createClient as createBrowserSupabase } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -63,6 +66,7 @@ import {
   editMessageAction,
   loadMessagesAction,
   markChatReadAction,
+  searchMessagesAction,
   sendMessageAction,
   sendMessageWithAttachmentsAction,
   startChatAttachmentUploadAction,
@@ -166,6 +170,17 @@ export function ChatWidget({
    * `offline` — Realtime недоступен, работаем дозапросом.
    */
   const [live, setLive] = useState<"connecting" | "live" | "offline">("connecting");
+  // Поиск по переписке: под шапкой строка ввода, результаты заменяют ленту.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const [searchResults, setSearchResults] = useState<ChatMessage[] | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
+  // Долистываем историю к найденному сообщению — это заметно дольше запроса.
+  const [jumpBusy, setJumpBusy] = useState(false);
+  // Сообщение, к которому только что прыгнули: подсветка гаснет сама.
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const openRef = useRef(open);
   const knownIds = useRef(new Set(initialMessages.map((message) => message.id)));
@@ -183,6 +198,13 @@ export function ChatWidget({
       if (!next) {
         setEmojiOpen(false);
         setReactionPickerFor(null);
+        // Поиск тоже закрываем: иначе при следующем открытии чата вместо
+        // переписки покажутся старые результаты.
+        setSearchOpen(false);
+        setSearchText("");
+        setSearchResults(null);
+        setSearchError(null);
+        setSearching(false);
       }
       setOpen(next);
       openRef.current = next;
@@ -518,6 +540,110 @@ export function ChatWidget({
       setLoadingOlder(false);
     }
   }, [hasMore, messages, projectId]);
+
+  // Поиск с задержкой: пока человек печатает, запросы к серверу не нужны.
+  // setState стоит внутри таймера, а не в теле эффекта: синхронный setState
+  // в эффекте запрещён правилом react-hooks/set-state-in-effect.
+  useEffect(() => {
+    if (!searchOpen) return;
+    const term = searchText.trim();
+    if (term.length < 2) return;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      setSearching(true);
+      void searchMessagesAction(projectId, term)
+        .then((result) => {
+          if (cancelled) return;
+          setSearching(false);
+          if (result.ok) {
+            setSearchResults(result.messages);
+            setSearchError(null);
+          } else {
+            setSearchResults([]);
+            setSearchError(result.error);
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setSearching(false);
+          setSearchResults([]);
+          setSearchError("Нет связи. Проверьте интернет и попробуйте ещё раз.");
+        });
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchOpen, searchText, projectId]);
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchText("");
+    setSearchResults(null);
+    setSearchError(null);
+    setSearching(false);
+  }, []);
+
+  const toggleSearch = useCallback(() => {
+    if (searchOpen) {
+      closeSearch();
+      return;
+    }
+    setSearchOpen(true);
+    // Поле появляется в этом же рендере — фокус ставим после него.
+    requestAnimationFrame(() => searchInputRef.current?.focus());
+  }, [closeSearch, searchOpen]);
+
+  /**
+   * Переход к найденному сообщению. Если его нет в загруженной ленте, догружаем
+   * историю страницами, пока не найдём, — иначе поиск находил бы то, до чего
+   * нельзя долистать. Десяти страниц (500 сообщений) хватает с запасом.
+   */
+  const jumpToMessage = useCallback(
+    async (id: string) => {
+      closeSearch();
+
+      let list = messages;
+      let older = hasMore;
+      let cursor = list[0] ? { createdAt: list[0].created_at, id: list[0].id } : null;
+      let found = list.some((message) => message.id === id);
+      let pages = 0;
+
+      setJumpBusy(true);
+      try {
+        while (!found && older && cursor && pages < 10) {
+          const result = await loadMessagesAction(projectId, cursor);
+          if (!result.ok) break;
+          pages += 1;
+          list = mergeOlderMessages(list, result.messages);
+          found = list.some((message) => message.id === id);
+          older = result.hasMore;
+          cursor = list[0] ? { createdAt: list[0].created_at, id: list[0].id } : null;
+          if (result.messages.length === 0) break;
+        }
+
+        if (!found) {
+          // Всё равно показываем догруженное: человек увидит хоть что-то новое.
+          setMessages(list);
+          toast.error("Сообщение слишком старое — не удалось долистать");
+          return;
+        }
+
+        setMessages(list);
+        // Даём React отрисовать догруженные узлы, иначе искать в DOM нечего.
+        await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+        const element = listRef.current?.querySelector<HTMLElement>(`[data-message-id="${id}"]`);
+        element?.scrollIntoView({ block: "center" });
+        setHighlightId(id);
+        setTimeout(() => setHighlightId((current) => (current === id ? null : current)), 2200);
+      } finally {
+        setJumpBusy(false);
+      }
+    },
+    [closeSearch, hasMore, messages, projectId],
+  );
 
   const groups = useMemo(
     () => groupMessagesByDay(messages, timezone),
@@ -954,22 +1080,128 @@ export function ChatWidget({
             </span>
           ) : null}
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Свернуть чат"
-          onClick={() => persistOpen(false)}
-        >
-          <CloseIcon size={13} />
-        </Button>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={searchOpen ? "Закрыть поиск" : "Поиск по сообщениям"}
+            aria-pressed={searchOpen}
+            disabled={jumpBusy}
+            onClick={toggleSearch}
+          >
+            <SearchIcon size={14} strokeWidth={1.6} />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Свернуть чат"
+            onClick={() => persistOpen(false)}
+          >
+            <CloseIcon size={13} />
+          </Button>
+        </div>
       </header>
+
+      {searchOpen ? (
+        // Строка поиска живёт между шапкой и лентой: результаты заменяют ленту,
+        // композер остаётся на месте — из поиска можно сразу написать.
+        <div className="flex shrink-0 items-center gap-1 border-b border-line-strong px-2 py-1.5">
+          <SearchIcon size={13} className="shrink-0 text-meta" />
+          <input
+            ref={searchInputRef}
+            value={searchText}
+            onChange={(event) => {
+              const value = event.target.value.slice(0, 100);
+              setSearchText(value);
+              // Слишком короткий запрос ничего не ищет — прошлые результаты
+              // снимаем сразу, чтобы не показывать чужое.
+              if (value.trim().length < 2) {
+                setSearchResults(null);
+                setSearchError(null);
+              }
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                closeSearch();
+              }
+            }}
+            placeholder="Поиск по сообщениям"
+            aria-label="Поиск по сообщениям"
+            className="min-w-0 flex-1 bg-transparent py-0.5 text-[12.5px] text-ink outline-none placeholder:text-meta"
+          />
+          <button
+            type="button"
+            onClick={closeSearch}
+            aria-label="Закрыть поиск"
+            className="flex size-6 shrink-0 items-center justify-center rounded-full text-meta transition-colors duration-120 hover:bg-page hover:text-ink"
+          >
+            <CloseIcon size={12} />
+          </button>
+        </div>
+      ) : null}
 
       <div
         ref={listRef}
         onScroll={onListScroll}
         className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto bg-page/60 px-2.5 py-2"
       >
+        {searchOpen ? (
+          // Пока открыт поиск, лента заменяется результатами: смешивать их с
+          // перепиской — значит не понимать, где нашлось, а где просто было.
+          searchText.trim().length < 2 ? (
+            <p className="m-auto max-w-[220px] text-center text-[12px] text-meta">
+              Введите хотя бы два символа
+            </p>
+          ) : searching ? (
+            <p className="m-auto text-[12px] text-meta">Ищем…</p>
+          ) : searchError ? (
+            <p className="m-auto max-w-[240px] text-center text-[12px] text-meta">{searchError}</p>
+          ) : (searchResults?.length ?? 0) === 0 ? (
+            <p className="m-auto max-w-[220px] text-center text-[12px] text-meta">Ничего не найдено</p>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {(searchResults ?? []).map((message) => (
+                <button
+                  key={message.id}
+                  type="button"
+                  onClick={() => void jumpToMessage(message.id)}
+                  className="flex w-full flex-col gap-0.5 rounded-[10px] border border-line-strong bg-surface px-2.5 py-1.5 text-left transition-colors duration-120 hover:border-line-card-hover hover:bg-row-hover"
+                >
+                  <span className="flex min-w-0 items-center gap-1.5 text-[10.5px] text-meta">
+                    <span className="truncate font-medium text-ink-soft">
+                      {authorNameOf(authorNames[message.author_id])}
+                    </span>
+                    <span aria-hidden>·</span>
+                    <span className="shrink-0">
+                      {formatDateNumeric(message.created_at, timezone)}, {messageTime(message.created_at, timezone)}
+                    </span>
+                    {message.has_attachments ? <AttachIcon size={11} className="shrink-0 text-meta" /> : null}
+                  </span>
+                  <span className="line-clamp-3 text-[12.5px] leading-snug text-ink">
+                    {highlightParts(searchSnippet(message.body, searchText), searchText).map((part, index) =>
+                      part.match ? (
+                        <mark key={index} className="rounded-[3px] bg-brand/15 px-0.5 text-ink">
+                          {part.text}
+                        </mark>
+                      ) : (
+                        <span key={index}>{part.text}</span>
+                      ),
+                    )}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )
+        ) : (
+          <>
+        {jumpBusy ? (
+          <p className="shrink-0 self-center rounded-full bg-page px-2 py-0.5 text-[11px] text-meta">
+            Загружаем историю…
+          </p>
+        ) : null}
         {hasMore ? (
           // Кнопка живёт в начале ленты: история догружается вверх, туда же,
           // куда читатель и смотрит.
@@ -1017,6 +1249,7 @@ export function ChatWidget({
                 return (
                   <div
                     key={message.id}
+                    data-message-id={message.id}
                     className={cn(
                       "group flex flex-col",
                       own ? "items-end" : "items-start",
@@ -1074,6 +1307,8 @@ export function ChatWidget({
                       <div
                         className={cn(
                           "flex flex-col gap-1 break-words whitespace-pre-wrap",
+                          // Подсветка цели поиска: гаснет сама через пару секунд.
+                          highlightId === message.id && "ring-2 ring-brand/60 ring-offset-1",
                           // Крупный эмодзи — без пузыря и без ограничения ширины: в
                           // цветной плашке он читается как иконка, а max-w режет глиф.
                           jumbo
@@ -1307,6 +1542,8 @@ export function ChatWidget({
               })}
             </div>
           ))
+        )}
+          </>
         )}
       </div>
 
