@@ -10,12 +10,19 @@ import {
   formatMonthLabel,
   formatQuantity,
 } from "@/lib/business/material-report";
+import {
+  PERIOD_REPORT,
+  defaultPeriod,
+  periodQuery,
+} from "@/lib/business/materials-period";
 import { WORKS_REPORT, worksReportQuery } from "@/lib/business/works-report";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 
 import { CategoryFilter } from "./category-filter";
 import { loadConsumptionReport, resolveCategoryFilter } from "./data";
+import { loadMaterialPeriodReport } from "./period/data";
+import { PeriodReport } from "./period/period-report";
 import { MONTH_SEGMENT_CLASS, TAB_ACTIVE_CLASS, TAB_CLASS } from "./styles";
 import { loadWorksReport } from "./works-data";
 import { WorksReport } from "./works-report";
@@ -24,34 +31,49 @@ export const metadata: Metadata = {
   title: "Отчёты — Планировщик",
 };
 
+/** Какая вкладка отчётов открыта. */
+type ReportTab = "consumption" | "works" | "period";
+
 /** Вкладки отчётов: при переключении сохраняются месяц и цех текущего отчёта. */
 function ReportTabs({
   base,
-  isWorks,
+  active,
   month,
   category,
+  from,
+  to,
 }: {
   base: string;
-  isWorks: boolean;
+  active: ReportTab;
   month: string;
   category: string;
+  /** Период вкладки «Движение за период» — чтобы она открывалась с теми же датами. */
+  from: string;
+  to: string;
 }) {
+  const tabs: { id: ReportTab; label: string; href: string }[] = [
+    { id: "consumption", label: "Расход материалов", href: `${base}?${consumptionReportQuery(month, category)}` },
+    { id: "works", label: "Выполненные работы", href: `${base}?${worksReportQuery(month, category)}` },
+    { id: "period", label: "Движение за период", href: `${base}?${periodQuery(from, to)}` },
+  ];
+
   return (
-    <nav aria-label="Отчёты" className="flex self-start overflow-hidden rounded-[7px] border border-control bg-surface">
-      <Link
-        href={`${base}?${consumptionReportQuery(month, category)}`}
-        aria-current={isWorks ? undefined : "page"}
-        className={cn(TAB_CLASS, !isWorks && TAB_ACTIVE_CLASS)}
-      >
-        Расход материалов
-      </Link>
-      <Link
-        href={`${base}?${worksReportQuery(month, category)}`}
-        aria-current={isWorks ? "page" : undefined}
-        className={cn(TAB_CLASS, isWorks && TAB_ACTIVE_CLASS)}
-      >
-        Выполненные работы
-      </Link>
+    // На телефоне три вкладки не влезают: полоса прокручивается вбок, как
+    // навигация по разделам, вместо того чтобы распирать страницу.
+    <nav
+      aria-label="Отчёты"
+      className="flex max-w-full self-start overflow-x-auto rounded-[7px] border border-control bg-surface [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      {tabs.map((tab) => (
+        <Link
+          key={tab.id}
+          href={tab.href}
+          aria-current={active === tab.id ? "page" : undefined}
+          className={cn(TAB_CLASS, active === tab.id && TAB_ACTIVE_CLASS)}
+        >
+          {tab.label}
+        </Link>
+      ))}
     </nav>
   );
 }
@@ -61,9 +83,16 @@ export default async function ReportsPage({
   searchParams,
 }: PageProps<"/[projectId]/reports">) {
   const { projectId } = await params;
-  const { month: monthParam, category: categoryParam, report: reportParam } = await searchParams;
+  const {
+    month: monthParam,
+    category: categoryParam,
+    report: reportParam,
+    from: fromParam,
+    to: toParam,
+  } = await searchParams;
   const category = resolveCategoryFilter(categoryParam);
   const isWorks = reportParam === WORKS_REPORT;
+  const isPeriod = reportParam === PERIOD_REPORT;
   const base = `/${projectId}/reports`;
 
   const supabase = await createClient();
@@ -84,8 +113,33 @@ export default async function ReportsPage({
     ]);
     return (
       <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-5 pt-6 pb-7">
-        <ReportTabs base={base} isWorks month={works.month} category={category} />
+        <ReportTabs
+          base={base}
+          active="works"
+          month={works.month}
+          category={category}
+          {...defaultPeriod(works.today)}
+        />
         <WorksReport projectId={projectId} category={category} categories={categoryOptions(categories)} report={works} />
+      </main>
+    );
+  }
+
+  if (isPeriod) {
+    const period = await loadMaterialPeriodReport(projectId, fromParam, toParam);
+    return (
+      <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-5 pt-6 pb-7">
+        <ReportTabs
+          base={base}
+          active="period"
+          // Месяц нужен для переключения на соседние вкладки: берём его из
+          // самого периода, чтобы вкладка «Расход» открылась на том же отрезке.
+          month={period.from.slice(0, 7)}
+          category={category}
+          from={period.from}
+          to={period.to}
+        />
+        <PeriodReport projectId={projectId} report={period} />
       </main>
     );
   }
@@ -101,7 +155,13 @@ export default async function ReportsPage({
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-5 pt-6 pb-7">
-      <ReportTabs base={base} isWorks={false} month={month} category={category} />
+      <ReportTabs
+        base={base}
+        active="consumption"
+        month={month}
+        category={category}
+        {...defaultPeriod(today)}
+      />
       <Card>
         <CardHeader className="flex flex-col gap-3">
           <CardTitle>Расход материалов по цехам</CardTitle>

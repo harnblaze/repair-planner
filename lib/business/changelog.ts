@@ -29,6 +29,17 @@ export const CHANGELOG_KIND_LABEL: Record<ChangelogKind, string> = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-11-03-materials-period",
+    date: "2026-11-03",
+    title: "Движение материалов за период",
+    items: [
+      {
+        kind: "new",
+        text: "В отчётах появилась вкладка с любым периодом: видно, сколько материала пришло, сколько ушло и сколько осталось на конец — и что вообще не двигалось.",
+      },
+    ],
+  },
+  {
     id: "2026-11-03-mention-activity",
     date: "2026-11-03",
     title: "Упоминания видны в ленте",

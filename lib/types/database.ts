@@ -1616,6 +1616,19 @@ export type Database = {
           unit: string
         }[]
       }
+      material_movements_by_period: {
+        Args: { p_from: string; p_project_id: string; p_to: string }
+        Returns: {
+          adjustment: number
+          balance_at_end: number
+          consumption: number
+          last_moved_at: string
+          material_id: string
+          name: string
+          receipt: number
+          unit: string
+        }[]
+      }
       move_backlog_task: {
         Args: { p_position: number; p_queue_id: string; p_task_id: string }
         Returns: undefined
