@@ -62,6 +62,20 @@ export function isEdited(message: ChatMessage): boolean {
 }
 
 /**
+ * Читатель у нижнего края ленты. Порог в пикселях, а не в строках: 48 — это
+ * примерно две строки, чтобы «прилипание» не срабатывало от случайного
+ * прокрута, но и не заставляло ловить пиксель.
+ */
+export function isNearBottom(
+  scrollTop: number,
+  scrollHeight: number,
+  clientHeight: number,
+  threshold = 48,
+): boolean {
+  return scrollHeight - (scrollTop + clientHeight) <= threshold;
+}
+
+/**
  * Инициалы для кружка у чужого сообщения: «Дмитрий» → «Д», «Станислав Белов» →
  * «СБ». Отдельная функция, а не executorsInitials: тот отдаёт «Фамилия И.» для
  * карточек заявок и для одного слова возвращает слово целиком — в аватар оно

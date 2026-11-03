@@ -27,6 +27,7 @@ import {
   groupMessagesByDay,
   isEdited,
   isOwnMessage,
+  isNearBottom,
   jumboSize,
   mapPresence,
   mergeMessages,
@@ -68,6 +69,9 @@ import { useChatOpen } from "./use-chat-open";
 const REALTIME_TIMEOUT_MS = 8000;
 // Дозапрос, пока Realtime недоступен: сообщения приходят с задержкой, зато не теряются.
 const POLL_MS = 15000;
+// Страховка при «живой» подписке: сверяемся с сервером редко — молчащая
+// подписка (SUBSCRIBED без событий) иначе заморозила бы чат без ошибок.
+const POLL_SAFETY_MS = 30000;
 
 /** Файл, выбранный но ещё не отправленный: байты, превью (только у фото) и тип. */
 type PendingAttachment = {
@@ -119,6 +123,9 @@ export function ChatWidget({
   // Просмотр фото на весь экран: ссылка выбранного снимка.
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [unread, setUnread] = useState(initialUnread);
+  // «Новые сообщения»: сколько пришло, пока читатель листал историю выше.
+  const [newCount, setNewCount] = useState(0);
+  const atBottomRef = useRef(true);
   const [online, setOnline] = useState<OnlineUser[]>([]);
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
   // Меню «…» у своего сообщения: правка и удаление.
@@ -174,6 +181,8 @@ export function ChatWidget({
     if (fromOthers.length === 0) return;
     if (openRef.current) {
       void markChatReadAction(projectId);
+      // Читатель пролистал вверх — не дёргаем ленту, показываем плашку.
+      if (!atBottomRef.current) setNewCount((count) => count + fromOthers.length);
     } else {
       setUnread((count) => count + fromOthers.length);
     }
@@ -321,9 +330,13 @@ export function ChatWidget({
     };
   }, [authorNames, projectId, userId]);
 
-  // Дозапрос, пока подписки нет: лучше задержка, чем тишина.
+  // Дозапрос работает всегда, а не только при явном offline: подписка умеет
+  // рапортовать SUBSCRIBED и молчать (токен Realtime не применился) — тогда
+  // чат тихо замирает без единой ошибки. Пока панель открыта, раз в полминуты
+  // сверяемся с сервером; без подписки — чаще.
   useEffect(() => {
-    if (live !== "offline") return;
+    if (!open) return;
+    const intervalMs = live === "offline" ? POLL_MS : POLL_SAFETY_MS;
     let cancelled = false;
     const tick = async () => {
       const result = await loadMessagesAction(projectId);
@@ -333,13 +346,13 @@ export function ChatWidget({
       setReactions(result.reactions);
       setAttachments(result.attachments);
     };
-    const interval = setInterval(() => void tick(), POLL_MS);
+    const interval = setInterval(() => void tick(), intervalMs);
     void tick();
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [live, projectId]);
+  }, [live, open, projectId]);
 
   // Открытие = прочитано. Счётчик не обнуляем состоянием: пока панель открыта,
   // бейджа всё равно не видно, а markChatReadAction сдвигает отметку на сервере.
@@ -348,12 +361,30 @@ export function ChatWidget({
     void markChatReadAction(projectId);
   }, [open, projectId]);
 
-  // Лента прилипает к низу: новые сообщения должны быть видны.
+  // Лента прилипает к низу, только если читатель внизу: иначе он читает
+  // историю, а её выдёргивает к последнему сообщению.
   useEffect(() => {
     if (!open) return;
     const node = listRef.current;
+    if (!node) return;
+    const lastOwn = messages[messages.length - 1]?.author_id === userId;
+    if (atBottomRef.current || lastOwn) node.scrollTop = node.scrollHeight;
+  }, [messages, open, userId]);
+
+  const onListScroll = useCallback(() => {
+    const node = listRef.current;
+    if (!node) return;
+    const bottom = isNearBottom(node.scrollTop, node.scrollHeight, node.clientHeight);
+    atBottomRef.current = bottom;
+    if (bottom) setNewCount(0);
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    const node = listRef.current;
     if (node) node.scrollTop = node.scrollHeight;
-  }, [messages, open]);
+    atBottomRef.current = true;
+    setNewCount(0);
+  }, []);
 
   const groups = useMemo(
     () => groupMessagesByDay(messages, timezone),
@@ -794,6 +825,7 @@ export function ChatWidget({
 
       <div
         ref={listRef}
+        onScroll={onListScroll}
         className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto bg-page/60 px-2.5 py-2"
       >
         {groups.length === 0 ? (
@@ -1119,6 +1151,17 @@ export function ChatWidget({
           ))
         )}
       </div>
+
+      {/* Плашка вместо прыжка вниз: сообщения пришли, пока читали историю. */}
+      {newCount > 0 ? (
+        <button
+          type="button"
+          onClick={scrollToBottom}
+          className="absolute bottom-[64px] left-1/2 z-10 -translate-x-1/2 rounded-full bg-brand px-3 py-1 text-[11px] font-medium text-white shadow-[0_6px_18px_rgba(20,30,50,0.25)]"
+        >
+          Новые сообщения: {newCount} ↓
+        </button>
+      ) : null}
 
       {canPost ? (
         <div className="shrink-0 border-t border-line-strong px-2 py-2">

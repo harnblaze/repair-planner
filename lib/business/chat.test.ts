@@ -16,6 +16,7 @@ import {
   groupMessagesByDay,
   isEdited,
   isEmojiOnly,
+  isNearBottom,
   isOwnMessage,
   jumboSize,
   mapPresence,
@@ -450,5 +451,23 @@ describe("вложения", () => {
     expect(attachmentGridClass(1)).toBe("grid-cols-1");
     expect(attachmentGridClass(2)).toBe("grid-cols-2");
     expect(attachmentGridClass(4)).toBe("grid-cols-2");
+  });
+});
+
+describe("лента: прилипание к низу", () => {
+  it("в самом низу — да", () => {
+    expect(isNearBottom(500, 1000, 500)).toBe(true);
+  });
+
+  it("почти у низа — да, в пределах порога", () => {
+    expect(isNearBottom(470, 1000, 500)).toBe(true);
+  });
+
+  it("пролистал вверх — нет", () => {
+    expect(isNearBottom(200, 1000, 500)).toBe(false);
+  });
+
+  it("лента короче окна — считаем, что внизу", () => {
+    expect(isNearBottom(0, 300, 500)).toBe(true);
   });
 });
