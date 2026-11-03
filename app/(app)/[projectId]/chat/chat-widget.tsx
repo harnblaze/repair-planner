@@ -71,7 +71,7 @@ const REALTIME_TIMEOUT_MS = 8000;
 const POLL_MS = 15000;
 // Страховка при «живой» подписке: сверяемся с сервером редко — молчащая
 // подписка (SUBSCRIBED без событий) иначе заморозила бы чат без ошибок.
-const POLL_SAFETY_MS = 30000;
+const POLL_SAFETY_MS = 8000;
 
 /** Файл, выбранный но ещё не отправленный: байты, превью (только у фото) и тип. */
 type PendingAttachment = {
@@ -214,7 +214,18 @@ export function ChatWidget({
         return;
       }
 
-      supabase.realtime.setAuth(data.session.access_token);
+      // Ждём именно применения токена: setAuth асинхронный, а подписка ниже
+      // фиксирует RLS-контекст в момент subscribe. Подписавшись до токена,
+      // канал получает SUBSCRIBED и не доставляет ни одного события — молча.
+      await supabase.realtime.setAuth(data.session.access_token);
+
+      // Канал переиспользуется по имени: после повторного монтирования (dev
+      // делает его дважды) можно получить тот же объект, который предыдущая
+      // копия эффекта уже сняла на сервере. Такой «зомби» рапортует joined и
+      // не доставляет ни одного события. Сносим старый канал той же темы.
+      const topic = `project-messages:${projectId}`;
+      const stale = supabase.getChannels().find((item) => item.topic === `realtime:${topic}`);
+      if (stale) await supabase.removeChannel(stale);
 
       // Один канал на всё: сообщения, реакции и присутствие. Presence требует
       // ключ — им служит id пользователя, чтобы вкладки одного человека
@@ -227,7 +238,9 @@ export function ChatWidget({
         .on(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "project_messages", filter: `project_id=eq.${projectId}` },
-          (payload) => applyRef.current([payload.new as ChatMessage]),
+          (payload) => {
+            applyRef.current([payload.new as ChatMessage]);
+          },
         )
         .on(
           "postgres_changes",
