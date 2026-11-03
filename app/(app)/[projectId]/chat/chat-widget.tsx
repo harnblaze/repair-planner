@@ -821,6 +821,9 @@ export function ChatWidget({
                 // под каждой строкой оно превращало ленту в столбик отметок.
                 const next = index + 1 < group.messages.length ? group.messages[index + 1] : null;
                 const lastInRun = !next || next.author_id !== message.author_id;
+                // Первое сообщение серии от одного автора: у остальных скругляем
+                // верхний угол со своей стороны, чтобы серия читалась блоком.
+                const firstInRun = !previous || previous.author_id !== message.author_id;
                 return (
                   <div
                     key={message.id}
@@ -881,8 +884,16 @@ export function ChatWidget({
                           jumbo
                             ? "bg-transparent p-0 text-ink"
                             : own
-                              ? "max-w-[85%] items-end rounded-[14px] rounded-br-[5px] bg-brand px-2.5 py-1.5 text-[12.5px] text-white"
-                              : "max-w-[85%] items-start rounded-[14px] rounded-bl-[5px] border border-line-strong bg-surface px-2.5 py-1.5 text-[12.5px] text-ink",
+                              ? cn(
+                                  "max-w-[85%] items-end bg-brand px-2.5 py-1.5 text-[12.5px] text-white",
+                                  lastInRun ? "rounded-[14px] rounded-br-[5px]" : "rounded-[14px]",
+                                  firstInRun ? "" : "rounded-tr-[5px]",
+                                )
+                              : cn(
+                                  "max-w-[85%] items-start border border-line-strong bg-surface px-2.5 py-1.5 text-[12.5px] text-ink",
+                                  lastInRun ? "rounded-[14px] rounded-bl-[5px]" : "rounded-[14px]",
+                                  firstInRun ? "" : "rounded-tl-[5px]",
+                                ),
                           // Фото снимают внутренние отступы: картинка должна доходить до края.
                           images.length > 0 && "max-w-[85%] p-1",
                         )}
@@ -955,6 +966,18 @@ export function ChatWidget({
                             {message.body}
                           </span>
                         ) : null}
+                        {/* Время — внутри пузыря, как в мессенджерах: строка под
+                            пузырём делала ленту выше и «обвешанной». */}
+                        {!jumbo && lastInRun ? (
+                          <span
+                            className={cn(
+                              "mt-0.5 self-end text-[9.5px] leading-none",
+                              own ? "text-white/70" : "text-meta",
+                            )}
+                          >
+                            {messageTime(message.created_at, timezone)}
+                          </span>
+                        ) : null}
                       </div>
                     )}
                     <div className={cn("mt-0.5 flex items-center gap-1", own && "flex-row-reverse")}>
@@ -1013,7 +1036,7 @@ export function ChatWidget({
                           </button>
                         )
                       ) : null}
-                      {lastInRun ? (
+                      {jumbo && lastInRun ? (
                         <span className="text-[10px] text-meta">
                           {messageTime(message.created_at, timezone)}
                         </span>
