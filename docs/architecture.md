@@ -318,7 +318,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 | Компонент | Где | Как обновляется |
 |---|---|---|
-| Приложение | Timeweb Cloud App Platform, тип backend, `framework: docker`, регион ru-1 (1 CPU / 1 ГБ), технический домен `*.twc1.net` | Автодеплой при push в `main`: сборка по `Dockerfile` (Next.js `output: "standalone"`), запуск `node server.js` |
+| Приложение | Timeweb Cloud App Platform, тип backend, `framework: docker`, регион ru-1 (1 CPU / 1 ГБ), домен `планировщик.space` (`xn--80aerbkbpjeo5h.space`, SSL — Let's Encrypt автоматически) | Автодеплой при push в `main`: сборка по `Dockerfile` (Next.js `output: "standalone"`), запуск `node server.js` |
 | База и Auth | Supabase Cloud, проект `nohygbqkegxkfcejjycv` (eu-central-1) | Миграции — `supabase db push` из `supabase/migrations`, только после локального прогона `supabase test db` |
 
 Переменные приложения задаются в настройках App Platform: `NEXT_PUBLIC_SUPABASE_URL` и `NEXT_PUBLIC_SUPABASE_ANON_KEY` (publishable key `sb_publishable_…`). Timeweb передаёт их в Docker-сборку как build-args (`ARG` в `Dockerfile`) — `NEXT_PUBLIC_*` вшиваются при `next build`. Браузерный клиент Supabase не используется: все запросы идут с сервера (Server Components, Server Actions, proxy).
