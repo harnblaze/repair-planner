@@ -29,6 +29,17 @@ export const CHANGELOG_KIND_LABEL: Record<ChangelogKind, string> = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-11-05-mobile-day-tabs-overlap",
+    date: "2026-11-05",
+    title: "Переключатель дней больше не просвечивает",
+    items: [
+      {
+        kind: "fix",
+        text: "На телефоне при прокрутке доски текст карточек больше не наезжает на полосу с днями недели — она перекрывает содержимое как положено.",
+      },
+    ],
+  },
+  {
     id: "2026-11-05-supply-delivery-order",
     date: "2026-11-05",
     title: "В заявке снабжения сначала непривезённое",

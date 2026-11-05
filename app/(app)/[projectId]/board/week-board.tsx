@@ -501,11 +501,14 @@ export function WeekBoard({
         {/* Переключатель дней для телефона: на десктопе все колонки видны сразу,
             и полоса скрыта. sticky — чтобы день не терялся при прокрутке списка.
             Полоса не входит в карточку недели: у той overflow-hidden, а внутри
-            такого контейнера sticky не работает. */}
+            такого контейнера sticky не работает.
+            z-30 и непрозрачный фон — выше внутренних слоёв карточки: у кнопки
+            статуса и списка исполнителей свой z-10, и при равном z карточки
+            рисовались поверх полосы (текст «просвечивал» на переключателе дней). */}
         <div
           role="tablist"
           aria-label="День недели"
-          className="sticky top-0 z-10 -mx-5 flex gap-1 border-b border-line-strong bg-page/95 px-5 py-2 backdrop-blur-sm md:hidden"
+          className="sticky top-0 z-30 -mx-5 flex gap-1 border-b border-line-strong bg-page px-5 py-2 md:hidden"
         >
           {weekDates.map((date) => {
             const count = (board.days[date] ?? []).length;
