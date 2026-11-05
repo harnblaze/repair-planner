@@ -3,7 +3,15 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { AttachIcon, ChatIcon, CloseIcon, ReplyIcon, SearchIcon } from "@/components/common/icons";
+import {
+  AttachIcon,
+  ChatIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  ReplyIcon,
+  SearchIcon,
+} from "@/components/common/icons";
 import { Button } from "@/components/ui/button";
 import {
   CHAT_ATTACHMENT_MESSAGES,
@@ -41,6 +49,8 @@ import {
   mapPresence,
   mentionParts,
   mergeMessages,
+  photoGallery,
+  stepPhotoIndex,
   fromChatRow,
   quotePreview,
   messageTime,
@@ -143,8 +153,13 @@ export function ChatWidget({
   const [preparing, setPreparing] = useState(false);
   // Фокус в поле ввода — для подсказки про Enter.
   const [composerFocused, setComposerFocused] = useState(false);
-  // Просмотр фото на весь экран: ссылка выбранного снимка.
-  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  // Просмотрщик: выбранное фото хранится по id, а не по индексу. Так дозагрузка
+  // старых сообщений сверху не подменяет открытый снимок соседним.
+  const [viewerPhotoId, setViewerPhotoId] = useState<string | null>(null);
+  // Свайп по фото: запоминаем точку нажатия, чтобы отличить листание от тапа.
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
+  // После свайпа браузер всё равно шлёт click — его нельзя считать «закрыть».
+  const swipeAteClick = useRef(false);
   const [unread, setUnread] = useState(initialUnread);
   // Ответ на сообщение: полоса над полем ввода и цитата в будущем пузыре.
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
@@ -738,6 +753,25 @@ export function ChatWidget({
   // Фото раскладываем по сообщениям так же, как реакции, — один раз на рендер.
   const photosByMessage = useMemo(() => attachmentsByMessage(attachments), [attachments]);
 
+  // Лента фото чата: по ней листается полноэкранный просмотр (←/→ и свайп).
+  const gallery = useMemo(
+    () => photoGallery(messages.map((message) => message.id), photosByMessage),
+    [messages, photosByMessage],
+  );
+
+  // -1 — просмотрщик закрыт либо фото исчезло (сообщение удалили).
+  const viewerIndex =
+    viewerPhotoId === null ? -1 : gallery.findIndex((photo) => photo.id === viewerPhotoId);
+
+  const stepViewer = useCallback(
+    (step: number) => {
+      if (gallery.length === 0) return;
+      const next = gallery[stepPhotoIndex(Math.max(viewerIndex, 0), gallery.length, step)];
+      if (next) setViewerPhotoId(next.id);
+    },
+    [gallery, viewerIndex],
+  );
+
   // «Онлайн» — все, кроме себя: свой кружок в списке не нужен.
   const othersOnline = useMemo(() => online.filter((user) => user.userId !== userId), [online, userId]);
   const onlineLabel = useMemo(() => {
@@ -753,14 +787,13 @@ export function ChatWidget({
   // удаления) закрываются по клику мимо и по Esc. Без этого пикер эмодзи висит
   // поверх поля ввода и после отправки закрывает ленту.
   useEffect(() => {
-    if (!emojiOpen && !reactionPickerFor && !menuFor && !confirmDeleteFor && !viewerUrl) return;
+    if (!emojiOpen && !reactionPickerFor && !menuFor && !confirmDeleteFor) return;
 
     const closeAll = () => {
       setEmojiOpen(false);
       setReactionPickerFor(null);
       setMenuFor(null);
       setConfirmDeleteFor(null);
-      setViewerUrl(null);
     };
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null;
@@ -777,7 +810,22 @@ export function ChatWidget({
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [emojiOpen, reactionPickerFor, menuFor, confirmDeleteFor, viewerUrl]);
+  }, [emojiOpen, reactionPickerFor, menuFor, confirmDeleteFor]);
+
+  // Просмотрщик фото живёт отдельно от всплывающих окон: клик внутри него
+  // (стрелки, свайп) не должен его закрывать. Esc — закрыть, ←/→ — листать.
+  useEffect(() => {
+    if (viewerIndex < 0) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setViewerPhotoId(null);
+      else if (event.key === "ArrowLeft") stepViewer(-1);
+      else if (event.key === "ArrowRight") stepViewer(1);
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [viewerIndex, stepViewer]);
 
   const react = useCallback(
     async (messageId: string, emoji: string) => {
@@ -1471,7 +1519,7 @@ export function ChatWidget({
                                 key={photo.id}
                                 type="button"
                                 disabled={!photo.url}
-                                onClick={() => setViewerUrl(photo.url)}
+                                onClick={() => setViewerPhotoId(photo.id)}
                                 aria-label="Открыть фото"
                                 className="overflow-hidden rounded-[8px] bg-page"
                               >
@@ -1980,21 +2028,81 @@ export function ChatWidget({
           Только просмотр: писать в чат могут владелец и редактор.
         </p>
       )}
-      {viewerUrl ? (
+      {viewerIndex >= 0 ? (
         <div
           role="dialog"
-          aria-label="Просмотр фото"
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 p-4"
-          onClick={() => setViewerUrl(null)}
+          aria-modal="true"
+          aria-label={`Просмотр фото, ${viewerIndex + 1} из ${gallery.length}`}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 p-4 select-none"
+          onClick={() => {
+            if (swipeAteClick.current) {
+              swipeAteClick.current = false;
+              return;
+            }
+            setViewerPhotoId(null);
+          }}
+          onPointerDown={(event) => {
+            swipeStart.current = { x: event.clientX, y: event.clientY };
+            swipeAteClick.current = false;
+          }}
+          onPointerUp={(event) => {
+            const start = swipeStart.current;
+            swipeStart.current = null;
+            if (!start) return;
+            const dx = event.clientX - start.x;
+            const dy = event.clientY - start.y;
+            // Листаем, только если жест заметно горизонтальный: иначе случайное
+            // движение при тапе по фото перебрасывало бы на соседнее.
+            if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy)) return;
+            swipeAteClick.current = true;
+            stepViewer(dx < 0 ? 1 : -1);
+          }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- подписанный URL из Storage */}
-          <img src={viewerUrl} alt="Фото" className="max-h-full max-w-full rounded-[8px] object-contain" />
+          <img
+            src={gallery[viewerIndex].url}
+            alt={`Фото ${viewerIndex + 1} из ${gallery.length}`}
+            className="max-h-full max-w-full rounded-[8px] object-contain"
+            draggable={false}
+          />
+
+          {gallery.length > 1 ? (
+            <>
+              <button
+                type="button"
+                aria-label="Предыдущее фото"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  stepViewer(-1);
+                }}
+                className="absolute top-1/2 left-2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white transition-colors hover:bg-black/65"
+              >
+                <ChevronLeftIcon size={18} strokeWidth={2} />
+              </button>
+              <button
+                type="button"
+                aria-label="Следующее фото"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  stepViewer(1);
+                }}
+                className="absolute top-1/2 right-2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white transition-colors hover:bg-black/65"
+              >
+                <ChevronRightIcon size={18} strokeWidth={2} />
+              </button>
+              {/* Счётчик — чтобы было видно, сколько ещё снимков в ленте. */}
+              <span className="absolute top-3 left-1/2 -translate-x-1/2 rounded-full bg-black/45 px-2.5 py-1 font-mono text-[11.5px] text-white/90 tabular-nums">
+                {viewerIndex + 1} / {gallery.length}
+              </span>
+            </>
+          ) : null}
+
           <button
             type="button"
             aria-label="Закрыть фото"
             onClick={(event) => {
               event.stopPropagation();
-              setViewerUrl(null);
+              setViewerPhotoId(null);
             }}
             className="absolute top-3 right-3 flex size-8 items-center justify-center rounded-full bg-white/90 text-ink"
           >

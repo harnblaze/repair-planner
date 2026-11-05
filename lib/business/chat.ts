@@ -536,6 +536,39 @@ export function replacePageAttachments(
   return [...current.filter((item) => !page.has(item.message_id)), ...incoming];
 }
 
+/** Одно фото в просмотрщике: ссылка и id вложения (id не зависит от переподписи). */
+export type GalleryPhoto = { id: string; url: string };
+
+/**
+ * Лента фото чата в порядке сообщений — по ней листается полноэкранный просмотр.
+ * Порядок берётся из сообщений, а не из массива вложений: тот склеивается
+ * страницами и оптимистичными вставками, и хронологию по нему не гарантировать.
+ * Документы и нерабочие ссылки пропускаются: листать нечего.
+ */
+export function photoGallery(
+  orderedMessageIds: readonly string[],
+  byMessage: ReadonlyMap<string, readonly ChatAttachment[]>,
+): GalleryPhoto[] {
+  const photos: GalleryPhoto[] = [];
+  for (const messageId of orderedMessageIds) {
+    for (const item of byMessage.get(messageId) ?? []) {
+      if (item.kind === "document" || !item.url) continue;
+      photos.push({ id: item.id, url: item.url });
+    }
+  }
+  return photos;
+}
+
+/**
+ * Соседнее фото по кругу: с последнего — на первое и наоборот.
+ * Пустая лента и одиночное фото остаются на месте — листать некуда.
+ */
+export function stepPhotoIndex(index: number, length: number, step: number): number {
+  if (length <= 0) return 0;
+  if (length === 1) return 0;
+  return (((index + step) % length) + length) % length;
+}
+
 /** До четырёх фото в ряд: одно — крупно, несколько — сеткой (классы Tailwind). */
 export function attachmentGridClass(count: number): string {
   if (count <= 1) return "grid-cols-1";

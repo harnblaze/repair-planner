@@ -133,6 +133,23 @@ export function ChevronDownIcon({ size = 11, className, strokeWidth = 1.6 }: Ico
   );
 }
 
+/** Шевроны просмотрщика фото: листание ←/→. */
+export function ChevronLeftIcon({ size = 11, className, strokeWidth = 1.6 }: IconProps) {
+  return (
+    <svg {...base({ size, className, strokeWidth })}>
+      <path d="M10 2.5l-5.5 5.5 5.5 5.5" />
+    </svg>
+  );
+}
+
+export function ChevronRightIcon({ size = 11, className, strokeWidth = 1.6 }: IconProps) {
+  return (
+    <svg {...base({ size, className, strokeWidth })}>
+      <path d="M6 2.5L11.5 8 6 13.5" />
+    </svg>
+  );
+}
+
 /** Пузырь сообщения — кнопка чата в углу экрана. */
 export function ChatIcon(props: IconProps) {
   return (

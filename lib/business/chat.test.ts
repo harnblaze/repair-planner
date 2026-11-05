@@ -17,6 +17,7 @@ import {
   canSend,
   escapeLikePattern,
   fromChatRow,
+  photoGallery,
   quotePreview,
   highlightParts,
   groupMessagesByDay,
@@ -42,6 +43,7 @@ import {
   removeMessageReactions,
   removeReaction,
   shouldShowAuthor,
+  stepPhotoIndex,
   summarizeReactions,
   toggleReaction,
   unreadCount,
@@ -805,5 +807,64 @@ describe("quotePreview", () => {
 
   it("пустое тело — «Вложение»", () => {
     expect(quotePreview("   ")).toBe("Вложение");
+  });
+});
+
+describe("просмотрщик фото", () => {
+  const shot = (messageId: string, id: string, url: string | null = `https://s/${id}.jpg`): ChatAttachment => ({
+    id,
+    message_id: messageId,
+    storage_path: `p/${messageId}/${id}.jpg`,
+    kind: "image",
+    mime_type: "image/jpeg",
+    file_name: null,
+    size_bytes: 2048,
+    width: 800,
+    height: 600,
+    url,
+  });
+
+  const doc = (messageId: string, id: string): ChatAttachment => ({
+    ...shot(messageId, id),
+    kind: "document",
+    mime_type: "application/pdf",
+    file_name: "смета.pdf",
+    width: null,
+    height: null,
+  });
+
+  it("идёт по порядку сообщений, а не вложений", () => {
+    const byMessage = attachmentsByMessage([shot("m-2", "c"), shot("m-1", "a"), shot("m-1", "b")]);
+    expect(photoGallery(["m-1", "m-2"], byMessage).map((item) => item.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("пропускает документы и неподписанные фото", () => {
+    const byMessage = attachmentsByMessage([
+      shot("m-1", "a"),
+      doc("m-1", "d"),
+      shot("m-1", "b", null),
+      shot("m-2", "c"),
+    ]);
+    expect(photoGallery(["m-1", "m-2"], byMessage).map((item) => item.id)).toEqual(["a", "c"]);
+  });
+
+  it("сообщение без фото и отсутствующее в карте ничего не добавляют", () => {
+    const byMessage = attachmentsByMessage([shot("m-2", "c")]);
+    expect(photoGallery(["m-1", "m-2", "m-3"], byMessage)).toEqual([
+      { id: "c", url: "https://s/c.jpg" },
+    ]);
+  });
+
+  it("листает по кругу в обе стороны", () => {
+    expect(stepPhotoIndex(2, 3, 1)).toBe(0);
+    expect(stepPhotoIndex(0, 3, -1)).toBe(2);
+    expect(stepPhotoIndex(1, 3, 1)).toBe(2);
+    expect(stepPhotoIndex(1, 3, -1)).toBe(0);
+  });
+
+  it("одно фото и пустая лента остаются на месте", () => {
+    expect(stepPhotoIndex(0, 1, 1)).toBe(0);
+    expect(stepPhotoIndex(0, 1, -1)).toBe(0);
+    expect(stepPhotoIndex(0, 0, 1)).toBe(0);
   });
 });

@@ -29,6 +29,17 @@ export const CHANGELOG_KIND_LABEL: Record<ChangelogKind, string> = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-11-05-photo-viewer-gallery",
+    date: "2026-11-05",
+    title: "Фото в чате можно листать",
+    items: [
+      {
+        kind: "improve",
+        text: "Открытое на весь экран фото теперь не одно: стрелки по краям, клавиши ← и → или свайп листают остальные снимки чата по порядку.",
+      },
+    ],
+  },
+  {
     id: "2026-11-05-mobile-day-tabs-overlap",
     date: "2026-11-05",
     title: "Переключатель дней больше не просвечивает",
