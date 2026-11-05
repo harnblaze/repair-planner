@@ -7,7 +7,7 @@ import type {
   SupplyRequestView,
 } from "@/lib/types/supply";
 
-import { lineProgress, remainingToDeliver, summarizeRequest } from "./supply-status";
+import { lineProgress, remainingToDeliver, summarizeRequest, sortItemsForView } from "./supply-status";
 
 function item(id: string, overrides: Partial<SupplyItemView> = {}): SupplyItemView {
   return { id, lineNo: 1, name: id, unit: "шт", quantity: 1, note: null, materialId: null, cancelled: false, ...overrides };
@@ -144,5 +144,49 @@ describe("summarizeRequest: request", () => {
       paid: 2,
       delivered: 1,
     });
+  });
+});
+
+describe("sortItemsForView", () => {
+  const rows = [
+    { id: "a", lineNo: 1 },
+    { id: "b", lineNo: 2 },
+    { id: "c", lineNo: 3 },
+    { id: "d", lineNo: 4 },
+    { id: "e", lineNo: 5 },
+  ];
+
+  it("поднимает непривезённое и опускает снятое", () => {
+    const order = sortItemsForView(rows, {
+      a: "delivered",
+      b: "no_invoice",
+      c: "partial",
+      d: "cancelled",
+      e: "unpaid",
+    }).map((row) => row.id);
+    expect(order).toEqual(["b", "e", "c", "a", "d"]);
+  });
+
+  it("внутри группы сохраняет порядок строк заявки", () => {
+    const order = sortItemsForView(
+      [
+        { id: "later", lineNo: 9 },
+        { id: "earlier", lineNo: 2 },
+        { id: "middle", lineNo: 5 },
+      ],
+      { later: "delivered", earlier: "delivered", middle: "delivered" },
+    ).map((row) => row.id);
+    expect(order).toEqual(["earlier", "middle", "later"]);
+  });
+
+  it("неизвестный статус считает непривезённым", () => {
+    const order = sortItemsForView(rows.slice(0, 3), { a: "delivered" }).map((row) => row.id);
+    expect(order[order.length - 1]).toBe("a");
+  });
+
+  it("не меняет исходный массив", () => {
+    const source = [{ id: "x", lineNo: 2 }, { id: "y", lineNo: 1 }];
+    sortItemsForView(source, { x: "delivered", y: "no_invoice" });
+    expect(source.map((row) => row.id)).toEqual(["x", "y"]);
   });
 });

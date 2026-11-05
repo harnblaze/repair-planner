@@ -3,7 +3,12 @@
 import type { ReactNode } from "react";
 
 import { formatDateShort } from "@/lib/business/dates";
-import type { SupplyItemStatus, SupplyLineProgress, SupplyRequestSummary } from "@/lib/business/supply-status";
+import {
+  sortItemsForView,
+  type SupplyItemStatus,
+  type SupplyLineProgress,
+  type SupplyRequestSummary,
+} from "@/lib/business/supply-status";
 import type { SupplyInvoiceLineView, SupplyInvoiceView, SupplyItemView, SupplyRequestView } from "@/lib/types/supply";
 import { cn } from "@/lib/utils";
 
@@ -100,7 +105,7 @@ export function RequestTable({
           </tr>
         </thead>
         <tbody>
-          {request.items.map((item) => {
+          {sortItemsForView(request.items, summary.items).map((item) => {
             const status = summary.items[item.id];
             const lines = linesByItem.get(item.id) ?? [];
             const span = Math.max(1, lines.length);

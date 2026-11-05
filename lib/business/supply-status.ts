@@ -97,3 +97,38 @@ function itemStatus(
   if (linked.some((l) => l.progress.state !== "none")) return "partial";
   return linked.every((l) => l.paid) ? "paid" : "unpaid";
 }
+
+/**
+ * Порядок показа позиций в таблице заявки: сверху то, что ещё не привезли.
+ *
+ * Мастер открывает заявку, чтобы понять, чего не хватает, — искать непривезённое
+ * в середине документа по номерам строк неудобно. Внутри группы порядок остаётся
+ * документным (по номеру строки), чтобы соседние позиции не разъезжались.
+ *
+ * `no_invoice` — первым: по позиции ещё даже не заказано, это самое «горячее».
+ * `cancelled` — в самый низ: снятая позиция не требует действий.
+ */
+const ITEM_ORDER: Record<SupplyItemStatus, number> = {
+  no_invoice: 0,
+  unpaid: 1,
+  paid: 2,
+  partial: 3,
+  delivered: 4,
+  cancelled: 5,
+};
+
+/** Место статуса в порядке показа (0 — наверху). Неизвестный статус — как «не привезено». */
+export function itemOrderRank(status: SupplyItemStatus | undefined): number {
+  return status ? ITEM_ORDER[status] : 1;
+}
+
+/** Позиции заявки в порядке показа: группы по статусу, внутри — по номеру строки. */
+export function sortItemsForView<T extends { id: string; lineNo: number }>(
+  items: readonly T[],
+  statuses: Record<string, SupplyItemStatus | undefined>,
+): T[] {
+  return [...items].sort((a, b) => {
+    const byStatus = itemOrderRank(statuses[a.id]) - itemOrderRank(statuses[b.id]);
+    return byStatus !== 0 ? byStatus : a.lineNo - b.lineNo;
+  });
+}

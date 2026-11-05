@@ -29,6 +29,17 @@ export const CHANGELOG_KIND_LABEL: Record<ChangelogKind, string> = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-11-05-supply-delivery-order",
+    date: "2026-11-05",
+    title: "В заявке снабжения сначала непривезённое",
+    items: [
+      {
+        kind: "improve",
+        text: "В таблице заявки позиции без поставки теперь сверху: сразу видно, чего не хватает, и не надо выискивать их по номерам строк.",
+      },
+    ],
+  },
+  {
     id: "2026-11-03-activity-badge",
     date: "2026-11-03",
     title: "Лента показывает новое",
