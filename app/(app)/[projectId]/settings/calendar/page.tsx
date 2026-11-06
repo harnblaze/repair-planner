@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 
 // Сегментированная группа кнопок года — как навигация по неделям на доске.
 const YEAR_SEGMENT_CLASS =
-  "flex h-[30px] items-center px-[11px] text-[12.5px] font-medium text-ink-soft transition-colors duration-120 not-last:border-r not-last:border-control-line hover:bg-[#F4F6FA] hover:text-ink active:bg-[#EBEFF5]";
+  "flex h-[30px] items-center px-[11px] text-[12.5px] font-medium text-ink-soft transition-colors duration-120 not-last:border-r not-last:border-control-line hover:bg-row-hover hover:text-ink active:bg-row-hover";
 
 export default async function ProjectCalendarPage({
   params,

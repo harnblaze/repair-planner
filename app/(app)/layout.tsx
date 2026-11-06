@@ -6,6 +6,7 @@ import { NavigationTracker } from "@/components/common/back-link";
 import { ChangelogLink } from "@/components/common/changelog-link";
 import { CalendarIcon } from "@/components/common/icons";
 import { SignOutButton } from "@/components/common/sign-out-button";
+import { ThemeToggle } from "@/components/common/theme-toggle";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -50,7 +51,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             Профиль
           </Link>
         </div>
-        <SignOutButton />
+        <div className="flex items-center gap-1">
+          <ThemeToggle />
+          <SignOutButton />
+        </div>
       </header>
       {children}
     </div>

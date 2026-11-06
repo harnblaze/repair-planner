@@ -199,7 +199,7 @@ export function PullToRefresh() {
     >
       <div
         ref={indicator}
-        className="flex size-9 items-center justify-center rounded-full border border-line-strong bg-surface text-brand shadow-md"
+        className="flex size-9 items-center justify-center rounded-full border border-line-strong bg-surface text-brand-ink shadow-md"
         style={{ opacity: 0, transform: `translateY(-${INDICATOR_HIDDEN_OFFSET}px)` }}
       >
         {refreshing ? (

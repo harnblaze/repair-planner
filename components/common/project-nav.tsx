@@ -89,7 +89,7 @@ export function ProjectNav({ projectId }: { projectId: string }) {
               "inline-flex shrink-0 items-center gap-1 rounded-md px-[11px] py-2 text-[13px] whitespace-nowrap transition-colors duration-120 sm:py-1.5",
               active
                 ? "bg-brand-surface font-semibold text-ink shadow-[inset_0_0_0_1px_var(--color-brand-line)]"
-                : "text-ink-nav hover:bg-[#F3F5F8] hover:text-ink",
+                : "text-ink-nav hover:bg-row-hover hover:text-ink",
             )}
           >
             {label}

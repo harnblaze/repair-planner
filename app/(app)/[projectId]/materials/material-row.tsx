@@ -174,7 +174,7 @@ export function MaterialRow({
                   aria-label={`Приход «${material.name}»`}
                   title="Приход"
                   aria-expanded={receiving}
-                  className={receiving ? "text-brand" : undefined}
+                  className={receiving ? "text-brand-ink" : undefined}
                   onClick={() => {
                     setReceiving((open) => !open);
                     setOrdering(false);
@@ -190,7 +190,7 @@ export function MaterialRow({
                     aria-label={`В заказ «${material.name}»`}
                     title="В заказ"
                     aria-expanded={ordering}
-                    className={ordering ? "text-brand" : undefined}
+                    className={ordering ? "text-brand-ink" : undefined}
                     onClick={() => {
                       setOrdering((open) => !open);
                       setReceiving(false);

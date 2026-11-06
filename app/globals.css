@@ -35,6 +35,10 @@
   --color-placeholder: #9aa4b2;
 
   --color-brand: #2f55c8;
+  /* Бренд как текст/иконка на поверхности. В светлой теме совпадает с
+     заливкой, в тёмной светлеет: заливка уходит в фон кнопок, а текст должен
+     читаться на тёмной поверхности (иначе ссылки и активные пункты проваливаются). */
+  --color-brand-ink: #2f55c8;
   --color-brand-surface: #eef2fb;
   --color-brand-line: #dce4f7;
 
@@ -136,6 +140,9 @@
 /* shadcn-переменные указывают на те же токены — чтобы Card / Button / Input
    и остальные примитивы получили новую палитру без точечных переопределений. */
 :root {
+  /* Системные контролы (скроллбары, поля, выпадающие списки браузера) —
+     светлые, пока не включена тёмная тема. */
+  color-scheme: light;
   --background: #ffffff;
   --foreground: #1b2430;
   --card: #ffffff;
@@ -168,6 +175,103 @@
   --sidebar-accent-foreground: #2f55c8;
   --sidebar-border: #e1e6ed;
   --sidebar-ring: #2f55c8;
+}
+
+
+/* Тёмная тема: нейтральный графит.
+   Те же имена токенов, другие значения — весь интерфейс переключается сам,
+   потому что разметка работает с семантическими токенами, а не с цветами.
+
+   Правила палитры:
+   • фон не чёрный: чистый чёрный с белым текстом даёт ореолы и устают глаза
+     быстрее, чем графит с холодным подтоном;
+   • поверхности идут ступенями (страница → карточка → приподнятое), вместо
+     теней работают границы и разница в светлоте — тень на тёмном почти не видна;
+   • насыщенность статусов держится на тексте, заливка — приглушённый тон того
+     же цвета: цветное пятно на тёмном фоне светится, а строки должны читаться;
+   • бренд разделён на заливку (--color-brand) и текст (--color-brand-ink):
+     белый текст на кнопке требует тёмного синего, ссылки на тёмном фоне —
+     светлого, одним цветом это не решается. */
+.dark {
+  color-scheme: dark;
+
+  --color-page: #141517;
+  --color-surface: #1c1d20;
+  --color-surface-today: #212226;
+  --color-surface-column-hover: #202124;
+  --color-row-hover: #242528;
+
+  --color-line-strong: #303136;
+  --color-line-subtle: #26272a;
+  --color-line-card: #2b2c31;
+  --color-line-card-hover: #3b3c42;
+  --color-control: #3a3b41;
+  --color-control-hover: #494a51;
+  --color-control-line: #33343a;
+
+  --color-ink: #ececef;
+  --color-ink-soft: #c9cad0;
+  --color-ink-muted: #a7a8ae;
+  --color-ink-nav: #a1a2a8;
+  --color-ink-header: #9a9ba1;
+  --color-meta: #96979d;
+  --color-meta-alt: #8f9096;
+  --color-meta-dim: #85868c;
+  --color-icon: #9c9da3;
+  --color-faint: #75767c;
+  --color-counter: #7e7f85;
+  --color-placeholder: #7a7b81;
+
+  --color-brand: #4a6ee8;
+  --color-brand-ink: #8aa6ff;
+  --color-brand-surface: #1d2334;
+  --color-brand-line: #2c3752;
+
+  --color-status-new-bg: #26272b;
+  --color-status-new-fg: #c6cad2;
+  --color-status-planned-bg: #2a2140;
+  --color-status-planned-fg: #c4b3ff;
+  --color-status-progress-bg: #16223d;
+  --color-status-progress-fg: #9db8ff;
+  --color-status-done-bg: #12301f;
+  --color-status-done-fg: #7fe3a6;
+  --color-status-warn-bg: #33260d;
+  --color-status-warn-fg: #f5c86b;
+  --color-status-alert-bg: #3a1a1c;
+  --color-status-alert-fg: #ff9d9d;
+
+  /* shadcn-слой: примитивы Card / Button / Input / Select берут цвета отсюда. */
+  --background: #141517;
+  --foreground: #ececef;
+  --card: #1c1d20;
+  --card-foreground: #ececef;
+  --popover: #232428;
+  --popover-foreground: #ececef;
+  --primary: #4a6ee8;
+  --primary-foreground: #ffffff;
+  --secondary: #242528;
+  --secondary-foreground: #c9cad0;
+  --muted: #242528;
+  --muted-foreground: #96979d;
+  --accent: #1d2334;
+  --accent-foreground: #8aa6ff;
+  --destructive: #d65c5c;
+  --border: #303136;
+  --input: #3a3b41;
+  --ring: #8aa6ff;
+  --chart-1: #6f8ff2;
+  --chart-2: #5b8cf0;
+  --chart-3: #5ecf8b;
+  --chart-4: #e0b45c;
+  --chart-5: #e58080;
+  --sidebar: #1c1d20;
+  --sidebar-foreground: #ececef;
+  --sidebar-primary: #4a6ee8;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1d2334;
+  --sidebar-accent-foreground: #8aa6ff;
+  --sidebar-border: #303136;
+  --sidebar-ring: #8aa6ff;
 }
 
 /* Доска: разлиновка свободного места в колонке рабочего дня — «ежедневник».

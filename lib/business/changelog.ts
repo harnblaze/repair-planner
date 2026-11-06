@@ -29,6 +29,21 @@ export const CHANGELOG_KIND_LABEL: Record<ChangelogKind, string> = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-11-06-dark-theme",
+    date: "2026-11-06",
+    title: "Тёмная тема",
+    items: [
+      {
+        kind: "new",
+        text: "Весь интерфейс теперь есть в тёмном оформлении: кнопка в шапке переключает тему одним нажатием.",
+      },
+      {
+        kind: "new",
+        text: "В профиле можно выбрать «Светлая», «Тёмная» или «Как в системе» — по умолчанию оформление следует настройке телефона или компьютера.",
+      },
+    ],
+  },
+  {
     id: "2026-11-06-message-sound",
     date: "2026-11-06",
     title: "Новое сообщение слышно",

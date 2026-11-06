@@ -133,6 +133,24 @@ export function ChevronDownIcon({ size = 11, className, strokeWidth = 1.6 }: Ico
   );
 }
 
+/** Солнце и луна: переключение темы в шапке. */
+export function SunIcon({ size = 14, className, strokeWidth = 1.6 }: IconProps) {
+  return (
+    <svg {...base({ size, className, strokeWidth })}>
+      <circle cx="8" cy="8" r="3.2" />
+      <path d="M8 1.4v1.6M8 13v1.6M1.4 8h1.6M13 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M12.6 3.4l-1.1 1.1M4.5 11.5l-1.1 1.1" />
+    </svg>
+  );
+}
+
+export function MoonIcon({ size = 14, className, strokeWidth = 1.6 }: IconProps) {
+  return (
+    <svg {...base({ size, className, strokeWidth })}>
+      <path d="M13.2 9.6A5.6 5.6 0 0 1 6.4 2.8a5.6 5.6 0 1 0 6.8 6.8z" />
+    </svg>
+  );
+}
+
 /** Шевроны просмотрщика фото: листание ←/→. */
 export function ChevronLeftIcon({ size = 11, className, strokeWidth = 1.6 }: IconProps) {
   return (

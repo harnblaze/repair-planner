@@ -1241,7 +1241,7 @@ export function ChatWidget({
   return (
     <section
       aria-label="Чат проекта"
-      className="fixed inset-x-0 bottom-0 z-40 flex h-[46dvh] flex-col overflow-hidden rounded-t-2xl border border-line-strong bg-surface shadow-[0_-8px_30px_rgba(20,30,50,0.18)] md:inset-x-auto md:right-6 md:bottom-[calc(1.5rem+env(safe-area-inset-bottom))] md:h-[36dvh] md:max-h-[440px] md:w-[364px] md:rounded-2xl md:shadow-[0_12px_40px_rgba(20,30,50,0.22)]"
+      className="fixed inset-x-0 bottom-0 z-40 flex h-[46dvh] flex-col overflow-hidden rounded-t-2xl border border-line-strong bg-page shadow-[0_-8px_30px_rgba(20,30,50,0.18)] md:inset-x-auto md:right-6 md:bottom-[calc(1.5rem+env(safe-area-inset-bottom))] md:h-[36dvh] md:max-h-[440px] md:w-[364px] md:rounded-2xl md:shadow-[0_12px_40px_rgba(20,30,50,0.22)] dark:shadow-[0_-8px_30px_rgba(0,0,0,0.5)] md:dark:shadow-[0_12px_40px_rgba(0,0,0,0.55)]"
     >
       <header className="flex shrink-0 items-center justify-between gap-2 border-b border-line-strong px-3 py-2">
         <div className="flex min-w-0 flex-col">
@@ -1401,7 +1401,7 @@ export function ChatWidget({
         ) : (
           groups.map((group) => (
             <div key={group.day} className="flex flex-col gap-1">
-              <span className="self-center rounded-full bg-page px-2 py-0.5 text-[10.5px] text-meta">
+              <span className="self-center rounded-full bg-surface px-2 py-0.5 text-[10.5px] text-meta">
                 {group.label}
               </span>
               {group.messages.map((message, index) => {
@@ -1436,7 +1436,7 @@ export function ChatWidget({
                     {showAuthor ? (
                       <span className="mb-0.5 flex items-center gap-1 text-[10.5px] font-medium text-meta">
                         {own ? null : (
-                          <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-brand/15 text-[8.5px] font-semibold text-brand">
+                          <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-brand/15 text-[8.5px] font-semibold text-brand-ink">
                             {authorInitials(authorNames[message.author_id])}
                           </span>
                         )}
@@ -1615,7 +1615,7 @@ export function ChatWidget({
                                     own
                                       ? "bg-white/20 text-white"
                                       : part.isMe
-                                        ? "bg-brand/15 text-brand"
+                                        ? "bg-brand/15 text-brand-ink"
                                         : "bg-page text-ink-soft",
                                   )}
                                 >
@@ -1905,7 +1905,7 @@ export function ChatWidget({
                     index === mentionIndex ? "bg-page text-ink" : "text-ink-soft",
                   )}
                 >
-                  <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-brand/15 text-[8.5px] font-semibold text-brand">
+                  <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-brand/15 text-[8.5px] font-semibold text-brand-ink">
                     {authorInitials(name)}
                   </span>
                   <span className="truncate">{name}</span>

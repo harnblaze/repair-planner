@@ -604,13 +604,13 @@ export function WeekBoard({
             <TaskRow
               projectId={projectId}
               task={activeTask}
-              className="cursor-grabbing border border-line-card bg-surface shadow-[0_6px_16px_rgba(20,30,50,0.14)]"
+              className="cursor-grabbing border border-line-card bg-surface shadow-[0_6px_16px_rgba(20,30,50,0.14)] dark:shadow-[0_8px_20px_rgba(0,0,0,0.55)]"
             />
           ) : (
             <TaskChip
               projectId={projectId}
               task={withQueueLabel(activeTask)}
-              className="cursor-grabbing shadow-[0_6px_16px_rgba(20,30,50,0.14)]"
+              className="cursor-grabbing shadow-[0_6px_16px_rgba(20,30,50,0.14)] dark:shadow-[0_8px_20px_rgba(0,0,0,0.55)]"
             />
           )
         ) : null}
@@ -685,10 +685,10 @@ function DayColumn({
           isToday && "shadow-[inset_0_2px_0_0_var(--color-brand)]",
         )}
       >
-        <span className={cn("text-[13px] font-semibold", isToday ? "text-brand" : "text-ink")}>
+        <span className={cn("text-[13px] font-semibold", isToday ? "text-brand-ink" : "text-ink")}>
           {label}
         </span>
-        <span className={cn("font-mono text-[12px]", isToday ? "text-brand" : "text-meta-dim")}>
+        <span className={cn("font-mono text-[12px]", isToday ? "text-brand-ink" : "text-meta-dim")}>
           {formatDateShort(date)}
         </span>
         {tasks.length > 0 ? (

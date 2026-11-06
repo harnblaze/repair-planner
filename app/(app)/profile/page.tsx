@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { BackLink } from "@/components/common/back-link";
 import { PushSettings } from "@/components/common/push-settings";
 import { SoundSettings } from "@/components/common/sound-settings";
+import { ThemeSetting } from "@/components/common/theme-setting";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isPushConfigured } from "@/lib/push/send";
 import { createClient } from "@/lib/supabase/server";
@@ -45,8 +46,16 @@ export default async function ProfilePage() {
           <ProfileForm fullName={profile?.full_name ?? ""} />
         </CardContent>
       </Card>
-      {/* Уведомления — свойство устройства, поэтому живут в профиле, а не в
-          настройках проекта: телефон не принадлежит проекту. */}
+      {/* Оформление и уведомления — свойства устройства, поэтому живут в
+          профиле, а не в настройках проекта: телефон не принадлежит проекту. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Оформление</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ThemeSetting />
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle>Уведомления на телефон</CardTitle>

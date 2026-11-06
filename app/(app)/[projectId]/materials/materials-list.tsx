@@ -167,7 +167,7 @@ function FilterButton({
       onClick={onClick}
       className={cn(
         "flex h-[28px] items-center gap-1.5 px-3 text-[12px] transition-colors not-first:border-l not-first:border-control",
-        active ? "bg-brand-surface font-semibold text-brand" : "text-ink-soft hover:bg-row-hover",
+        active ? "bg-brand-surface font-semibold text-brand-ink" : "text-ink-soft hover:bg-row-hover",
       )}
     >
       {children}

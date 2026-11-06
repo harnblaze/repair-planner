@@ -29,7 +29,7 @@ const PRESET_LABEL: Record<PeriodPreset, string> = {
   "three-months": "3 месяца",
 };
 
-const PRESET_ACTIVE_CLASS = "bg-brand-surface text-brand hover:bg-brand-surface hover:text-brand";
+const PRESET_ACTIVE_CLASS = "bg-brand-surface text-brand-ink hover:bg-brand-surface hover:text-brand-ink";
 
 /** Вкладка «Движение за период»: приход и расход за любой отрезок времени. */
 export function PeriodReport({ projectId, report }: { projectId: string; report: MaterialPeriodReport }) {

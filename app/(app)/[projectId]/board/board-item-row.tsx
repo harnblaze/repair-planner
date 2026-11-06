@@ -142,7 +142,7 @@ export function BoardItemRow({
       {...(canEdit ? dragListeners(listeners) : {})}
       className={cn(
         "group relative flex touch-manipulation flex-wrap items-start gap-x-2.5 gap-y-1 rounded-[7px] bg-surface px-[9px] py-2 transition-colors duration-120 select-none hover:bg-row-hover",
-        isDragging && "z-10 shadow-[0_6px_16px_rgba(20,30,50,0.14)]",
+        isDragging && "z-10 shadow-[0_6px_16px_rgba(20,30,50,0.14)] dark:shadow-[0_8px_20px_rgba(0,0,0,0.55)]",
       )}
     >
       <input

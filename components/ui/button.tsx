@@ -8,16 +8,16 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-brand text-white hover:brightness-[1.08] active:brightness-[0.94] focus-visible:border-brand disabled:bg-[#C8D0DE] disabled:text-white",
+          "bg-brand text-white hover:brightness-[1.08] active:brightness-[0.94] focus-visible:border-brand disabled:bg-control disabled:text-white",
         outline:
-          "border-control bg-surface text-ink-soft hover:bg-[#F4F6FA] hover:text-ink active:bg-[#EBEFF5] focus-visible:border-brand disabled:text-faint",
+          "border-control bg-surface text-ink-soft hover:bg-row-hover hover:text-ink active:bg-control/40 focus-visible:border-brand disabled:text-faint",
         secondary:
-          "bg-page text-ink-soft hover:bg-[#E7EBF1] hover:text-ink focus-visible:border-brand disabled:text-faint",
+          "bg-page text-ink-soft hover:bg-row-hover hover:text-ink focus-visible:border-brand disabled:text-faint",
         ghost:
-          "font-medium text-ink-nav hover:bg-[#F3F5F8] hover:text-ink focus-visible:border-brand disabled:text-faint",
+          "font-medium text-ink-nav hover:bg-row-hover hover:text-ink focus-visible:border-brand disabled:text-faint",
         destructive:
           "bg-status-alert-bg text-status-alert-fg hover:brightness-[0.97] focus-visible:border-destructive focus-visible:ring-destructive/15 disabled:opacity-60",
-        link: "font-medium text-brand underline-offset-4 hover:underline disabled:text-faint",
+        link: "font-medium text-brand-ink underline-offset-4 hover:underline disabled:text-faint",
       },
       size: {
         default: "h-[30px] gap-[5px] px-3",

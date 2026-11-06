@@ -45,7 +45,7 @@ function toScheduleDays(rows: ScheduleJoin[] | null | undefined): ScheduleDay[] 
 // Сегментированная группа кнопок недели (docs/redesign.md §3): общая рамка у
 // контейнера, разделители — между сегментами.
 const WEEK_SEGMENT_CLASS =
-  "flex h-[38px] items-center px-[11px] text-[12.5px] font-medium whitespace-nowrap sm:h-[30px] text-ink-soft transition-colors duration-120 not-last:border-r not-last:border-control-line hover:bg-[#F4F6FA] hover:text-ink active:bg-[#EBEFF5]";
+  "flex h-[38px] items-center px-[11px] text-[12.5px] font-medium whitespace-nowrap sm:h-[30px] text-ink-soft transition-colors duration-120 not-last:border-r not-last:border-control-line hover:bg-row-hover hover:text-ink active:bg-row-hover";
 
 export default async function BoardPage({
   params,

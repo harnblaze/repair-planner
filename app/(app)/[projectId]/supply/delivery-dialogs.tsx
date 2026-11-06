@@ -445,7 +445,7 @@ export function ReceiveDialog({
           {!creating ? (
             <button
               type="button"
-              className="self-start text-[11.5px] font-medium text-brand hover:underline"
+              className="self-start text-[11.5px] font-medium text-brand-ink hover:underline"
               onClick={() => setCreating(true)}
             >
               Создать материал
