@@ -51,7 +51,10 @@ export default async function ProfilePage() {
           <CardTitle>Уведомления на телефон</CardTitle>
         </CardHeader>
         <CardContent>
-          <PushSettings serverReady={isPushConfigured()} />
+          <PushSettings
+            serverReady={isPushConfigured()}
+            publicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""}
+          />
         </CardContent>
       </Card>
     </main>

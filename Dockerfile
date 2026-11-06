@@ -26,8 +26,12 @@ COPY . .
 # Значения передаются из настроек приложения в App Platform Timeweb.
 ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ARG NEXT_PUBLIC_VAPID_PUBLIC_KEY
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+# Ключ уведомлений сейчас передаётся в браузер пропсом с сервера (runtime),
+# но имя NEXT_PUBLIC_ читается именно здесь — пусть собирается правильно.
+ENV NEXT_PUBLIC_VAPID_PUBLIC_KEY=$NEXT_PUBLIC_VAPID_PUBLIC_KEY
 
 RUN npm run build
 

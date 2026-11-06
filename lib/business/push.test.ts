@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   PUSH_BODY_LIMIT,
   chatPushPayload,
+  iosSupportsPush,
+  iosVersion,
   pushBody,
   testPushPayload,
   urlBase64ToUint8Array,
@@ -74,5 +76,29 @@ describe("urlBase64ToUint8Array", () => {
   it("понимает символы - и _ вместо + и /", () => {
     // 0xFB 0xFF в обычном base64 — "+/8", в base64url — "-_8".
     expect([...urlBase64ToUint8Array("-_8")]).toEqual([251, 255]);
+  });
+});
+
+describe("версия iOS", () => {
+  const iphone17 = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15";
+  const iphone15 = "Mozilla/5.0 (iPhone; CPU iPhone OS 15_7 like Mac OS X) AppleWebKit/605.1.15";
+  const ipad164 = "Mozilla/5.0 (iPad; CPU OS 16_4 like Mac OS X) AppleWebKit/605.1.15";
+  const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15";
+
+  it("достаёт версию из user-agent телефона и планшета", () => {
+    expect(iosVersion(iphone17)).toEqual({ major: 17, minor: 5 });
+    expect(iosVersion(ipad164)).toEqual({ major: 16, minor: 4 });
+    expect(iosVersion(mac)).toBeNull();
+  });
+
+  it("push есть только с 16.4", () => {
+    expect(iosSupportsPush(iphone15)).toBe(false);
+    expect(iosSupportsPush(ipad164)).toBe(true);
+    expect(iosSupportsPush(iphone17)).toBe(true);
+  });
+
+  it("на не-iOS не ограничивает — решает браузер", () => {
+    expect(iosSupportsPush(mac)).toBe(true);
+    expect(iosSupportsPush("")).toBe(true);
   });
 });

@@ -9,7 +9,7 @@ import {
   sendTestPushAction,
 } from "@/app/(app)/profile/actions";
 import { Button } from "@/components/ui/button";
-import { urlBase64ToUint8Array } from "@/lib/business/push";
+import { iosSupportsPush, iosVersion, urlBase64ToUint8Array } from "@/lib/business/push";
 
 // Включение уведомлений на телефоне. Подписка — это устройство, а не аккаунт:
 // одна и та же учётная запись с телефона и с компьютера даёт две строки в базе.
@@ -18,7 +18,10 @@ import { urlBase64ToUint8Array } from "@/lib/business/push";
 // только для production (в next dev мешает перезагрузке), а подписка без
 // активного воркера невозможна. Кто включил уведомления — у того воркер есть.
 
-const PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
+// Публичный ключ приходит пропсом с сервера, а не берётся из process.env:
+// NEXT_PUBLIC_* вшивается в бандл на этапе сборки Docker-образа, и переменная,
+// добавленная в настройках приложения позже, в уже собранный клиент не попадает.
+// С сервера же значение читается в момент запроса — источник правды один.
 
 type Phase = "checking" | "unsupported" | "off" | "blocked" | "on" | "busy";
 
@@ -43,9 +46,19 @@ function supportsPush(): boolean {
   );
 }
 
-export function PushSettings({ serverReady }: { serverReady: boolean }) {
+export function PushSettings({
+  serverReady,
+  publicKey,
+}: {
+  serverReady: boolean;
+  /** Ключ VAPID с сервера; пустая строка — подписка невозможна. */
+  publicKey: string;
+}) {
   const [phase, setPhase] = useState<Phase>("checking");
   const [message, setMessage] = useState<string | null>(null);
+  // Технические подробности сбоя: без них на телефоне не видно ни причины,
+  // ни версии системы, и остаётся только догадываться.
+  const [details, setDetails] = useState<string | null>(null);
 
   // Существующая подписка — источник правды о состоянии переключателя:
   // разрешение может быть выдано, а подписки уже не быть (сброс браузера).
@@ -53,7 +66,7 @@ export function PushSettings({ serverReady }: { serverReady: boolean }) {
     let cancelled = false;
 
     async function detect() {
-      if (!supportsPush()) {
+      if (!supportsPush() || !iosSupportsPush(navigator.userAgent)) {
         if (!cancelled) setPhase("unsupported");
         return;
       }
@@ -96,7 +109,7 @@ export function PushSettings({ serverReady }: { serverReady: boolean }) {
 
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(PUBLIC_KEY),
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
       });
 
       const json = subscription.toJSON();
@@ -116,18 +129,39 @@ export function PushSettings({ serverReady }: { serverReady: boolean }) {
 
       setPhase("on");
       setMessage(null);
+      setDetails(null);
     } catch (error) {
-      // Три частые причины, и все три — не поломка приложения:
+      // Причин может быть четыре, и все разные по смыслу:
       //  • приватное окно: Chrome не отдаёт Push API и не даёт это определить;
       //  • iPhone в обычной вкладке Safari: пуши только у приложения с экрана «Домой»;
+      //  • iPhone с установленным приложением, но доступ не выдан: iOS привязывает
+      //    его к моменту установки, и старая иконка может «не знать» про push;
       //  • всё остальное: разрешение отозвали в настройках браузера.
-      const reason = error instanceof Error ? error.message : "";
+      const failure = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      const registration = await navigator.serviceWorker.getRegistration("/").catch(() => null);
+      const version = iosVersion(navigator.userAgent);
       setPhase("off");
-      if (/incognito|private/i.test(reason)) {
+      setDetails(
+        [
+          version ? `iOS ${version.major}.${version.minor}` : null,
+          isIos() ? `экран «Домой»: ${isStandalone() ? "да" : "нет"}` : null,
+          `разрешение: ${Notification.permission}`,
+          `воркер: ${registration?.active?.state ?? "нет"}`,
+          `ошибка: ${failure}`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      );
+
+      if (/incognito|private/i.test(failure)) {
         setMessage("В приватном окне браузер не поддерживает уведомления. Откройте сайт в обычном окне.");
       } else if (isIos() && !isStandalone()) {
         setMessage(
           "На iPhone уведомления работают только у приложения с экрана «Домой»: откройте сайт в Safari → «Поделиться» → «На экран Домой», затем включите здесь.",
+        );
+      } else if (isIos()) {
+        setMessage(
+          "iOS не выдала доступ к уведомлениям для этой иконки. Удалите её с экрана «Домой» и добавьте сайт заново из Safari — система выдаёт доступ при установке. После этого включите уведомления снова.",
         );
       } else {
         setMessage(
@@ -135,11 +169,12 @@ export function PushSettings({ serverReady }: { serverReady: boolean }) {
         );
       }
     }
-  }, []);
+  }, [publicKey]);
 
   const disable = useCallback(async () => {
     setPhase("busy");
     setMessage(null);
+    setDetails(null);
     try {
       const registration = await navigator.serviceWorker.getRegistration("/");
       const subscription = await registration?.pushManager.getSubscription();
@@ -164,7 +199,7 @@ export function PushSettings({ serverReady }: { serverReady: boolean }) {
     }
   }, []);
 
-  if (!serverReady) {
+  if (!serverReady || publicKey.length === 0) {
     return (
       <p className="text-[12px] text-meta">
         На сервере не заданы ключи уведомлений — функция выключена. Сообщите администратору.
@@ -179,8 +214,9 @@ export function PushSettings({ serverReady }: { serverReady: boolean }) {
   if (phase === "unsupported") {
     return (
       <p className="text-[12px] text-meta">
-        Этот браузер не поддерживает уведомления. На компьютере подойдут Chrome, Edge или Safari,
-        на телефоне — Chrome (Android) или Safari с добавлением на экран «Домой» (iPhone).
+        {isIos()
+          ? "На iPhone уведомления работают с iOS 16.4 и новее — в приложении, добавленном на экран «Домой» из Safari. Обновите систему или откройте сайт в Chrome на Android."
+          : "Этот браузер не поддерживает уведомления. Подойдут Chrome, Edge или Safari на компьютере и Chrome на Android."}
       </p>
     );
   }
@@ -235,6 +271,13 @@ export function PushSettings({ serverReady }: { serverReady: boolean }) {
       ) : null}
 
       {message ? <p className="text-[12px] text-status-alert-fg">{message}</p> : null}
+
+      {details ? (
+        <details className="text-[11.5px] text-meta">
+          <summary className="cursor-pointer select-none">Подробности</summary>
+          <p className="mt-1 break-words">{details}</p>
+        </details>
+      ) : null}
     </div>
   );
 }

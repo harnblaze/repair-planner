@@ -82,3 +82,24 @@ export function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   }
   return bytes;
 }
+
+/**
+ * Версия iOS из user-agent. Нужна, чтобы честно сказать «нужна iOS 16.4+»,
+ * а не «проверьте разрешения»: до 16.4 push в Safari не существует вовсе.
+ */
+export function iosVersion(userAgent: string): { major: number; minor: number } | null {
+  const match = /(?:iPhone|iPad|iPod).*?OS (\d+)[._](\d+)/i.exec(userAgent);
+  if (!match) return null;
+  return { major: Number(match[1]), minor: Number(match[2]) };
+}
+
+/** Минимальная версия iOS с поддержкой Web Push (в установленном приложении). */
+export const IOS_PUSH_MIN: { major: number; minor: number } = { major: 16, minor: 4 };
+
+/** Поддерживает ли эта версия iOS push. Не-iOS не ограничиваем — решает браузер. */
+export function iosSupportsPush(userAgent: string): boolean {
+  const version = iosVersion(userAgent);
+  if (!version) return true;
+  if (version.major !== IOS_PUSH_MIN.major) return version.major > IOS_PUSH_MIN.major;
+  return version.minor >= IOS_PUSH_MIN.minor;
+}
