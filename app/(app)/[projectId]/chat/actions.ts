@@ -18,6 +18,7 @@ import {
 } from "@/lib/business/attachments";
 import type { ChatAttachment, ChatMessage, ChatReaction } from "@/lib/business/chat";
 import { canEditProject } from "@/lib/business/project-roles";
+import { scheduleChatPush } from "@/lib/push/chat";
 import { getProjectRole, requireProjectEdit } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
 import { CHAT_PAGE_SIZE, escapeLikePattern, fromChatRow } from "@/lib/business/chat";
@@ -214,6 +215,14 @@ export async function sendMessageAction(
     if (error?.message?.includes("reply_target_invalid")) return REPLY_GONE;
     return { ok: false, error: "Не удалось отправить сообщение. Попробуйте ещё раз." };
   }
+
+  // Уведомления — после ответа: отправка сообщения не должна ждать push-сервисы.
+  await scheduleChatPush(supabase, {
+    projectId,
+    authorId: user.id,
+    body: parsed.data.body,
+    hasAttachments: false,
+  });
 
   return { ok: true, message: fromChatRow(data) };
 }
@@ -730,6 +739,13 @@ export async function sendMessageWithAttachmentsAction(
       project_message_attachments: [row],
     })) as MessageRow[],
   );
+
+  await scheduleChatPush(supabase, {
+    projectId,
+    authorId: user.id,
+    body: parsed.data.body,
+    hasAttachments: attachments.length > 0,
+  });
 
   return {
     ok: true,

@@ -793,6 +793,47 @@ export type Database = {
           },
         ]
       }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          endpoint: string
+          id: string
+          last_seen_at: string
+          p256dh: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          endpoint: string
+          id?: string
+          last_seen_at?: string
+          p256dh: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          endpoint?: string
+          id?: string
+          last_seen_at?: string
+          p256dh?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       supply_deliveries: {
         Row: {
           created_at: string
@@ -1677,6 +1718,19 @@ export type Database = {
           user_id: string
         }[]
       }
+      project_push_subscriptions: {
+        Args: { p_project_id: string }
+        Returns: {
+          auth: string
+          endpoint: string
+          p256dh: string
+          user_id: string
+        }[]
+      }
+      prune_push_subscriptions: {
+        Args: { p_endpoints: string[] }
+        Returns: number
+      }
       purge_project_activity: { Args: { p_keep?: string }; Returns: number }
       purge_project_messages: { Args: { p_keep?: string }; Returns: number }
       receive_supply_delivery_line: {
@@ -1740,6 +1794,15 @@ export type Database = {
         Returns: undefined
       }
       return_task_to_backlog: { Args: { p_task_id: string }; Returns: boolean }
+      save_push_subscription: {
+        Args: {
+          p_auth: string
+          p_endpoint: string
+          p_p256dh: string
+          p_user_agent?: string
+        }
+        Returns: boolean
+      }
       search_archive_tasks: {
         Args: {
           p_category_id?: string

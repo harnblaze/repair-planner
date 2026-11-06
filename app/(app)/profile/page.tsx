@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { BackLink } from "@/components/common/back-link";
+import { PushSettings } from "@/components/common/push-settings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { isPushConfigured } from "@/lib/push/send";
 import { createClient } from "@/lib/supabase/server";
 
 import { ProfileForm } from "./profile-form";
@@ -40,6 +42,16 @@ export default async function ProfilePage() {
         <CardContent className="flex flex-col gap-4">
           <p className="text-[12px] text-meta">{user.email}</p>
           <ProfileForm fullName={profile?.full_name ?? ""} />
+        </CardContent>
+      </Card>
+      {/* Уведомления — свойство устройства, поэтому живут в профиле, а не в
+          настройках проекта: телефон не принадлежит проекту. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Уведомления на телефон</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <PushSettings serverReady={isPushConfigured()} />
         </CardContent>
       </Card>
     </main>
