@@ -133,6 +133,17 @@ export function ChevronDownIcon({ size = 11, className, strokeWidth = 1.6 }: Ico
   );
 }
 
+/** Выход: стрелка из двери — на узком экране шапка обходится без подписи. */
+export function ExitIcon({ size = 14, className, strokeWidth = 1.6 }: IconProps) {
+  return (
+    <svg {...base({ size, className, strokeWidth })}>
+      <path d="M9.5 2.5H11a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 11 13.5H9.5" />
+      <path d="M6.5 5 9.5 8l-3 3" />
+      <path d="M9.5 8H2" />
+    </svg>
+  );
+}
+
 /** Солнце и луна: переключение темы в шапке. */
 export function SunIcon({ size = 14, className, strokeWidth = 1.6 }: IconProps) {
   return (

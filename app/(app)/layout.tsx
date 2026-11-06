@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { AppBadge } from "@/components/common/app-badge";
 import { NavigationTracker } from "@/components/common/back-link";
 import { ChangelogLink } from "@/components/common/changelog-link";
-import { CalendarIcon } from "@/components/common/icons";
+import { CalendarIcon, UserIcon } from "@/components/common/icons";
 import { SignOutButton } from "@/components/common/sign-out-button";
 import { ThemeToggle } from "@/components/common/theme-toggle";
 import { createClient } from "@/lib/supabase/server";
@@ -32,12 +32,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       {/* На узком экране зазоры меньше: на 390 px шапка с «Что нового» иначе
           вылезала за край ровно на 10 px. */}
       <header className="flex h-[52px] shrink-0 items-center justify-between gap-2 border-b border-line-strong bg-surface px-3 sm:gap-6 sm:px-5">
-        <div className="flex min-w-0 items-center gap-2 sm:gap-5">
-          <Link href="/projects" className="flex min-h-10 items-center gap-[9px]">
-            <span className="flex size-[22px] items-center justify-center rounded-[5px] bg-brand text-white">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-5">
+          <Link href="/projects" className="flex min-h-10 min-w-0 items-center gap-[9px]">
+            <span className="flex size-[22px] shrink-0 items-center justify-center rounded-[5px] bg-brand text-white">
               <CalendarIcon size={12} strokeWidth={1.6} />
             </span>
-            <span className="text-[14.5px] font-semibold tracking-[-0.01em] text-ink">
+            {/* На очень узком экране название уступает место кнопкам: без
+                усечения шапка наезжала сама на себя (телефон 320–360 px). */}
+            <span className="truncate text-[14.5px] font-semibold tracking-[-0.01em] text-ink">
               Планировщик
             </span>
           </Link>
@@ -45,13 +47,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <ChangelogLink />
           <Link
             href="/profile"
+            aria-label="Профиль"
             // min-h-10: на телефоне палец должен попадать в ссылку, а не в 5-пиксельную щель.
-            className="flex min-h-10 items-center rounded-md px-1.5 text-[13px] text-ink-muted transition-colors duration-120 hover:bg-page hover:text-ink sm:px-[9px]"
+            className="flex min-h-10 min-w-9 shrink-0 items-center justify-center rounded-md px-1.5 text-[13px] text-ink-muted transition-colors duration-120 hover:bg-page hover:text-ink sm:px-[9px]"
           >
-            Профиль
+            <UserIcon size={16} className="hidden max-[379px]:block" />
+            <span className="max-[379px]:hidden">Профиль</span>
           </Link>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           <ThemeToggle />
           <SignOutButton />
         </div>
