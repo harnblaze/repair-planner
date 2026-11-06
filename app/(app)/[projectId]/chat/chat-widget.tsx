@@ -274,7 +274,12 @@ export function ChatWidget({
     const fromOthers = fresh.filter((message) => message.author_id !== userId);
     if (fromOthers.length === 0) return;
     if (openRef.current) {
-      void markChatReadAction(projectId);
+      // Прочитали, пока чат открыт: сообщаем значку сразу, иначе число
+      // на иконке висело до перехода на другую страницу.
+      void markChatReadAction(projectId).then((result) => {
+        if (!result.ok) return;
+        window.dispatchEvent(new Event("planner:chat-read"));
+      });
       // Читатель пролистал вверх — не дёргаем ленту, показываем плашку.
       if (!atBottomRef.current) setNewCount((count) => count + fromOthers.length);
     } else {

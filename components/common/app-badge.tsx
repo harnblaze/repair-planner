@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 import { chatUnreadTotalAction } from "@/app/(app)/badge-actions";
 import { faviconLabel, titleWithBadge } from "@/lib/business/badge";
+import { createClient as createBrowserSupabase } from "@/lib/supabase/client";
 
 // Значок «сколько непрочитанного» на иконке приложения и на иконке вкладки.
 //
@@ -16,8 +17,9 @@ import { faviconLabel, titleWithBadge } from "@/lib/business/badge";
 //    API для этого нет;
 //  • заголовок вкладки — «(3) Доска», видно и в списке вкладок, и в истории.
 //
-// Число обновляем по таймеру и на возвращение к вкладке: держать Realtime-
-// подписку ради значка дороже, чем один запрос в минуту.
+// Число обновляем по событию Realtime (мгновенно, даже когда вкладка не
+// активна), по таймеру и на возвращение к вкладке — последние два на случай,
+// если соединение с Realtime ещё не поднялось.
 
 const POLL_MS = 60_000;
 const ICON_URL = "/icons/icon-192.png";
@@ -156,6 +158,40 @@ export function AppBadge({ initial }: { initial: number }) {
     observer.observe(titleElement, { childList: true, characterData: true, subtree: true });
     return () => observer.disconnect();
   }, []);
+
+  // Realtime: новое сообщение в любом проекте — пересчитываем сразу. Это
+  // важно именно для фоновой вкладки: таймеры там душат до раза в минуту,
+  // а вебсокет продолжает работать, и число в заголовке появляется без
+  // переключения на вкладку.
+  useEffect(() => {
+    const supabase = createBrowserSupabase();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
+
+    // Токен ставим ДО подписки: сокет, подключённый без сессии, работает как
+    // анонимный, и RLS не отдаёт ему ни одного события postgres_changes.
+    void (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (session?.access_token) supabase.realtime.setAuth(session.access_token);
+
+      channel = supabase
+        .channel("app-badge")
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "project_messages" },
+          () => void refresh(),
+        )
+        .subscribe();
+    })();
+
+    return () => {
+      cancelled = true;
+      if (channel) void supabase.removeChannel(channel);
+    };
+  }, [refresh]);
 
   useEffect(() => {
     const timer = window.setInterval(() => void refresh(), POLL_MS);
