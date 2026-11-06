@@ -62,16 +62,33 @@ self.addEventListener("push", (event) => {
   }
 
   const title = payload.title || "Планировщик";
-  const options = {
-    body: payload.body || "Новое сообщение",
-    icon: "/icons/icon-192.png",
-    badge: "/icons/icon-192.png",
-    // Метка схлопывания: оживлённая переписка не выстраивает стопку.
-    tag: payload.tag || undefined,
-    data: { url: payload.url || "/" },
-  };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    (async () => {
+      // Если приложение прямо сейчас открыто на экране, звук сыграет само
+      // приложение — системный был бы вторым. Уведомление всё равно показываем
+      // (этого требует push), но молча.
+      let visible = false;
+      try {
+        const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        visible = windows.some((client) => client.visibilityState === "visible");
+      } catch {
+        visible = false;
+      }
+
+      const options = {
+        body: payload.body || "Новое сообщение",
+        icon: "/icons/icon-192.png",
+        badge: "/icons/icon-192.png",
+        // Метка схлопывания: оживлённая переписка не выстраивает стопку.
+        tag: payload.tag || undefined,
+        silent: visible,
+        data: { url: payload.url || "/" },
+      };
+
+      await self.registration.showNotification(title, options);
+    })(),
+  );
 });
 
 // Нажатие открывает нужный экран в уже открытой вкладке, иначе — новую.

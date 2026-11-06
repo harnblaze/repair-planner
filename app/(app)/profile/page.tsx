@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { BackLink } from "@/components/common/back-link";
 import { PushSettings } from "@/components/common/push-settings";
+import { SoundSettings } from "@/components/common/sound-settings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isPushConfigured } from "@/lib/push/send";
 import { createClient } from "@/lib/supabase/server";
@@ -50,11 +51,12 @@ export default async function ProfilePage() {
         <CardHeader>
           <CardTitle>Уведомления на телефон</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-3">
           <PushSettings
             serverReady={isPushConfigured()}
             publicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""}
           />
+          <SoundSettings />
         </CardContent>
       </Card>
     </main>

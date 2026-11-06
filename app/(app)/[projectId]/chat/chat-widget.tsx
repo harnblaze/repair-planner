@@ -72,6 +72,7 @@ import {
   type PresenceEntry,
 } from "@/lib/business/chat";
 import { compressImage } from "@/lib/attachments/compress-image";
+import { playNotificationSound, unlockNotificationSound } from "@/lib/notifications/sound";
 import { formatDateNumeric } from "@/lib/business/dates";
 import { EMOJI_CATEGORIES, readRecentEmoji, recentEmoji, saveRecentEmoji } from "@/lib/business/emoji";
 import { createClient as createBrowserSupabase } from "@/lib/supabase/client";
@@ -263,8 +264,12 @@ export function ChatWidget({
     [setOpen],
   );
 
-  /** Приём сообщений из любого источника: Realtime или дозапрос. */
-  const applyIncoming = useCallback((incoming: ChatMessage[]) => {
+  /**
+   * Приём сообщений из любого источника: Realtime или дозапрос.
+   * `silent` — не играть звук: так приходят догрузка истории и обновления
+   * после подключения фото, где сообщение уже было показано.
+   */
+  const applyIncoming = useCallback((incoming: ChatMessage[], options: { silent?: boolean } = {}) => {
     if (incoming.length === 0) return;
     const fresh = incoming.filter((message) => !knownIds.current.has(message.id));
     for (const message of incoming) knownIds.current.add(message.id);
@@ -273,6 +278,10 @@ export function ChatWidget({
 
     const fromOthers = fresh.filter((message) => message.author_id !== userId);
     if (fromOthers.length === 0) return;
+
+    // Звук — на любое сообщение от другого человека, и когда чат открыт, и
+    // когда свёрнут: вкладка может быть на другом экране, а сообщение важное.
+    if (!options.silent) playNotificationSound();
     if (openRef.current) {
       // Прочитали, пока чат открыт: сообщаем значку сразу, иначе число
       // на иконке висело до перехода на другую страницу.
@@ -429,7 +438,9 @@ export function ChatWidget({
             void (async () => {
               const result = await loadMessagesAction(projectId);
               if (!result.ok) return;
-              applyRef.current(result.messages);
+              // Событие приходит и после своего сообщения: звук уже сыграл на
+              // самом сообщении, второй раз он только раздражает.
+              applyRef.current(result.messages, { silent: true });
               setReactions(result.reactions);
               setAttachments(result.attachments);
             })();
@@ -790,6 +801,19 @@ export function ChatWidget({
     const rest = othersOnline.length - names.length;
     return rest > 0 ? `${names.join(", ")} и ещё ${rest}` : names.join(", ");
   }, [live, othersOnline]);
+
+  // Браузер не даёт играть звук до первого действия пользователя: разблокируем
+  // аудио на первом клике или нажатии клавиши, иначе первое уведомление
+  // пришло бы молча.
+  useEffect(() => {
+    const unlock = () => unlockNotificationSound();
+    window.addEventListener("pointerdown", unlock, { once: true, passive: true });
+    window.addEventListener("keydown", unlock, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
 
   // Все всплывающие окна (пикер эмодзи, реакции, меню сообщения, подтверждение
   // удаления) закрываются по клику мимо и по Esc. Без этого пикер эмодзи висит
