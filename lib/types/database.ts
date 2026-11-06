@@ -1554,6 +1554,7 @@ export type Database = {
         Args: { p_limit?: number; p_project_id: string }
         Returns: string[]
       }
+      chat_unread_total: { Args: never; Returns: number }
       claim_chat_cleanup: { Args: { p_project_id: string }; Returns: boolean }
       completed_works_report: {
         Args: { p_month: string; p_project_id: string }
@@ -1708,6 +1709,13 @@ export type Database = {
         Returns: string[]
       }
       project_can_edit: { Args: { p_project_id: string }; Returns: boolean }
+      project_chat_unread: {
+        Args: { p_project_id: string }
+        Returns: {
+          unread: number
+          user_id: string
+        }[]
+      }
       project_member_list: {
         Args: { p_project_id: string }
         Returns: {

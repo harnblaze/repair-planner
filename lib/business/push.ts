@@ -15,6 +15,8 @@ export type PushPayload = {
   url: string;
   /** Метка схлопывания: уведомления с одной меткой заменяют друг друга. */
   tag?: string;
+  /** Число на иконке приложения: сколько всего непрочитанного у получателя. */
+  badge?: number;
 };
 
 /**
@@ -42,6 +44,8 @@ export function chatPushPayload(input: {
   projectId: string;
   /** Сообщение без текста: одно фото или файл — так и пишем. */
   hasAttachments?: boolean;
+  /** Сколько непрочитанного будет у получателя после этого сообщения. */
+  badge?: number;
 }): PushPayload {
   const text = input.body.trim();
   return {
@@ -52,6 +56,9 @@ export function chatPushPayload(input: {
     // Новые сообщения схлопываются в одно уведомление на проект, а не
     // выстраиваются стопкой при оживлённой переписке.
     tag: `chat:${input.projectId}`,
+    // Значок ставит сервис-воркер: приложение в этот момент закрыто, и
+    // посчитать сам он ничего не может.
+    ...(typeof input.badge === "number" ? { badge: input.badge } : {}),
   };
 }
 

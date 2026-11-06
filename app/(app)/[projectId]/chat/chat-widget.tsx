@@ -524,6 +524,9 @@ export function ChatWidget({
       if (!result.ok) return;
       setUnread(0);
       setMentionUnread(false);
+      // Значок на иконке приложения и вкладке пересчитывает итог по всем
+      // проектам — говорим ему, что здесь прочитано, не дожидаясь опроса.
+      window.dispatchEvent(new Event("planner:chat-read"));
     });
   }, [open, projectId]);
 

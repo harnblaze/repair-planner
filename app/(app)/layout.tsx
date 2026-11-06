@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AppBadge } from "@/components/common/app-badge";
 import { NavigationTracker } from "@/components/common/back-link";
 import { ChangelogLink } from "@/components/common/changelog-link";
 import { CalendarIcon } from "@/components/common/icons";
@@ -19,9 +20,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/login");
   }
 
+  // Непрочитанное по всем проектам — стартовое значение для значка: с ним
+  // число видно сразу, без запроса после загрузки страницы.
+  const { data: unreadTotal } = await supabase.rpc("chat_unread_total");
+
   return (
     <div className="flex min-h-screen flex-col bg-page">
       <NavigationTracker />
+      <AppBadge initial={unreadTotal ?? 0} />
       {/* На узком экране зазоры меньше: на 390 px шапка с «Что нового» иначе
           вылезала за край ровно на 10 px. */}
       <header className="flex h-[52px] shrink-0 items-center justify-between gap-2 border-b border-line-strong bg-surface px-3 sm:gap-6 sm:px-5">

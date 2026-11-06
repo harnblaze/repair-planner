@@ -31,9 +31,12 @@ export async function scheduleChatPush(
 ): Promise<void> {
   if (!isPushConfigured()) return;
 
-  const [subscriptionsResult, authorResult] = await Promise.all([
+  const [subscriptionsResult, authorResult, unreadResult] = await Promise.all([
     supabase.rpc("project_push_subscriptions", { p_project_id: input.projectId }),
     supabase.from("profiles").select("full_name").eq("id", input.authorId).maybeSingle(),
+    // Сколько у каждого участника будет непрочитанного после этого сообщения —
+    // это число ставится на иконку приложения в уведомлении.
+    supabase.rpc("project_chat_unread", { p_project_id: input.projectId }),
   ]);
 
   if (subscriptionsResult.error) {
@@ -48,12 +51,18 @@ export async function scheduleChatPush(
   if (targets.length === 0) return;
 
   const authorName = authorResult.data?.full_name?.trim() || FALLBACK_AUTHOR;
-  const payload = chatPushPayload({
-    authorName,
-    body: input.body,
-    projectId: input.projectId,
-    hasAttachments: input.hasAttachments,
-  });
+  const unreadByUser = new Map(
+    (unreadResult.data ?? []).map((row) => [row.user_id, row.unread] as const),
+  );
+
+  const payloadFor = (userId: string) =>
+    chatPushPayload({
+      authorName,
+      body: input.body,
+      projectId: input.projectId,
+      hasAttachments: input.hasAttachments,
+      badge: unreadByUser.get(userId),
+    });
 
   after(async () => {
     const dead: string[] = [];
@@ -61,7 +70,7 @@ export async function scheduleChatPush(
     for (const target of targets) {
       const result = await sendPush(
         { endpoint: target.endpoint, p256dh: target.p256dh, auth: target.auth },
-        payload,
+        payloadFor(target.user_id),
       );
       if (result === "gone") dead.push(target.endpoint);
     }

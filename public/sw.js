@@ -54,6 +54,13 @@ self.addEventListener("push", (event) => {
     payload = { body: event.data ? event.data.text() : "" };
   }
 
+  // Значок на иконке приложения: приложение закрыто, посчитать некому —
+  // число приходит в самом уведомлении. Badging API есть не везде, поэтому
+  // молча пропускаем, если его нет.
+  if (typeof payload.badge === "number" && self.navigator && "setAppBadge" in self.navigator) {
+    self.navigator.setAppBadge(payload.badge).catch(() => {});
+  }
+
   const title = payload.title || "Планировщик";
   const options = {
     body: payload.body || "Новое сообщение",

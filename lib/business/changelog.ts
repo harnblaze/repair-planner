@@ -29,6 +29,17 @@ export const CHANGELOG_KIND_LABEL: Record<ChangelogKind, string> = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-11-06-unread-badge",
+    date: "2026-11-06",
+    title: "Счётчик непрочитанного на иконке",
+    items: [
+      {
+        kind: "new",
+        text: "На иконке приложения и на вкладке браузера видно, сколько сообщений ждёт ответа. Число обновляется само и исчезает, когда всё прочитано.",
+      },
+    ],
+  },
+  {
     id: "2026-11-06-push-notifications",
     date: "2026-11-06",
     title: "Уведомления на телефон",

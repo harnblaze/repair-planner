@@ -47,6 +47,13 @@ describe("chatPushPayload", () => {
     });
   });
 
+  it("значок попадает в уведомление, если число известно", () => {
+    const withBadge = chatPushPayload({ authorName: "Д", body: "x", projectId: "p", badge: 5 });
+    expect(withBadge.badge).toBe(5);
+    const withoutBadge = chatPushPayload({ authorName: "Д", body: "x", projectId: "p" });
+    expect("badge" in withoutBadge).toBe(false);
+  });
+
   it("сообщение без текста называет вложение", () => {
     const photo = chatPushPayload({ authorName: "Дмитрий", body: "   ", projectId: "p-1", hasAttachments: true });
     expect(photo.body).toBe("Фото или файл");
