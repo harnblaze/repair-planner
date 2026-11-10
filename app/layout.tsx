@@ -27,7 +27,13 @@ export const metadata: Metadata = {
   description: "Планирование и управление работами ремонтно-строительного цеха",
   // Установка на главный экран iPhone: Safari не читает иконки из манифеста.
   appleWebApp: { title: "Планировщик", capable: true, statusBarStyle: "default" },
-  icons: { apple: "/icons/apple-touch-icon.png" },
+  // Иконка вкладки — тот же календарь, что на иконке приложения: раньше здесь
+  // оставался служебный favicon из шаблона, и при появлении счётчика вкладка
+  // «переодевалась» в другую иконку.
+  icons: {
+    icon: [{ url: "/icons/icon-192.png", type: "image/png", sizes: "192x192" }],
+    apple: "/icons/apple-touch-icon.png",
+  },
 };
 
 // Цвет строки состояния и заголовка окна установленного приложения — как у шапки.

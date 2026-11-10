@@ -197,7 +197,14 @@ export function AppBadge({ initial }: { initial: number }) {
     const timer = window.setInterval(() => void refresh(), POLL_MS);
 
     const onVisible = () => {
-      if (document.visibilityState === "visible") void refresh();
+      if (document.visibilityState === "visible") {
+        void refresh();
+        return;
+      }
+      // Уход в фон: iOS и Android применяют значок к иконке в этот момент.
+      // Повторяем текущее значение, иначе очищенный в приложении счётчик
+      // остаётся на иконке до следующего опроса.
+      void applyBadge(countRef.current);
     };
     // Чат отметил прочитанное — пересчитываем сразу, а не через минуту.
     const onChatRead = () => void refresh();
@@ -211,7 +218,7 @@ export function AppBadge({ initial }: { initial: number }) {
       window.removeEventListener("focus", onVisible);
       window.removeEventListener("planner:chat-read", onChatRead);
     };
-  }, [refresh]);
+  }, [refresh, applyBadge]);
 
   return null;
 }
