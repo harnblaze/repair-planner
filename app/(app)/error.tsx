@@ -13,7 +13,9 @@ export default function AppError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error(error);
+    // Полный объект ошибки в клиентской консоли может содержать детали запроса
+    // и сессии; digest уже связывает строку с серверным логом.
+    console.error("app error", error.digest ?? error.message);
   }, [error]);
 
   return (

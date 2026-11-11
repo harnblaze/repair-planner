@@ -146,7 +146,9 @@ export function OmtsDialog({
       writeRemembered(data);
       toast.success("Файл заявки скачан.");
     } catch (error) {
-      console.error("omts download", error);
+      // Сводка вместо объекта: в консоль пользователя не должны попадать
+      // внутренности запроса, а сообщение достаточно для отладки.
+      console.error("omts download", error instanceof Error ? error.message : error);
       toast.error("Не удалось собрать заявку. Попробуйте ещё раз.");
     } finally {
       setBusy(false);
@@ -171,7 +173,7 @@ export function OmtsDialog({
                 }),
               ])
               .catch((error) => {
-                console.error("omts clipboard.write", error);
+                console.error("omts clipboard.write", error instanceof Error ? error.message : error);
                 return fallback();
               })
           : fallback();
@@ -181,7 +183,7 @@ export function OmtsDialog({
     written.then(
       () => toast.success("Строки скопированы — вставьте их в первую строку таблицы заявки."),
       (error) => {
-        console.error("omts copy", error);
+        console.error("omts copy", error instanceof Error ? error.message : error);
         toast.error("Не удалось скопировать. Попробуйте ещё раз.");
       },
     );

@@ -97,29 +97,63 @@ function toAttachments(row: MessageRow, urlByPath: Map<string, string>): ChatAtt
 }
 
 /**
- * Подписанные ссылки на фото: bucket приватный, ссылки живут час. Ошибка
- * подписи не роняет загрузку чата — фото просто не покажется, а текст будет.
+ * Подписанные ссылки на вложения: bucket приватный, ссылки живут час. Ошибка
+ * подписи не роняет загрузку чата — вложение просто не покажется, а текст будет.
+ *
+ * Фото подписываются одним запросом, документы — поштучно. Причина: атрибут
+ * download у ссылки браузер игнорирует для чужого домена, а Storage по
+ * умолчанию отдаёт объект с Content-Disposition: inline — PDF и CSV
+ * открывались бы вкладкой на *.supabase.co вместо скачивания. Опция download
+ * при подписи переносит это решение на сервер: Storage сам ставит attachment.
  */
 async function signAttachments(
   supabase: Awaited<ReturnType<typeof createClient>>,
   rows: MessageRow[],
 ): Promise<Map<string, string>> {
-  const paths = rows.flatMap((row) => (row.project_message_attachments ?? []).map((a) => a.storage_path));
-  if (paths.length === 0) return new Map();
+  const attachments = rows.flatMap((row) => row.project_message_attachments ?? []);
+  if (attachments.length === 0) return new Map();
 
-  const { data, error } = await supabase.storage
-    .from(CHAT_ATTACHMENTS_BUCKET)
-    .createSignedUrls(paths, SIGNED_URL_TTL_SECONDS);
-
-  if (error) {
-    console.error("signAttachments:", error);
-    return new Map();
-  }
-  // path и signedUrl в ответе nullable: подписанные кладём, остальные пропускаем.
   const result = new Map<string, string>();
-  for (const item of data ?? []) {
-    if (item.path && item.signedUrl) result.set(item.path, item.signedUrl);
+
+  const imagePaths = attachments.filter((a) => a.kind !== "document").map((a) => a.storage_path);
+  if (imagePaths.length > 0) {
+    const { data, error } = await supabase.storage
+      .from(CHAT_ATTACHMENTS_BUCKET)
+      .createSignedUrls(imagePaths, SIGNED_URL_TTL_SECONDS);
+
+    if (error) {
+      // Объект ошибки Storage несёт запрос и путь — в консоль его не выводим.
+      console.error("signAttachments: фото", error.message);
+    } else {
+      // path и signedUrl в ответе nullable: подписанные кладём, остальные пропускаем.
+      for (const item of data ?? []) {
+        if (item.path && item.signedUrl) result.set(item.path, item.signedUrl);
+      }
+    }
   }
+
+  // По пути, а не по строкам: один файл может прийти из разных выборок, а
+  // подпись стоит запроса. Без имени файла download: true — Storage возьмёт
+  // имя из пути.
+  const documents = new Map<string, string | null>();
+  for (const attachment of attachments) {
+    if (attachment.kind === "document") documents.set(attachment.storage_path, attachment.file_name);
+  }
+
+  await Promise.all(
+    [...documents].map(async ([path, fileName]) => {
+      const { data, error } = await supabase.storage
+        .from(CHAT_ATTACHMENTS_BUCKET)
+        .createSignedUrl(path, SIGNED_URL_TTL_SECONDS, { download: fileName ?? true });
+
+      if (error) {
+        console.error("signAttachments: документ", error.message);
+        return;
+      }
+      if (data?.signedUrl) result.set(path, data.signedUrl);
+    }),
+  );
+
   return result;
 }
 

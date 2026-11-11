@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { withSessionMaxAge } from "@/lib/supabase/cookie-options";
 import type { Database } from "@/lib/types/database";
 
 const PUBLIC_PATHS = [
@@ -22,6 +23,11 @@ export async function updateSession(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      // Как в server.ts/client.ts: Secure на проде и срок жизни из
+      // cookie-options.ts. Здесь сессия обновляется чаще всего — на каждом
+      // переходе, поэтому именно этот setAll задаёт срок для большинства
+      // записей cookie.
+      cookieOptions: { secure: process.env.NODE_ENV === "production", sameSite: "lax" },
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -32,7 +38,7 @@ export async function updateSession(request: NextRequest) {
           }
           response = NextResponse.next({ request });
           for (const { name, value, options } of cookiesToSet) {
-            response.cookies.set(name, value, options);
+            response.cookies.set(name, value, withSessionMaxAge(options));
           }
         },
       },

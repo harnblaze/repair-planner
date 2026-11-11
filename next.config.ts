@@ -16,10 +16,43 @@ const nextConfig: NextConfig = {
   logging: {
     serverFunctions: false,
   },
+  // Стек и версию фреймворка незачем показывать в каждом ответе: это
+  // бесплатная подсказка для подбора CVE.
+  poweredByHeader: false,
   // Сервис-воркер нельзя кешировать: иначе браузер не увидит обновление
   // public/sw.js (новую версию экрана «Нет сети») после деплоя.
   async headers() {
     return [
+      {
+        // Заголовки безопасности на все ответы. HSTS намеренно без
+        // includeSubDomains: служебные поддомены (www и старый адрес) пока
+        // живут по http, и includeSubDomains молча сломал бы их для браузеров,
+        // где http уже открывали.
+        source: "/:path*",
+        headers: [
+          { key: "Strict-Transport-Security", value: "max-age=31536000" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          // clipboard-write/clipboard-read не перечисляем: в приложении есть
+          // копирование в буфер, и пустой allowlist его сломает.
+          {
+            key: "Permissions-Policy",
+            value: "geolocation=(), camera=(), microphone=(), usb=(), payment=()",
+          },
+          // ОСОЗНАННО частичный CSP — только директивы, которым не нужен nonce.
+          // script-src/style-src сюда добавлять нельзя: в app/layout.tsx есть
+          // инлайновый скрипт темы, Next инлайнит RSC-пейлоад, а страницы
+          // отдаются пререндером (x-nextjs-prerender: 1, s-maxage=31536000) —
+          // с nonce всех посетителей угощали бы одним значением из кэша.
+          // Полный CSP — отдельный этап с динамическим рендером.
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'",
+          },
+        ],
+      },
       {
         source: "/sw.js",
         headers: [

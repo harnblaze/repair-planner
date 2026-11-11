@@ -29,6 +29,17 @@ export const CHANGELOG_KIND_LABEL: Record<ChangelogKind, string> = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-11-11-chat-document-download",
+    date: "2026-11-11",
+    title: "Документы из чата скачиваются",
+    items: [
+      {
+        kind: "fix",
+        text: "Документ из чата теперь сохраняется на устройство, а не открывается вкладкой на другом сайте: имя файла остаётся прежним, PDF и таблицы открываются уже из «Загрузок».",
+      },
+    ],
+  },
+  {
     id: "2026-11-06-dark-theme",
     date: "2026-11-06",
     title: "Тёмная тема",
