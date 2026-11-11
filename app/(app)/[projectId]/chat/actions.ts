@@ -25,9 +25,11 @@ import { CHAT_PAGE_SIZE, escapeLikePattern, fromChatRow } from "@/lib/business/c
 import {
   CHAT_BODY_MAX,
   chatEditSchema,
+  chatHistoryCursorSchema,
   chatMessageSchema,
   chatMessageWithAttachmentsSchema,
   reactionSchema,
+  type ChatHistoryCursorInput,
   type ChatMessageInput,
   type ChatMessageWithAttachmentsInput,
 } from "@/lib/validation/chat";
@@ -278,6 +280,25 @@ export async function loadMessagesAction(
   const role = await getProjectRole(projectId);
   if (!role) return { ok: false, error: "Нет доступа к проекту." };
 
+  // Курсор приходит от клиента и уходит в фильтр строкой, поэтому проверяем
+  // его форму до запроса: подделанный курсор не должен менять дерево
+  // фильтров PostgREST, а битый — превращаться в 500. Тип у аргумента есть, но
+  // типы не защищают от того, что пришлёт браузер, — поэтому typeof-проверки.
+  let cursor: ChatHistoryCursorInput | null = null;
+  if (before) {
+    const parsed = chatHistoryCursorSchema.safeParse({
+      createdAt: typeof before.createdAt === "string" ? cursorTime(before.createdAt) : "",
+      id: typeof before.id === "string" ? before.id : "",
+    });
+
+    if (!parsed.success) {
+      console.error("loadMessagesAction: некорректный курсор истории");
+      return { ok: false, error: "Не удалось загрузить историю. Обновите страницу." };
+    }
+
+    cursor = parsed.data;
+  }
+
   const supabase = await createClient();
   let query = supabase
     .from("project_messages")
@@ -286,11 +307,12 @@ export async function loadMessagesAction(
     )
     .eq("project_id", projectId);
 
-  if (before) {
-    const at = cursorTime(before.createdAt);
+  if (cursor) {
     // Строго до курсора; при совпадении времени — по id, чтобы страницы не
     // пересекались и не теряли сообщения одного «момента».
-    query = query.or(`created_at.lt.${at},and(created_at.eq.${at},id.lt.${before.id})`);
+    query = query.or(
+      `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`,
+    );
   }
 
   // На одну строку больше страницы: по ней честно видно, есть ли что-то раньше.

@@ -7,7 +7,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(142);
+select plan(145);
 
 -- ================= Фикстуры (как postgres, минуя RLS) =================
 
@@ -1208,6 +1208,37 @@ select is(
 select ok(
   has_function_privilege('authenticated', 'public.project_access(uuid)', 'execute'),
   'authenticated keeps project_access for RLS policies'
+);
+
+-- ================= Ограничения длины и прямой insert участника (0045) =================
+-- Лимиты в zod обходятся прямым PostgREST-запросом, поэтому проверяем схему.
+
+reset role;
+select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true) as _;
+set role authenticated;
+
+-- 62. Описание заявки длиннее серверного лимита отклоняется
+select throws_ok(
+  $$ insert into public.tasks (project_id, title, description)
+     values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Too long', repeat('x', 5001)) $$,
+  '23514', null,
+  'task description longer than 5000 characters is rejected by the schema'
+);
+
+-- 63. Имя профиля длиннее серверного лимита отклоняется
+select throws_ok(
+  $$ update public.profiles set full_name = repeat('x', 121)
+      where id = '11111111-1111-1111-1111-111111111111' $$,
+  '23514', null,
+  'profile full_name longer than 120 characters is rejected by the schema'
+);
+
+-- 64. Второго владельца нельзя вставить напрямую (политики insert нет с 0012)
+select throws_ok(
+  $$ insert into public.project_members (project_id, user_id, role)
+     values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '22222222-2222-2222-2222-222222222222', 'owner') $$,
+  '42501', null,
+  'a second owner cannot be inserted through the API'
 );
 
 select * from finish();

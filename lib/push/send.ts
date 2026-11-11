@@ -1,6 +1,7 @@
 import webpush from "web-push";
 
 import type { PushPayload } from "@/lib/business/push";
+import { isPushEndpointAllowed } from "@/lib/validation/push";
 
 // Отправка Web Push. Ключи VAPID — только в переменных окружения сервера:
 // публичный уходит в браузер (NEXT_PUBLIC_*), приватный остаётся здесь.
@@ -41,6 +42,11 @@ export type PushResult = "sent" | "gone" | "failed";
  * иначе она копится и тормозит рассылку.
  */
 export async function sendPush(target: PushTarget, payload: PushPayload): Promise<PushResult> {
+  // Подписка могла быть сохранена до появления списка разрешённых хостов (или
+  // подделана в обход формы). Отправка по такому адресу — запрос сервера на
+  // чужой хост, поэтому строку просто не трогаем.
+  if (!isPushEndpointAllowed(target.endpoint)) return "failed";
+
   if (!ensureVapid()) return "failed";
 
   try {

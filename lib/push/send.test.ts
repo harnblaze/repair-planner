@@ -13,7 +13,13 @@ vi.mock("web-push", () => ({
   },
 }));
 
-const target = { endpoint: "https://push.example/abc", p256dh: "key", auth: "secret" };
+// Адрес — из разрешённых хостов (lib/validation/push.ts): по чужому отправка
+// не делается вовсе, это проверяется отдельным тестом ниже.
+const target = {
+  endpoint: "https://fcm.googleapis.com/fcm/send/dQw4w9WgXcQ:APA91bH-test",
+  p256dh: "key",
+  auth: "secret",
+};
 const payload = { title: "Дмитрий", body: "Проверь заявку", url: "/p-1/board", tag: "chat:p-1" };
 
 async function importSend() {
@@ -63,5 +69,11 @@ describe("sendPush", () => {
     sendNotification.mockRejectedValue(Object.assign(new Error("server"), { statusCode: 500 }));
     const { sendPush } = await importSend();
     expect(await sendPush(target, payload)).toBe("failed");
+  });
+
+  it("по чужому адресу не отправляет: подписка могла остаться с прежних времён", async () => {
+    const { sendPush } = await importSend();
+    expect(await sendPush({ ...target, endpoint: "https://internal.corp.local/push" }, payload)).toBe("failed");
+    expect(sendNotification).not.toHaveBeenCalled();
   });
 });

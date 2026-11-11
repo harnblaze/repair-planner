@@ -49,7 +49,11 @@ export async function savePushSubscriptionAction(input: PushSubscriptionInput): 
   const parsed = pushSubscriptionSchema.safeParse(input);
 
   if (!parsed.success) {
-    return { ok: false, error: "Не удалось сохранить устройство. Попробуйте ещё раз." };
+    // Адрес устройства отбраковывается своим сообщением (allowlist хостов
+    // push-сервисов); остальные поля — общей фразой, технический текст
+    // пользователю не показываем.
+    const endpointIssue = parsed.error.issues.find((issue) => issue.path[0] === "endpoint");
+    return { ok: false, error: endpointIssue?.message ?? "Не удалось сохранить устройство. Попробуйте ещё раз." };
   }
 
   const supabase = await createClient();

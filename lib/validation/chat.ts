@@ -100,3 +100,21 @@ export const chatMessageWithAttachmentsSchema = z
   });
 
 export type ChatMessageWithAttachmentsInput = z.infer<typeof chatMessageWithAttachmentsSchema>;
+
+/**
+ * Курсор истории: сообщение, до которого уже догружено.
+ *
+ * Аргументы серверного экшена приходят от клиента, а значения курсора уходят
+ * в PostgREST-фильтр строкой (`or(created_at.lt.…,and(…))`). Поэтому форма
+ * проверяется строго: ISO-дата-время и uuid. В такой строке не бывает
+ * запятых, скобок и пробелов — подменить дерево фильтров через курсор нельзя.
+ *
+ * Postgres отдаёт `created_at` как `2026-11-11T12:00:00.123456+00:00`, поэтому
+ * принимаются и `Z`, и смещение `±HH:MM`, и дробные секунды.
+ */
+export const chatHistoryCursorSchema = z.object({
+  createdAt: z.iso.datetime({ offset: true }),
+  id: z.guid(),
+});
+
+export type ChatHistoryCursorInput = z.infer<typeof chatHistoryCursorSchema>;
