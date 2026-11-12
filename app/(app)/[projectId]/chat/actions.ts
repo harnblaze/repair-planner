@@ -21,6 +21,7 @@ import { canEditProject } from "@/lib/business/project-roles";
 import { scheduleChatPush } from "@/lib/push/chat";
 import { getProjectRole, requireProjectEdit } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
+import { getCachedSignedUrl, rememberSignedUrl } from "@/lib/supabase/signed-url-cache";
 import { CHAT_PAGE_SIZE, escapeLikePattern, fromChatRow } from "@/lib/business/chat";
 import {
   CHAT_BODY_MAX,
@@ -99,6 +100,15 @@ function toAttachments(row: MessageRow, urlByPath: Map<string, string>): ChatAtt
 }
 
 /**
+ * Ключ кэша для документа: ссылка на скачивание содержит имя файла
+ * (`download=<name>`), поэтому одна и та же подпись годится только для того же
+ * имени. Фото подписываются без download — у них ключ просто путь.
+ */
+function documentCacheKey(path: string, fileName: string | null): string {
+  return `${path}|${fileName ?? ""}`;
+}
+
+/**
  * Подписанные ссылки на вложения: bucket приватный, ссылки живут час. Ошибка
  * подписи не роняет загрузку чата — вложение просто не покажется, а текст будет.
  *
@@ -107,6 +117,12 @@ function toAttachments(row: MessageRow, urlByPath: Map<string, string>): ChatAtt
  * умолчанию отдаёт объект с Content-Disposition: inline — PDF и CSV
  * открывались бы вкладкой на *.supabase.co вместо скачивания. Опция download
  * при подписи переносит это решение на сервер: Storage сам ставит attachment.
+ *
+ * Уже выданные ссылки берём из кэша (lib/supabase/signed-url-cache.ts): чат
+ * опрашивается каждые 15–30 секунд, и новая подпись каждый раз означала новый
+ * URL в `<img src>` — браузер скачивал те же фото заново. Кэш на час убирает
+ * именно эту повторную загрузку, ничего не меняя для доступа: пути пришли из
+ * строк под RLS, подпись переиспользуется только для того же объекта.
  */
 async function signAttachments(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -117,11 +133,21 @@ async function signAttachments(
 
   const result = new Map<string, string>();
 
-  const imagePaths = attachments.filter((a) => a.kind !== "document").map((a) => a.storage_path);
-  if (imagePaths.length > 0) {
+  // Один файл может прийти из нескольких выборок — подписываем каждый путь
+  // один раз, иначе пакетный запрос вернёт дубли.
+  const imagePaths = [...new Set(attachments.filter((a) => a.kind !== "document").map((a) => a.storage_path))];
+
+  const missingImages: string[] = [];
+  for (const path of imagePaths) {
+    const cached = getCachedSignedUrl(path);
+    if (cached) result.set(path, cached);
+    else missingImages.push(path);
+  }
+
+  if (missingImages.length > 0) {
     const { data, error } = await supabase.storage
       .from(CHAT_ATTACHMENTS_BUCKET)
-      .createSignedUrls(imagePaths, SIGNED_URL_TTL_SECONDS);
+      .createSignedUrls(missingImages, SIGNED_URL_TTL_SECONDS);
 
     if (error) {
       // Объект ошибки Storage несёт запрос и путь — в консоль его не выводим.
@@ -129,7 +155,10 @@ async function signAttachments(
     } else {
       // path и signedUrl в ответе nullable: подписанные кладём, остальные пропускаем.
       for (const item of data ?? []) {
-        if (item.path && item.signedUrl) result.set(item.path, item.signedUrl);
+        if (item.path && item.signedUrl) {
+          result.set(item.path, item.signedUrl);
+          rememberSignedUrl(item.path, item.signedUrl, SIGNED_URL_TTL_SECONDS);
+        }
       }
     }
   }
@@ -144,6 +173,13 @@ async function signAttachments(
 
   await Promise.all(
     [...documents].map(async ([path, fileName]) => {
+      const cacheKey = documentCacheKey(path, fileName);
+      const cached = getCachedSignedUrl(cacheKey);
+      if (cached) {
+        result.set(path, cached);
+        return;
+      }
+
       const { data, error } = await supabase.storage
         .from(CHAT_ATTACHMENTS_BUCKET)
         .createSignedUrl(path, SIGNED_URL_TTL_SECONDS, { download: fileName ?? true });
@@ -152,7 +188,10 @@ async function signAttachments(
         console.error("signAttachments: документ", error.message);
         return;
       }
-      if (data?.signedUrl) result.set(path, data.signedUrl);
+      if (data?.signedUrl) {
+        result.set(path, data.signedUrl);
+        rememberSignedUrl(cacheKey, data.signedUrl, SIGNED_URL_TTL_SECONDS);
+      }
     }),
   );
 
