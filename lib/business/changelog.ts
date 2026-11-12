@@ -29,6 +29,17 @@ export const CHANGELOG_KIND_LABEL: Record<ChangelogKind, string> = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-11-12-chat-flood-limit",
+    date: "2026-11-12",
+    title: "Чат не заваливает уведомлениями",
+    items: [
+      {
+        kind: "improve",
+        text: "В чате не больше двадцати сообщений в минуту: если что-то залипло и отправилось подряд, коллегам не прилетит лавина уведомлений.",
+      },
+    ],
+  },
+  {
     id: "2026-11-12-password-reset",
     date: "2026-11-12",
     title: "Сброс пароля и подтверждение почты",

@@ -1,8 +1,12 @@
 import { cache } from "react";
 
 import { canEditProject, type ProjectRole } from "@/lib/business/project-roles";
+import { consumeRateLimit } from "@/lib/business/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/action-result";
+
+/** Не чаще одной записи в минуту на пару «пользователь + проект». */
+const ACCESS_DENIED_LOG_WINDOW_MS = 60_000;
 
 /**
  * Роль текущего пользователя в проекте или null, если доступа нет.
@@ -16,7 +20,27 @@ export const getProjectRole = cache(async (projectId: string): Promise<ProjectRo
     console.error("getProjectRole:", error);
     return null;
   }
-  return data ?? null;
+
+  if (data) return data;
+
+  // Отказ в доступе раньше не оставлял следа, и перебор чужих projectId был
+  // неотличим от обычной работы. Пишем одну строку — без токенов, email и
+  // прочих данных: id человека и id проекта достаточно, чтобы разобраться.
+  //
+  // Лишний getUser() только здесь, на отказе: у законного участника запроса
+  // не добавляется. Без сессии не логируем — это не перебор, а гость.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    const key = `access-denied:${user.id}:${projectId}`;
+    if (consumeRateLimit(key, 1, ACCESS_DENIED_LOG_WINDOW_MS).ok) {
+      console.warn("access denied", { projectId, userId: user.id });
+    }
+  }
+
+  return null;
 });
 
 export const NO_EDIT_ACCESS_MESSAGE = "Недостаточно прав для изменения данных проекта.";

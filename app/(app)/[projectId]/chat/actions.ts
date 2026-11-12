@@ -18,6 +18,7 @@ import {
 } from "@/lib/business/attachments";
 import type { ChatAttachment, ChatMessage, ChatReaction } from "@/lib/business/chat";
 import { canEditProject } from "@/lib/business/project-roles";
+import { consumeRateLimit } from "@/lib/business/rate-limit";
 import { scheduleChatPush } from "@/lib/push/chat";
 import { getProjectRole, requireProjectEdit } from "@/lib/projects/access";
 import { createClient } from "@/lib/supabase/server";
@@ -202,6 +203,21 @@ export type ChatSendResult = { ok: true; message: ChatMessage } | { ok: false; e
 export type ChatEditResult = { ok: true; message: ChatMessage } | { ok: false; error: string };
 export type ChatDeleteResult = { ok: true } | { ok: false; error: string };
 
+/**
+ * Сколько сообщений человек может отправить за минуту.
+ *
+ * Ограничение на пользователя, а не на чат: одно сообщение — это ещё и push
+ * всем участникам проекта, поэтому флуд бьёт по чужим телефонам. Лимит по
+ * человеку не даёт обойти его переключением между проектами.
+ */
+const CHAT_SEND_LIMIT = 20;
+const CHAT_SEND_WINDOW_MS = 60_000;
+
+/** Текст отказа: человеку нужно знать, сколько ждать, а не что сработал лимит. */
+function rateLimitMessage(retryAfterMs: number): string {
+  return `Слишком часто. Подождите ${Math.ceil(retryAfterMs / 1000)} сек.`;
+}
+
 /** Курсор истории: сообщение, до которого уже догружено (самое старое в ленте). */
 export type ChatHistoryCursor = { createdAt: string; id: string };
 
@@ -267,6 +283,11 @@ export async function sendMessageAction(
   } = await supabase.auth.getUser();
 
   if (!user) return { ok: false, error: "Сессия истекла. Войдите заново." };
+
+  // Проверяем до вставки: отклонённое сообщение не должно доходить до БД и до
+  // рассылки уведомлений.
+  const quota = consumeRateLimit(`chat:send:${user.id}`, CHAT_SEND_LIMIT, CHAT_SEND_WINDOW_MS);
+  if (!quota.ok) return { ok: false, error: rateLimitMessage(quota.retryAfterMs) };
 
   if (parsed.data.replyToId && !(await replyTargetExists(supabase, projectId, parsed.data.replyToId))) {
     return REPLY_GONE;
@@ -738,6 +759,11 @@ export async function sendMessageWithAttachmentsAction(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Сессия истекла. Войдите заново." };
+
+  // Тот же лимит, что у текстовых сообщений: иначе флуд с картинкой обходил бы
+  // ограничение и всё равно рассылал push.
+  const quota = consumeRateLimit(`chat:send:${user.id}`, CHAT_SEND_LIMIT, CHAT_SEND_WINDOW_MS);
+  if (!quota.ok) return { ok: false, error: rateLimitMessage(quota.retryAfterMs) };
 
   const bucket = supabase.storage.from(CHAT_ATTACHMENTS_BUCKET);
   const folder = parsed.data.id.toLowerCase();
