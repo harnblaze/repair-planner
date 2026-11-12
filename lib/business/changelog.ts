@@ -29,6 +29,17 @@ export const CHANGELOG_KIND_LABEL: Record<ChangelogKind, string> = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-11-12-password-reset",
+    date: "2026-11-12",
+    title: "Сброс пароля и подтверждение почты",
+    items: [
+      {
+        kind: "fix",
+        text: "Ссылка «забыли пароль?» из письма снова открывает форму нового пароля, а ссылка подтверждения почты доводит регистрацию до конца.",
+      },
+    ],
+  },
+  {
     id: "2026-11-11-chat-document-download",
     date: "2026-11-11",
     title: "Документы из чата скачиваются",

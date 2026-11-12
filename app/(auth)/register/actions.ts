@@ -22,14 +22,20 @@ export async function registerAction(input: RegisterInput, next?: string): Promi
 
   const supabase = await createClient();
   const origin = (await headers()).get("origin");
-  // При включённом подтверждении email next (например, ссылка-приглашение)
-  // возвращается через письмо: шаблон supabase/templates/confirmation.html.
+  // При включённом подтверждении email адрес возврата уходит в письмо.
+  // Ведём не сразу на нужную страницу, а на /auth/confirm: шаблон Supabase по
+  // умолчанию возвращает PKCE-код (или токены во фрагменте), и сессию надо
+  // поднять именно там. Адрес назначения передаём параметром next — страница
+  // проверит, что это путь нашего же сайта.
+  const target = safeNextPath(next);
   const { data, error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
     options: {
       data: { full_name: parsed.data.fullName },
-      emailRedirectTo: origin ? `${origin}${safeNextPath(next)}` : undefined,
+      emailRedirectTo: origin
+        ? `${origin}/auth/confirm?next=${encodeURIComponent(target)}`
+        : undefined,
     },
   });
 
